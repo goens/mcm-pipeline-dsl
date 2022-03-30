@@ -4,7 +4,7 @@ namespace Pipeline
 
 inductive AST
 | Pipeline : List AST → AST
-| Struct : AST → AST → List AST → AST
+| Struct : String → String → List AST → AST
 | List : List AST → AST
 | Const : Nat → AST
 | Assign : AST → AST → AST
@@ -19,20 +19,21 @@ inductive AST
 | Break : AST
 | Return : AST → AST
 | UnaryOp : String → AST → AST
-| Identifier : List String → AST
+| Identifier : String → AST
+| Access : AST → AST → AST
 | TypedIdentifier : String → String → AST
 
 declare_syntax_cat pipeline
-declare_syntax_cat struct
 declare_syntax_cat stmt
 declare_syntax_cat stmt_list
 declare_syntax_cat typed_ident
 declare_syntax_cat expr
 
 -- expresions
+syntax ident : expr
 syntax "[" expr,* "]" : expr
 syntax expr "(" expr,* ")" : expr
-syntax ident ( "." ident)* : expr
+syntax expr "." expr : expr
 syntax  "!" expr : expr
 syntax typed_ident "=" expr : expr -- definition
 syntax ident "=" expr : expr -- definition
@@ -54,15 +55,14 @@ syntax expr : stmt
 
 syntax (stmt ";"?)* : stmt_list
 
-syntax struct* : pipeline
-syntax ident ident "{" stmt_list "}" : struct
+syntax stmt_list : pipeline
+syntax ident ident "{" stmt_list "}" : stmt
 
 syntax "[expr|" expr "]" : term
 syntax "[stmt|" stmt "]" : term
 syntax "[stmt_list|" stmt_list "]" : term
 syntax "[t_ident|" typed_ident "]" : term
 syntax "[ident|" ident "]" : term
-syntax "[struct|" struct "]" : term
 syntax "[pipeline|" pipeline "]" : term
 
 macro_rules
@@ -78,14 +78,13 @@ macro_rules
   let initList <- `([])
   let valList <- vals.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
   `(AST.List $valList)
-| `([expr| $name:ident($args:expr,*)]) => do
+| `([expr| $name:expr($args:expr,*)]) => do
   let initList <- `([])
   let argList <- args.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
   `(AST.FunCall [expr|$name] $argList)
-| `([expr|$first:ident $[.$rest:ident]*]) => do
-  let initList <- `([[ident|$first]])
-  let identList <- rest.foldrM (init := initList) fun x xs => `([ident|$x]::$xs)
-  `(AST.Identifier $identList)
+| `([expr|$name:ident]) => `(AST.Identifier [ident|$name])
+| `([expr|$first:expr . $rest:expr]) => do
+  `(AST.Access [expr|$first] [expr|$rest])
 | `([expr| $tname:typed_ident = $e:expr]) =>
 `(AST.Assign [t_ident|$tname] [expr|$e])
 | `([expr| $name:ident = $e:expr]) =>
@@ -111,6 +110,7 @@ macro_rules
   let initList <- `([])
   let argsList <- args.getElems.foldrM (init := initList) fun x xs => `([t_ident| $x]::$xs)
   `(AST.FunDecl [t_ident| $tname] $argsList [stmt_list| $stmts])
+| `([stmt| $type:ident $name:ident { $stmts } ]) => `(AST.Struct [ident|$type] [ident|$name] [stmt_list| $stmts])
 | `([stmt| $tname:typed_ident]) =>
 `(AST.Decl [t_ident| $tname])
 | `([stmt| if($cond:expr){ $stmts }]) => do
@@ -128,15 +128,7 @@ macro_rules
 | `([stmt| $e:expr]) => `([expr| $e])
 
 macro_rules
-| `([struct| $type:ident $name:ident { $stmts } ]) => `(AST.Struct [stmt_list| $stmts])
-
-macro_rules
-| `([pipeline| $[$structs]*]) => do
-let initList <- `([])
-let structList <- structs.foldrM (init := initList) fun x xs => `([struct| $x]::$xs)
-`(AST.Pipeline $structList)
-
-syntax ident ident "{" stmt_list "}" : struct
+| `([pipeline| $stmts:stmt_list]) => `(AST.Pipeline [stmt_list|$stmts])
 
 --  | `([stmt|await { $[when $expr : $[stmts $[;]?]*]*}])
 #check [expr| foo]
@@ -147,7 +139,13 @@ syntax ident ident "{" stmt_list "}" : struct
 #check [stmt| if(0){ int a = b  int b = c } ]
 #check [stmt| if(0){ int a = b  int b = c } else { char bar = z; }]
 #check [stmt| await{ when foo : int a = b  int b = c } ]
-
+#check [pipeline| internal_function compare_phys_and_inval_addr(physical_address phys_addr,
+physical_address cache_invalidate_address) {
+bool address_overlap = addr_overlap(self.phys_addr,
+cache_invalidate.address)
+return address_overlap;
+}
+]
 
 #check [stmt| internal_function compare_phys_and_inval_addr(physical_address phys_addr,
 physical_address cache_invalidate_address) {
