@@ -109,6 +109,8 @@ state_machine_sub_func check_forwarding_or_load {
         if (address_overlap) {
           check_forwarding_or_load;
         }
+      } catch qualifier.name {
+        send(msg);
       }
       break;
     when search_result_success:
@@ -157,3 +159,15 @@ cache_invalidate.address)
 return address_overlap;
 }
 ]
+/-
+NOTE 3: How to access statements in FunDecl? 
+iterate through the AST list perhaps?
+-/
+#check ex2.FunDecl
+
+def get_head ( a : List Type ) : IO UInt32 :=
+  match a with
+  | hd::tl => IO.println hd
+  | _ => IO.println _
+
+#check get_head ex2.FunDecl
