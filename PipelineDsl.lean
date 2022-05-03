@@ -39,6 +39,12 @@ syntax typed_ident "=" expr : expr -- definition
 syntax ident "=" expr : expr -- definition
 syntax num : expr
 
+/-
+NOTE 1:
+Typed identifier, consider replacing
+first ident with "type" that enums the return type
+with some specific types
+-/
 syntax ident ident : typed_ident
 
 -- statements
@@ -56,6 +62,12 @@ syntax expr : stmt
 syntax (stmt ";"?)* : stmt_list
 
 syntax stmt_list : pipeline
+/-
+NOTE 2:
+Same thing here. Replace the first ident
+(identifier) with an enum of allowed keywords
+Or just whatever the transitions are called
+-/
 syntax ident ident "{" stmt_list "}" : stmt
 
 syntax "[expr|" expr "]" : term
@@ -154,3 +166,9 @@ cache_invalidate.address)
 return address_overlap;
 }
 ]
+
+/-
+General NOTE:
+1. Limited debugging support from lean?
+2. Limited parsing error messages?
+-/
