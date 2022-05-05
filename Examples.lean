@@ -164,10 +164,60 @@ NOTE 3: How to access statements in FunDecl?
 iterate through the AST list perhaps?
 -/
 #check ex2.FunDecl
-
-def get_head ( a : List Type ) : IO UInt32 :=
+#check List
+variable {α : Type}
+def get_head ( a : List α )  : Option α :=
   match a with
-  | hd::tl => IO.println hd
-  | _ => IO.println _
+  | hd::tl =>  some hd
+  | [] =>  none
+
+def get_head' ( a : List α ) [Inhabited α] :=
+  match a with
+  | hd::tl =>  hd
+  | [] =>  default
 
 #check get_head ex2.FunDecl
+
+def ex3 : Pipeline.AST := Pipeline.AST.Pipeline [Pipeline.AST.Const 5, Pipeline.AST.Decl Pipeline.AST.Break]
+
+def ex_ls : List Pipeline.AST := [Pipeline.AST.Const 5, Pipeline.AST.Decl Pipeline.AST.Break]
+
+
+open Pipeline.AST in
+partial def get_constants ( a : Pipeline.AST ) : List Nat :=
+match a with
+| Const n => dbg_trace n 
+  [n]
+| Decl decl => get_constants decl
+| Pipeline ls => 
+List.join ( ls.map get_constants )
+| _ => []
+--| Pipeline ls => ls.map 
+
+#eval ex_ls.map get_constants
+#check ex_ls.map get_constants
+
+#eval List.join (ex_ls.map get_constants)
+
+#eval get_constants ex3
+
+inductive AST
+| Pipeline : List AST → AST
+| Struct : String → String → List AST → AST
+| List : List AST → AST
+| Const (n : Nat ) : AST
+| Assign : AST → AST → AST
+| Decl : AST → AST
+| FunDecl : AST → List AST → List AST → AST
+| FunCall : AST → List AST → AST
+| If  : AST → List AST → AST
+| IfElse  : AST → List AST → List AST → AST
+| Await : List AST → AST
+| When : AST → List AST → AST
+| TryCatch  : List AST → AST → List AST → AST
+| Break : AST
+| Return : AST → AST
+| UnaryOp : String → AST → AST
+| Identifier : String → AST
+| Access : AST → AST → AST
+| TypedIdentifier : String → String → AST
