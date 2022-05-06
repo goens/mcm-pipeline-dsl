@@ -43,13 +43,14 @@ def ex4 : list_test := list_test.somthing []
 
 def get_list (x : list_test) : List Nat :=
 match x with
-| list_test.somthing y => dbg_trace y
+| list_test.somthing y => --dbg_trace y
 y
 
 def get_list_item (x: List Nat) : Nat :=
 match x with
 | h :: t => h
-| [] => 
+| [] => 0
 
 #check ex4
 #eval get_list ex4
+#eval get_list_item (get_list ex4)
