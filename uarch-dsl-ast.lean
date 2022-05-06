@@ -60,11 +60,11 @@ inductive statement_core
 
 
 -- one or more catch blocks
--- Is there a nicer way to do 1 or more?
  inductive catch_blocks
  | catch_block : String /- catch -/ →
                  String /- { -/ → statements → String /- } -/ →
-                 List catch_block → catch_blocks
+                 catch_blocks → catch_blocks
+ | nothing : catch_blocks -- one or more, this is the "none"
 
 inductive conditional
 -- if with else
@@ -76,6 +76,32 @@ inductive conditional
 | if_statement      : String /- if -/ → String /- ( -/ → expr → String /- ) -/ →
                       String /- { -/ → statements → String /- } -/ → conditional
 
--- TODO: Still need to define Exprs
+-- TODO: Test this (expr) in a sandbox
 inductive expr
-| TODO
+| add : expr → String → term → expr
+| sub : expr → String → term → expr
+| greater_than : expr → String → term → expr
+| less_than    : expr → String → term → expr
+| equal        : expr → String → term → expr
+| not_equal : expr → String → term → expr
+| some_term : term → expr
+-- | term : factor → expr → expr
+-- | nothing : expr
+
+inductive term
+| mult : term → String → factor → term
+| div  : term → String → factor → term
+-- | lsh  : expr → String → term → expr
+-- | rsh  : expr → String → term → expr
+
+inductive factor
+| negation: String → factor → factor
+| parentheses: String → expr → String → factor
+| variable_ : var → factor
+| constant_ : const → factor
+
+inductive var
+| identifier : String → var
+
+inductive const
+| literal : Nat → const -- might require String for the text?
