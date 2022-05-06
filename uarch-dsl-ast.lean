@@ -51,9 +51,13 @@ inductive statement_core
  -- function call?
  | try_catch : String /- try -/ → String /- { -/ → statements → String /- } -/ →
                catch_blocks → statement_core
--- TODO: await, and transition
- | await -- await?
- | transition -- transition to an explicit state
+ -- await?
+ | await : String /- await -/ → String /- { -/ → statements → String /- } -/ →
+           statement_core
+ -- transition to an explicit state
+ | transition : String /- transition -/ → String /- { -/ → statements → String /- } -/ →
+                statement_core
+
 
 -- one or more catch blocks
 -- Is there a nicer way to do 1 or more?
@@ -73,3 +77,5 @@ inductive conditional
                       String /- { -/ → statements → String /- } -/ → conditional
 
 -- TODO: Still need to define Exprs
+inductive expr
+| TODO
