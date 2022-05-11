@@ -1,25 +1,30 @@
 def Identifier := String
-def FunctionName := Identifier
-def TypeIdent := Identifier
-def StructureName := Identifier
-def Var := Identifier
+def TIden := Identifier
+-- def FunctionName := Identifier
+-- def StructureName := Identifier
+-- def Var := Identifier
+
+namespace Pipeline
 
 mutual
 
 inductive AST
-| StructureDescriptions : List Description → AST
+| structure_descriptions : List Description → AST
+
+inductive TypedIdentifier
+ | mk : TIden → Identifier → TypedIdentifier
 
 inductive Description
 | structure_specification :
-  /- structure -/ StructureName /- { -/ → List Statement  /- } -/ → Description
-| structure_state : /- state -/ StructureName → /- { -/ List Statement → /- } -/
+  /- structure -/ Identifier /- { -/ → List Statement  /- } -/ → Description
+| structure_state : /- state -/ Identifier → /- { -/ List Statement → /- } -/
   Description
 -- constructors have the same signature, but will use different keywords
 | structure_transition :
-  /- transition -/ StructureName /- { -/ → List Statement /- } -/ → Description
+  /- transition -/ Identifier /- { -/ → List Statement /- } -/ → Description
 -- Function definition
 | function_definition :
-  TypeIdent → FunctionName /- ( -/ → List Expr /- ) { -/ → List Statement /- } -/ →
+  TypedIdentifier /- ( -/ → List Expr /- ) { -/ → List Statement /- } -/ →
   Description
 
 inductive Label
@@ -28,10 +33,10 @@ inductive Label
 -- one or more catch blocks
 inductive CatchBlocks
 | catch_block :
-  /- catch  ( -/  QualifiedFunction /- ) { -/ → Statement /- } -/ →
+  /- catch  ( -/  QualifiedName /- ) { -/ → Statement /- } -/ →
   CatchBlocks → CatchBlocks
 | single_catch : -- one or more, this is the "one"
-  QualifiedFunction → Statement → CatchBlocks
+  QualifiedName → Statement → CatchBlocks
 
 inductive Conditional
 -- if with else
@@ -49,15 +54,16 @@ inductive Term
 
 inductive Factor
 | negation: String → Factor → Factor
-| var : Var → Factor -- variable is a lean keyword...
+| var : Identifier → Factor -- variable is a lean keyword...
 | const : Const → Factor -- constant is a lean keyword...
-| function_call : FunctionName → /- ( -/ List Expr  /- ) -/ → Factor
+| function_call : Identifier → /- ( -/ List Expr  /- ) -/ → Factor
 
 inductive Const
-| literal : Nat → Const -- might require String for the text?
+| num_lit : Nat → Const
+| str_lit : String → Const
 
-inductive QualifiedFunction
-| structure_interface : StructureName /- . -/ → FunctionName → QualifiedFunction
+inductive QualifiedName
+| mk : List Identifier → QualifiedName
 
 -- TODO: Test this (expr) in a sandbox
 inductive Expr
@@ -72,12 +78,12 @@ inductive Expr
 -- | nothing : Expr
 
 inductive Statement
-| labelled_statement : Label → Statement
-| declaration : TypeIdent → Var → Statement -- declare a variable
+| labelled_statement : Label → Statement → Statement
+| declaration : TypedIdentifier → Statement -- declare a variable
 | value_declaration : -- declare a variable with a value
-  TypeIdent → Var /- = -/ → Expr → Statement
+  TypedIdentifier → /- = -/ Expr → Statement
 | variable_assignment : -- assign a var an expr
-  Var → String /- = -/ → Expr → Statement
+  QualifiedName /- = -/ → Expr → Statement
 | conditional_stmt : -- if statement, if else statement
   Conditional → Statement
 -- function call?
@@ -86,7 +92,7 @@ inductive Statement
 | await :
   /- await { -/ List Statement → Statement
 | when :
-  /- when -/ QualifiedFunction /- { -/ → List Statement /- } -/ → Statement
+  /- when -/ QualifiedName /- { -/ → List Statement /- } -/ → Statement
 | transition : -- transition to an explicit state
   /- transition -/ Identifier → Statement
 -- should just be a function call
@@ -98,9 +104,7 @@ end  -- mutual
 --- ==== some tests... =====
 
 def ex0000 : Identifier := "hullo"
-def ex0001 : Var := ex0000
-#check Factor
-def ex0002 : Factor := Factor.var ex0001
+def ex0002 : Factor := Factor.var ex0000
 def ex0003 : Term := Term.some_factor ex0002
 
 -- === expression
@@ -119,4 +123,6 @@ def ex0010 : Statement := Statement.await [ ex0005 ]
 def ex0011 : Description := Description.structure_specification "example_structure" [ ex0010 ]
 
 -- === AST with 1 description!
-def ex0012 : AST := AST.StructureDescriptions [ ex0011 ]
+def ex0012 : AST := AST.structure_descriptions [ ex0011 ]
+
+end Pipeline
