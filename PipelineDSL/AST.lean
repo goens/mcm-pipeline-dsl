@@ -16,15 +16,15 @@ inductive TypedIdentifier
 
 inductive Description
 | structure_specification :
-  /- structure -/ Identifier /- { -/ → List Statement  /- } -/ → Description
-| structure_state : /- state -/ Identifier → /- { -/ List Statement → /- } -/
+  /- structure -/ Identifier /- { -/ → Statement  /- } -/ → Description
+| structure_state : /- state -/ Identifier → /- { -/ Statement → /- } -/
   Description
 -- constructors have the same signature, but will use different keywords
 | structure_transition :
-  /- transition -/ Identifier /- { -/ → List Statement /- } -/ → Description
+  /- transition -/ Identifier /- { -/ → Statement /- } -/ → Description
 -- Function definition
 | function_definition :
-  TypedIdentifier /- ( -/ → List Expr /- ) { -/ → List Statement /- } -/ →
+  TypedIdentifier /- ( -/ → List Expr /- ) { -/ → Statement /- } -/ →
   Description
 
 inductive Label
@@ -32,8 +32,8 @@ inductive Label
 
 -- one or more catch blocks
 inductive CatchBlocks
-| catch_block :
-  /- catch  ( -/  QualifiedName /- ) { -/ → Statement /- } -/ →
+| multiple_statements :
+  /- catch  ( -/  QualifiedName /- ) { -/ → List Statement /- } -/ →
   CatchBlocks → CatchBlocks
 | single_catch : -- one or more, this is the "one"
   QualifiedName → Statement → CatchBlocks
@@ -53,10 +53,12 @@ inductive Term
 -- | rsh  : Expr → Term → Expr
 
 inductive Factor
-| negation: String → Factor → Factor
+| negation: Factor → Factor
+| logical_negation: Factor → Factor
+| binary_negation: Factor → Factor
 | var : Identifier → Factor -- variable is a lean keyword...
 | const : Const → Factor -- constant is a lean keyword...
-| function_call : Identifier → /- ( -/ List Expr  /- ) -/ → Factor
+| function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Factor
 
 inductive Const
 | num_lit : Nat → Const
@@ -67,13 +69,22 @@ inductive QualifiedName
 
 -- TODO: Test this (expr) in a sandbox
 inductive Expr
-| add : Expr → Term → Expr
-| sub : Expr → Term → Expr
-| greater_than : Expr → Term → Expr
-| less_than    : Expr → Term → Expr
-| equal        : Expr → Term → Expr
-| not_equal : Expr → Term → Expr
-| some_term : Term → Expr
+| add : Term → Term → Expr
+| sub : Term → Term → Expr
+| mul : Term → Term → Expr
+| div : Term → Term → Expr
+| binand : Term → Term → Expr
+| binor : Term → Term → Expr
+| binxor : Term → Term → Expr
+| leftshift : Term → Term → Expr
+| rightshift : Term → Term → Expr
+| greater_than : Term → Term → Expr
+| less_than    : Term → Term → Expr
+| leq    : Term → Term → Expr
+| geq    : Term → Term → Expr
+| equal        : Term → Term → Expr
+| not_equal : Term → Term → Expr
+-- | some_term : Term → Expr
 -- | Term : factor → Expr → Expr
 -- | nothing : Expr
 
@@ -88,16 +99,17 @@ inductive Statement
   Conditional → Statement
 -- function call?
 | try_catch :
-  /- try { -/ List Statement /- } -/ → CatchBlocks → Statement
+  /- try { -/ Statement /- } -/ → CatchBlocks → Statement
 | await :
-  /- await { -/ List Statement → Statement
+  /- await { -/ Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :
-  /- when -/ QualifiedName /- { -/ → List Statement /- } -/ → Statement
+  /- when -/ QualifiedName /- { -/ → Statement /- } -/ → Statement
 | transition : -- transition to an explicit state
   /- transition -/ Identifier → Statement
 -- should just be a function call
 | stray_expr : Expr → Statement
 | block : /- { -/ List Statement /- } -/ → Statement
+| return_stmt : Expr → Statement
 
 end  -- mutual
 
@@ -117,7 +129,7 @@ def ex0005 : Statement := Statement.stray_expr ex0004
 def ex0008 : Conditional := Conditional.if_else_statement ex0004 ex0005 ex0005
 
 -- === await
-def ex0010 : Statement := Statement.await [ ex0005 ]
+def ex0010 : Statement := Statement.await ex0005 
 
 -- === descriptions
 def ex0011 : Description := Description.structure_specification "example_structure" [ ex0010 ]

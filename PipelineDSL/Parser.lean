@@ -31,7 +31,6 @@ declare_syntax_cat expr_list
 declare_syntax_cat parexpr
 declare_syntax_cat list
 declare_syntax_cat structure_declaration
-declare_syntax_cat internal_structure_declaration
 declare_syntax_cat internal_func_decl
 declare_syntax_cat arg_list
 declare_syntax_cat constval
@@ -45,7 +44,7 @@ syntax ident ident : typed_identifier -- type_def ~ identifier
 syntax declaration* : file
 syntax structure_declaration : declaration
 syntax internal_func_decl : declaration
-syntax typed_identifier "{" statement "}" : structure_declaration
+syntax typed_identifier statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" "{" statement "}" : internal_func_decl
 syntax typed_identifier typed_identifier,* : arg_list
@@ -67,10 +66,10 @@ syntax "result_write" : label
 syntax qualified_name "=" expr : assignment -- maybe allow foo.bar?
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
-syntax  "await"  "{"  (when_block)*  "}" : await_block
-syntax "when"  "("  qualified_name  ")"  "{"  (statement)*  "}" : when_block
-syntax "try"  "{"  (statement)*  "}"  catch_block+ : try_catch
-syntax "catch"  "("  qualified_name  ")"  "{"  statement*  "}" : catch_block
+syntax  "await"  "{"  (when_block)+  "}" : await_block
+syntax "when"  "("  qualified_name  ")"  statement : when_block
+syntax "try"  statement  catch_block+ : try_catch
+syntax "catch"  "("  qualified_name  ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
 syntax "transition"  ident : dsl_transition
 
@@ -97,6 +96,10 @@ syntax dsl_term "/" dsl_term : binop
 syntax dsl_term "&" dsl_term : binop
 syntax dsl_term "|" dsl_term : binop
 syntax dsl_term "^" dsl_term : binop
+syntax dsl_term "<" dsl_term : binop
+syntax dsl_term ">" dsl_term : binop
+syntax dsl_term "<=" dsl_term : binop
+syntax dsl_term ">=" dsl_term : binop
 syntax dsl_term "<<" dsl_term : binop
 syntax dsl_term ">>" dsl_term : binop
 syntax dsl_term "==" dsl_term : binop
@@ -131,7 +134,6 @@ syntax "[expr_list|" expr_list "]" : term
 syntax "[parexpr|" parexpr "]" : term
 syntax "[list|" list "]" : term
 syntax "[structure_declaration|" structure_declaration "]" : term
-syntax "[internal_structure_declaration|" internal_structure_declaration "]" : term
 syntax "[internal_func_decl|" internal_func_decl "]" : term
 syntax "[arg_list|" arg_list "]" : term
 syntax "[constval|" constval "]" : term
@@ -208,160 +210,89 @@ macro_rules
   `(Statement.block $stmtList)
 
 macro_rules
-| `([await_block| ]) => `()
+| `([await_block| await { $w }]) => do
+  `(Statement.await [statement|$w])
 
 macro_rules
-| `([when_block| ]) => `()
+| `([when_block| when ($n) { $stmt }]) => do
+  `(Statement.await [qualified_name| $n] [statement| $stmt])
 
 macro_rules
-| `([try_catch| ]) => `()
-
-macro_rules
-| `([catch_block| ]) => `()
-
-macro_rules
-| `([return_stmt| ]) => `()
-
-macro_rules
-| `([dsl_transition| ]) => `()
-
-macro_rules
-| `([dsl_term| ]) => `()
-
-macro_rules
-| `([call| ]) => `()
-
-macro_rules
-| `([unuaryop| ]) => `()
-
-macro_rules
-| `([binaryop| ]) => `()
-
-macro_rules
-| `([expr_list| ]) => `()
-
-macro_rules
-| `([parexpr| ]) => `()
-
-macro_rules
-| `([list| ]) => `()
-
-macro_rules
-| `([structure_declaration| ]) => `()
-
-macro_rules
-| `([internal_structure_declaration| ]) => `()
-
-macro_rules
-| `([internal_func_decl| ]) => `()
-
-macro_rules
-| `([arg_list| ]) => `()
-  
-
--- def parseTensorDimensionList (k: Syntax) : MacroM (Syntax × Syntax) := do
--- 
--- let ty <- `([mlir_type|  $(k.getArgs.back)])
--- let dimensions := (k.getArg 0)
--- let dimensions <- dimensions.getArgs.toList.mapM (fun x => `([mlir_dimension| $(x.getArg 0)]))
--- let dimensions <- quoteMList dimensions (<- `(MLIR.AST.Dimension))
--- -- Macro.throwError $ ("unknown dimension list:\n|" ++ (toString k.getArgs) ++ "|" ++ "\nDIMS: " ++ (toString dimensions) ++ " |\nTYPE: " ++ (toString ty)++ "")
--- return (dimensions, ty)
-
-macro_rules
-| `([constval| $x:numLit ]) => `(Const.num_lit $x)
-| `([constval| $x:strLit ]) => `(Const.str_lit $x)
-
-
-
--- old
-macro_rules
-| `([ident|$x:ident]) => do
-  let xStr : String := x.getId.toString
-  let xSyn : Lean.Syntax := Lean.quote xStr
-  return xSyn
-
--- parsing expressions
-macro_rules
-| `([expr| $val:numLit]) => `(AST.Const $val)
-| `([expr| [$vals:expr,* ]]) => do
+| `([try_catch| try $s:statement $[ $c:catch_block ]* ]) => do -- why doesn't the '+' pattern work?
   let initList <- `([])
-  let valList <- vals.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
-  `(AST.List $valList)
-| `([expr| $name:expr($args:expr,*)]) => do
-  let initList <- `([])
-  let argList <- args.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
-  `(AST.FunCall [expr|$name] $argList)
-| `([expr|$name:ident]) => `(AST.Identifier [ident|$name])
-| `([expr|$first:expr . $rest:expr]) => do
-  `(AST.Access [expr|$first] [expr|$rest])
-| `([expr| $tname:typed_ident = $e:expr]) =>
-`(AST.Assign [t_ident|$tname] [expr|$e])
-| `([expr| $name:ident = $e:expr]) =>
-  `([expr| untyped $name = $e])
-| `([expr| !$e]) => `(AST.UnaryOp "!" [expr|$e])
-
--- parsing statement list
-macro_rules
-| `([stmt_list| $[ $stmts $[;]?]*]) => do
-  let initList <- `([])
-  let stmtList <- stmts.foldrM (init := initList) fun x xs => `([stmt| $x]::$xs)
-  `($stmtList)
-
--- parsing typed identifier
-macro_rules
-| `([t_ident| $type:ident $name:ident]) =>
-  `(AST.TypedIdentifier $(Lean.quote (toString type.getId))
-  $(Lean.quote (toString name.getId)))
-
--- parsing stmts
-macro_rules
-| `([stmt| $tname:typed_ident ($args,*) {$stmts}]) => do
-  let initList <- `([])
-  let argsList <- args.getElems.foldrM (init := initList) fun x xs => `([t_ident| $x]::$xs)
-  `(AST.FunDecl [t_ident| $tname] $argsList [stmt_list| $stmts])
-| `([stmt| $type:ident $name:ident { $stmts } ]) => `(AST.Struct [ident|$type] [ident|$name] [stmt_list| $stmts])
-| `([stmt| $tname:typed_ident]) =>
-`(AST.Decl [t_ident| $tname])
-| `([stmt| if($cond:expr){ $stmts }]) => do
-  `(AST.IfElse [expr|$cond] [stmt_list| $stmts] [])
-| `([stmt| if($cond:expr){ $thenStmts } else { $elseStmts }]) => do
-  `(AST.IfElse [expr|$cond] [stmt_list| $thenStmts] [stmt_list| $elseStmts])
-| `([stmt| await{ $[when $exps : $stmt_lists]* }] ) => do
-  let initList <- `([])
-  let expsAndStmts := Array.zip exps stmt_lists
-  let whens <- expsAndStmts.foldlM (init := initList) fun rest (exp,stmt_list) => `((AST.When [expr|$exp] [stmt_list|$stmt_list])::$rest)
-  `(AST.Await $whens)
-| `([stmt|try { $tryStmts } catch $catchExpr { $catchStmts }]) => `(AST.TryCatch [stmt_list| $tryStmts] [expr| $catchExpr] [stmt_list| $catchStmts])
-| `([stmt|break]) => `(AST.Break)
-| `([stmt|return $e]) => `(AST.Return [expr|$e])
-| `([stmt| $e:expr]) => `([expr| $e])
+  let catchList <- c.foldrM (init := initList) fun x xs => `([catch_block| $x]::$xs)
+  `(Statement.try_catch [statement| $s] $catchList)
 
 macro_rules
-| `([pipeline| $stmts:stmt_list]) => `(AST.Pipeline [stmt_list|$stmts])
+| `([catch_block| catch ( $n ) $s:statement ]) => `(CatchBlocks.single_statement [qualified_name| $n] [statement| $s])
+| `([catch_block| catch ( $n ) $[$stmts:statement]* ]) => do
+  let initList <- `([])
+  let stmtList <- stmts.foldrM (init := initList) fun x xs => `([statement| $x]::$xs)
+  `(CatchBlocks.multiple_statements [qualified_name| $n] $stmtList)
 
---  | `([stmt|await { $[when $expr : $[stmts $[;]?]*]*}])
-#check [expr| foo]
-#check [expr| foo a = b]
-#check [expr| foo(bar,baz)]
-#check [stmt| int foo]
-#check [stmt| int foo(int arg1, int arg2){ int a = b; return bar}]
-#check [stmt| if(0){ int a = b  int b = c } ]
-#check [stmt| if(0){ int a = b  int b = c } else { char bar = z; }]
-#check [stmt| await{ when foo : int a = b  int b = c } ]
-#check [pipeline| internal_function compare_phys_and_inval_addr(physical_address phys_addr,
-physical_address cache_invalidate_address) {
-bool address_overlap = addr_overlap(self.phys_addr,
-cache_invalidate.address)
-return address_overlap;
-}
-]
+macro_rules
+| `([return_stmt| return $e ]) => `(Statement.return_stmt [expr| $e])
 
-#check [stmt| internal_function compare_phys_and_inval_addr(physical_address phys_addr,
-physical_address cache_invalidate_address) {
-bool address_overlap = addr_overlap(self.phys_addr,
-cache_invalidate.address)
-return address_overlap;
-}
-]
+macro_rules
+| `([dsl_transition| transition $i ]) => do `(Statement.transition $(Lean.quote $ i.getId.toString))
 
+macro_rules
+| `([dsl_term| ( $e:expr )]) => `( [expr|$e])
+| `([dsl_term|  $c:call ]) => `( [call|$c])
+| `([dsl_term|  $n:qualified_name ]) => `( [qualified_name|$n])
+| `([dsl_term|  $c:constval ]) => `( [constval|$c])
+
+macro_rules
+| `([call| $n:qualified_name ( $e:expr_list )  ]) =>
+  `(Factor.function_call [qualified_name| $n] [expr_list| $e])
+
+macro_rules
+| `([unuaryop| -$x]) => `(Factor.negation [dsl_term| $x])
+| `([unuaryop| ~$x]) => `(Factor.logical_negation [dsl_term| $x])
+| `([unuaryop| !$x]) => `(Factor.binary_negation [dsl_term| $x])
+
+macro_rules
+| `([binop| $x:dsl_term + $y:dsl_term ]) => `(Expr.add [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term - $y:dsl_term ]) => `(Expr.sub [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term * $y:dsl_term ]) => `(Expr.mul [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term / $y:dsl_term ]) => `(Expr.div [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term & $y:dsl_term ]) => `(Expr.binand [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term | $y:dsl_term ]) => `(Expr.binor [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term ^ $y:dsl_term ]) => `(Expr.binxor [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term << $y:dsl_term ]) => `(Expr.leftshift [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term >> $y:dsl_term ]) => `(Expr.rightshift [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term < $y:dsl_term ]) => `(Expr.less_than [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term > $y:dsl_term ]) => `(Expr.greater_than [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term <= $y:dsl_term ]) => `(Expr.leq [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term >= $y:dsl_term ]) => `(Expr.geq [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term == $y:dsl_term ]) => `(Expr.equal [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term != $y:dsl_term ]) => `(Expr.not_equal [expr|$x] [dsl_term|$y])
+
+macro_rules
+| `([expr_list| $exprs:expr,*]) => do
+  let initList <- `([])
+  let valList <- exprs.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
+  return valList
+
+macro_rules
+| `([parexpr| ($e:expr)]) => `([expr|$e])
+
+macro_rules
+| `([list| [$e:expr_list] ]) => `([expr_list|$e])
+
+macro_rules
+| `([structure_declaration| $id:typed_identifier $s ]) => `(Declaration.structure_declaration [typed_identifier|$id] [statement|$s])
+
+macro_rules
+| `([internal_func_decl| $id:typed_identifier ( $args ){ $s }]) =>
+  `(Description.function_definition [typed_identifier|$id] [arg_list|$args] [statement|$s])
+
+macro_rules
+| `([arg_list| $fst:typed_identifier $rest,*]) => do
+  let initList <- `([typed_identifier|$fst])
+  let argList <- rest.getElems.foldrM (init := initList) fun x xs => `([typed_identifier|$x] :: $xs)
+  return argList
+
+macro_rules
+| `([constval| $x:num ]) => `(Const.num_lit $x)
+| `([constval| $x:str ]) => `(Const.str_lit $x)
