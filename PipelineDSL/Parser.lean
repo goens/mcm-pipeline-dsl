@@ -44,7 +44,10 @@ syntax ident ident : typed_identifier -- type_def ~ identifier
 syntax declaration* : file
 syntax structure_declaration : declaration
 syntax internal_func_decl : declaration
-syntax typed_identifier statement : structure_declaration
+syntax "controller_entry" ident statement : structure_declaration
+syntax "controller" ident statement : structure_declaration
+syntax "transition" ident statement : structure_declaration
+syntax "controller_control_flow" ident statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" "{" statement "}" : internal_func_decl
 syntax typed_identifier typed_identifier,* : arg_list
@@ -64,6 +67,7 @@ syntax typed_identifier ("=" expr)? : variable_declaration
 syntax label statement : labeled_statement
 syntax "result_write" : label
 syntax qualified_name "=" expr : assignment -- maybe allow foo.bar?
+syntax ident "=" expr : assignment 
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
 syntax  "await"  "{"  (when_block)+  "}" : await_block
@@ -84,6 +88,7 @@ syntax "("  expr  ")" : dsl_term
 syntax  call : dsl_term
 syntax qualified_name : dsl_term
 syntax constval : dsl_term
+syntax ident : dsl_term
 syntax qualified_name  "("  expr_list  ")" : call
 
 syntax "!" dsl_term : unuaryop
@@ -140,9 +145,9 @@ syntax "[constval|" constval "]" : term
 syntax "[dsl_transition|" dsl_transition "]" : term
 
 macro_rules
-| `([file| $[$decls]* ]) => do
+| `([file| $[$decls:declaration]* ]) => do
   let initList <- `([])
-  let declList <- decls.foldrM (init := initList) fun x xs => `([structure_declaration| $x]::$xs)
+  let declList <- decls.foldrM (init := initList) fun x xs => `([declaration| $x]::$xs)
   `(AST.structure_descriptions $declList)
 
 macro_rules
@@ -162,7 +167,7 @@ macro_rules
 | `([expr| $x:binop ]) => `([binop| $x])
 | `([expr| $x:parexpr ]) => `([parexpr| $x])
 | `([expr| $x:list ]) => `([list| $x])
-| `([expr| $x:dsl_term ]) => `([dsl_term| $x])
+| `([expr| $x:dsl_term ]) => `(Expr.some_term [dsl_term| $x])
 
 macro_rules
 | `([typed_identifier| $t:ident $x:ident ]) => do
@@ -173,9 +178,10 @@ macro_rules
   `(TypedIdentifier.mk $tSyn $xSyn)
 
 macro_rules
-| `([qualified_name| $x:ident $[. $xs ]* ]) => do
+| `([qualified_name| $x:ident $[. $xs:ident ]* ]) => do
   let xStr : String := x.getId.toString
-  let initList <- `([$x])
+  let xSyn := Lean.quote xStr
+  let initList <- `([$xSyn])
   let xsList <- xs.foldrM (init := initList) fun x xs => do
     let xStr : String := x.getId.toString
     let xSyn : Lean.Syntax := Lean.quote xStr
@@ -197,7 +203,8 @@ macro_rules
 | `([label| result_write ]) => `(Label.result_write)
 
 macro_rules
-| `([assignment| $q:qualified_name = $e ]) => `(Statement.variables_assignement [qualified_name| $q] [expr| $e])
+| `([assignment| $q:qualified_name = $e ]) => `(Statement.variable_assignment [qualified_name| $q] [expr| $e])
+| `([assignment| $i:ident = $e ]) => `(Statement.variable_assignment (QualifiedName.mk [$(Lean.quote $ i.getId.toString)]) [expr| $e])
 
 macro_rules
 | `([conditional| if ( $e ) $s else $es ]) => `(Conditional.if_else_statement [expr| $e] [statement| $s] [statement| $es])
@@ -237,36 +244,37 @@ macro_rules
 | `([dsl_transition| transition $i ]) => do `(Statement.transition $(Lean.quote $ i.getId.toString))
 
 macro_rules
-| `([dsl_term| ( $e:expr )]) => `( [expr|$e])
+-- | `([dsl_term| ( $e:expr )]) => `( [expr|$e])
 | `([dsl_term|  $c:call ]) => `( [call|$c])
 | `([dsl_term|  $n:qualified_name ]) => `( [qualified_name|$n])
-| `([dsl_term|  $c:constval ]) => `( [constval|$c])
+| `([dsl_term|  $c:constval ]) => `(Term.const [constval|$c])
+| `([dsl_term|  $i:ident ]) => `(Term.var $(Lean.quote $ i.getId.toString))
 
 macro_rules
 | `([call| $n:qualified_name ( $e:expr_list )  ]) =>
-  `(Factor.function_call [qualified_name| $n] [expr_list| $e])
+  `(Term.function_call [qualified_name| $n] [expr_list| $e])
 
 macro_rules
-| `([unuaryop| -$x]) => `(Factor.negation [dsl_term| $x])
-| `([unuaryop| ~$x]) => `(Factor.logical_negation [dsl_term| $x])
-| `([unuaryop| !$x]) => `(Factor.binary_negation [dsl_term| $x])
+| `([unuaryop| -$x]) => `(Term.negation [dsl_term| $x])
+| `([unuaryop| ~$x]) => `(Term.logical_negation [dsl_term| $x])
+| `([unuaryop| !$x]) => `(Term.binary_negation [dsl_term| $x])
 
 macro_rules
-| `([binop| $x:dsl_term + $y:dsl_term ]) => `(Expr.add [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term - $y:dsl_term ]) => `(Expr.sub [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term * $y:dsl_term ]) => `(Expr.mul [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term / $y:dsl_term ]) => `(Expr.div [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term & $y:dsl_term ]) => `(Expr.binand [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term | $y:dsl_term ]) => `(Expr.binor [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term ^ $y:dsl_term ]) => `(Expr.binxor [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term << $y:dsl_term ]) => `(Expr.leftshift [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term >> $y:dsl_term ]) => `(Expr.rightshift [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term < $y:dsl_term ]) => `(Expr.less_than [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term > $y:dsl_term ]) => `(Expr.greater_than [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term <= $y:dsl_term ]) => `(Expr.leq [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term >= $y:dsl_term ]) => `(Expr.geq [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term == $y:dsl_term ]) => `(Expr.equal [expr|$x] [dsl_term|$y])
-| `([binop| $x:dsl_term != $y:dsl_term ]) => `(Expr.not_equal [expr|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term + $y:dsl_term ]) => `(Expr.add [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term - $y:dsl_term ]) => `(Expr.sub [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term * $y:dsl_term ]) => `(Expr.mul [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term / $y:dsl_term ]) => `(Expr.div [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term & $y:dsl_term ]) => `(Expr.binand [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term | $y:dsl_term ]) => `(Expr.binor [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term ^ $y:dsl_term ]) => `(Expr.binxor [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term << $y:dsl_term ]) => `(Expr.leftshift [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term >> $y:dsl_term ]) => `(Expr.rightshift [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term < $y:dsl_term ]) => `(Expr.less_than [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term > $y:dsl_term ]) => `(Expr.greater_than [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term <= $y:dsl_term ]) => `(Expr.leq [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term >= $y:dsl_term ]) => `(Expr.geq [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term == $y:dsl_term ]) => `(Expr.equal [dsl_term|$x] [dsl_term|$y])
+| `([binop| $x:dsl_term != $y:dsl_term ]) => `(Expr.not_equal [dsl_term|$x] [dsl_term|$y])
 
 macro_rules
 | `([expr_list| $exprs:expr,*]) => do
@@ -281,7 +289,14 @@ macro_rules
 | `([list| [$e:expr_list] ]) => `([expr_list|$e])
 
 macro_rules
-| `([structure_declaration| $id:typed_identifier $s ]) => `(Declaration.structure_declaration [typed_identifier|$id] [statement|$s])
+| `([structure_declaration| controller $id:ident $s ]) =>
+  `(Description.controller $(Lean.quote $ id.getId.toString) [statement|$s])
+| `([structure_declaration| controller_entry $id:ident $s ]) =>
+  `(Description.entry $(Lean.quote $ id.getId.toString) [statement|$s])
+| `([structure_declaration| controller_control_flow $id:ident $s ]) =>
+  `(Description.control_flow $(Lean.quote $ id.getId.toString) [statement|$s])
+| `([structure_declaration| transition $id:ident $s ]) =>
+  `(Description.transition $(Lean.quote $ id.getId.toString) [statement|$s])
 
 macro_rules
 | `([internal_func_decl| $id:typed_identifier ( $args ){ $s }]) =>

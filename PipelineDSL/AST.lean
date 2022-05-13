@@ -15,16 +15,14 @@ inductive TypedIdentifier
  | mk : TIden → Identifier → TypedIdentifier
 
 inductive Description
-| structure_specification :
-  /- structure -/ Identifier /- { -/ → Statement  /- } -/ → Description
-| structure_state : /- state -/ Identifier → /- { -/ Statement → /- } -/
-  Description
 -- constructors have the same signature, but will use different keywords
-| structure_transition :
-  /- transition -/ Identifier /- { -/ → Statement /- } -/ → Description
+| controller : Identifier → Statement → Description
+| entry : Identifier → Statement → Description
+| control_flow : Identifier → Statement → Description
+| transition : Identifier → Statement → Description
 -- Function definition
 | function_definition :
-  TypedIdentifier /- ( -/ → List Expr /- ) { -/ → Statement /- } -/ →
+  TypedIdentifier /- ( -/ → List TypedIdentifier /- ) { -/ → Statement /- } -/ →
   Description
 
 inductive Label
@@ -46,19 +44,12 @@ inductive Conditional
   /- if ( -/ Expr /- ) { -/ → Statement /- } -/ → Conditional
 
 inductive Term
-| mult : Term → Factor → Term
-| div  : Term → Factor → Term
-| some_factor : Factor → Term
--- | lsh  : Expr → Term → Expr
--- | rsh  : Expr → Term → Expr
-
-inductive Factor
-| negation: Factor → Factor
-| logical_negation: Factor → Factor
-| binary_negation: Factor → Factor
-| var : Identifier → Factor -- variable is a lean keyword...
-| const : Const → Factor -- constant is a lean keyword...
-| function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Factor
+| negation: Term → Term
+| logical_negation: Term → Term
+| binary_negation: Term → Term
+| var : Identifier → Term -- variable is a lean keyword...
+| const : Const → Term -- constant is a lean keyword...
+| function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
 
 inductive Const
 | num_lit : Nat → Const
@@ -84,7 +75,7 @@ inductive Expr
 | geq    : Term → Term → Expr
 | equal        : Term → Term → Expr
 | not_equal : Term → Term → Expr
--- | some_term : Term → Expr
+| some_term : Term → Expr
 -- | Term : factor → Expr → Expr
 -- | nothing : Expr
 
@@ -113,28 +104,5 @@ inductive Statement
 
 end  -- mutual
 
---- ==== some tests... =====
-
-def ex0000 : Identifier := "hullo"
-def ex0002 : Factor := Factor.var ex0000
-def ex0003 : Term := Term.some_factor ex0002
-
--- === expression
-def ex0004 : Expr := Expr.some_term ex0003
-
--- === Statement
-def ex0005 : Statement := Statement.stray_expr ex0004
-
--- === Conditional
-def ex0008 : Conditional := Conditional.if_else_statement ex0004 ex0005 ex0005
-
--- === await
-def ex0010 : Statement := Statement.await ex0005 
-
--- === descriptions
-def ex0011 : Description := Description.structure_specification "example_structure" [ ex0010 ]
-
--- === AST with 1 description!
-def ex0012 : AST := AST.structure_descriptions [ ex0011 ]
 
 end Pipeline
