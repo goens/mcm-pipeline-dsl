@@ -1,0 +1,3 @@
+[submodule "Examples/graph-prototype"]
+	path = Examples/graph-prototype
+	url = git@github.com:userAZ/graph-prototype.git
