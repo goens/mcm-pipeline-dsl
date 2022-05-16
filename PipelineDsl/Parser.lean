@@ -1,6 +1,6 @@
-import Lean.Syntax
+import Lean
 import PipelineDsl.AST
-open Lean.Syntax
+open Lean Lean.Syntax
 
 namespace Pipeline
 
@@ -114,7 +114,7 @@ syntax expr,* : expr_list
 syntax "("  expr ")" : parexpr
 syntax "["  expr_list "]" : list
 
-syntax "[file|" file "]" : term
+syntax "[file|" file "]" : term 
 syntax "[statement|" statement "]" : term
 syntax "[expr|" expr "]" : term
 syntax "[typed_identifier|" typed_identifier "]" : term
@@ -144,32 +144,58 @@ syntax "[arg_list|" arg_list "]" : term
 syntax "[constval|" constval "]" : term
 syntax "[dsl_transition|" dsl_transition "]" : term
 
-macro_rules
-| `([file| $[$decls:declaration]* ]) => do
-  let initList <- `([])
-  let declList <- decls.foldrM (init := initList) fun x xs => `([declaration| $x]::$xs)
-  `(AST.structure_descriptions $declList)
+-- parsing
 
-macro_rules
-| `([statement| $x:labeled_statement $[;]? ]) => `([labeled_statement| $x])
-| `([statement| $x:dsl_transition $[;]? ]) => `([dsl_transition| $x])
-| `([statement| $x:variable_declaration $[;]? ]) => `([variable_declaration| $x])
-| `([statement| $x:assignment $[;]? ]) => `([assignment| $x])
-| `([statement| $x:conditional $[;]? ]) => `(Statement.conditional [conditional| $x]) -- feels unnecessary
-| `([statement| $x:block $[;]? ]) => `([block| $x])
-| `([statement| $x:await_block $[;]? ]) => `([await_block| $x])
-| `([statement| $x:try_catch $[;]? ]) => `([try_catch| $x])
-| `([statement| $x:return_stmt $[;]? ]) => `([return_stmt| $x])
-| `([statement| $x:expr $[;]? ]) => `(Statement.stray_expr [expr| $x])
 
-macro_rules
-| `([expr| $x:unuaryop ]) => `([unuaryop| $x])
-| `([expr| $x:binop ]) => `([binop| $x])
-| `([expr| $x:parexpr ]) => `([parexpr| $x])
-| `([expr| $x:list ]) => `([list| $x])
+/- private -/ def mkParseFun {α : Type} (syntaxcat : Name) (ntparser : Syntax → Except String α) :
+String → Environment → Except String α := λ s env => do
+  ntparser (← Parser.runParserCategory env syntaxcat s)
+
+/- private -/ def mkNonTerminalParser {α : Type} [Inhabited α] (syntaxcat : Name) (ntparser : Syntax → Except String α)
+(s : String) (env : Environment) : Option String × α :=
+  let parseFun := mkParseFun syntaxcat ntparser
+  match parseFun s env with
+    | .error msg => (some msg, default)
+    | .ok    p   => (none, p)
+
+
+def mkConstval : Syntax → Except String Const
+| `(constval| $x:num ) => return Const.num_lit x.toNat
+| `(constval| $x:str ) => match x.isStrLit? with
+  | some s => return Const.str_lit s
+  | none   => unreachable! -- because of `s:str`
+| _ => throw "error parsing constant value"
+
+def parseConstval := mkNonTerminalParser `constval mkConstval
+def parse := parseConstval
+
+/-
+def mkAST : Syntax → Except String AST
+  | `([file|$[$decls:declaration]*]) => do
+    let declList <- decls.foldrM (init := []) fun x xs => (mkDescription x)::xs
+    return AST.structure_descriptions declList
+  | _ => throw "error: can't parse file"
+
+def mkStatement : Syntax → Except String Statement
+| `([statement| $x:labeled_statement $[;]? ]) => mkLabeledStatement x
+| `([statement| $x:dsl_transition $[;]? ]) => mkDslTransition x
+| `([statement| $x:variable_declaration $[;]? ]) => mkVariableDeclaration x
+| `([statement| $x:assignment $[;]? ]) => mkAssignment x
+| `([statement| $x:conditional $[;]? ]) => Statement.conditional (mkConditional x) -- feels unnecessary
+| `([statement| $x:block $[;]? ]) => mkBlock x
+| `([statement| $x:await_block $[;]? ]) => mkAwaitBlock x
+| `([statement| $x:try_catch $[;]? ]) => mkTryCatch x
+| `([statement| $x:return_stmt $[;]? ]) => mkReturnStmt x
+| `([statement| $x:expr $[;]? ]) => Statement.stray_expr (mkExpr x)
+
+def mkCHANGEME : Syntax → Except String CHANGEME
+| `([expr| $x:unuaryop ]) => mkunuaryop x
+| `([expr| $x:binop ]) => mkbinop x
+| `([expr| $x:parexpr ]) => mkparexpr x
+| `([expr| $x:list ]) => mklist x
 | `([expr| $x:dsl_term ]) => `(Expr.some_term [dsl_term| $x])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([typed_identifier| $t:ident $x:ident ]) => do
   let tStr : String := t.getId.toString
   let xStr : String := x.getId.toString
@@ -177,7 +203,7 @@ macro_rules
   let xSyn : Lean.Syntax := Lean.quote xStr
   `(TypedIdentifier.mk $tSyn $xSyn)
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([qualified_name| $x:ident $[. $xs:ident ]* ]) => do
   let xStr : String := x.getId.toString
   let xSyn := Lean.quote xStr
@@ -188,78 +214,78 @@ macro_rules
     `( $xSyn :: $xs)
   `(QualifiedName.mk $xsList)
 
-macro_rules
-| `([declaration| $x:structure_declaration ]) => `([structure_declaration| $x])
-| `([declaration| $x:internal_func_decl ]) => `([internal_func_decl| $x])
+def mkDescription : Syntax → Except String Description
+| `([declaration| $x:structure_declaration ]) => mkStructureDeclaration x
+| `([declaration| $x:internal_func_decl ]) => mkinternal_func_decl x
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([variable_declaration| $x:typed_identifier = $e ]) => `(Statement.declaration [typed_identifier| $x] [expr|$e])
 | `([variable_declaration| $x:typed_identifier]) => `(Statement.value_declaration [typed_identifier| $x])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([labeled_statement| $l:label $s ]) => `(Statement.labelled_statement [label| $l] [statement| $s])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([label| result_write ]) => `(Label.result_write)
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([assignment| $q:qualified_name = $e ]) => `(Statement.variable_assignment [qualified_name| $q] [expr| $e])
 | `([assignment| $i:ident = $e ]) => `(Statement.variable_assignment (QualifiedName.mk [$(Lean.quote $ i.getId.toString)]) [expr| $e])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([conditional| if ( $e ) $s else $es ]) => `(Conditional.if_else_statement [expr| $e] [statement| $s] [statement| $es])
 | `([conditional| if ( $e ) $s ]) => `(Conditional.if_else_statement [expr| $e] [statement| $s])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([block| { $[ $stmts ]* }]) => do
   let initList <- `([])
   let stmtList <- stmts.foldrM (init := initList) fun x xs => `([statement| $x]::$xs)
   `(Statement.block $stmtList)
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([await_block| await { $w }]) => do
   `(Statement.await [statement|$w])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([when_block| when ($n) { $stmt }]) => do
   `(Statement.await [qualified_name| $n] [statement| $stmt])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([try_catch| try $s:statement $[ $c:catch_block ]* ]) => do -- why doesn't the '+' pattern work?
   let initList <- `([])
   let catchList <- c.foldrM (init := initList) fun x xs => `([catch_block| $x]::$xs)
   `(Statement.try_catch [statement| $s] $catchList)
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([catch_block| catch ( $n ) $s:statement ]) => `(CatchBlocks.single_statement [qualified_name| $n] [statement| $s])
 | `([catch_block| catch ( $n ) $[$stmts:statement]* ]) => do
   let initList <- `([])
   let stmtList <- stmts.foldrM (init := initList) fun x xs => `([statement| $x]::$xs)
   `(CatchBlocks.multiple_statements [qualified_name| $n] $stmtList)
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([return_stmt| return $e ]) => `(Statement.return_stmt [expr| $e])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([dsl_transition| transition $i ]) => do `(Statement.transition $(Lean.quote $ i.getId.toString))
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 -- | `([dsl_term| ( $e:expr )]) => `( [expr|$e])
 | `([dsl_term|  $c:call ]) => `( [call|$c])
 | `([dsl_term|  $n:qualified_name ]) => `( [qualified_name|$n])
 | `([dsl_term|  $c:constval ]) => `(Term.const [constval|$c])
 | `([dsl_term|  $i:ident ]) => `(Term.var $(Lean.quote $ i.getId.toString))
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([call| $n:qualified_name ( $e:expr_list )  ]) =>
   `(Term.function_call [qualified_name| $n] [expr_list| $e])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([unuaryop| -$x]) => `(Term.negation [dsl_term| $x])
 | `([unuaryop| ~$x]) => `(Term.logical_negation [dsl_term| $x])
 | `([unuaryop| !$x]) => `(Term.binary_negation [dsl_term| $x])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([binop| $x:dsl_term + $y:dsl_term ]) => `(Expr.add [dsl_term|$x] [dsl_term|$y])
 | `([binop| $x:dsl_term - $y:dsl_term ]) => `(Expr.sub [dsl_term|$x] [dsl_term|$y])
 | `([binop| $x:dsl_term * $y:dsl_term ]) => `(Expr.mul [dsl_term|$x] [dsl_term|$y])
@@ -276,19 +302,19 @@ macro_rules
 | `([binop| $x:dsl_term == $y:dsl_term ]) => `(Expr.equal [dsl_term|$x] [dsl_term|$y])
 | `([binop| $x:dsl_term != $y:dsl_term ]) => `(Expr.not_equal [dsl_term|$x] [dsl_term|$y])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([expr_list| $exprs:expr,*]) => do
   let initList <- `([])
   let valList <- exprs.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
   return valList
 
-macro_rules
-| `([parexpr| ($e:expr)]) => `([expr|$e])
+def mkCHANGEME : Syntax → Except String CHANGEME
+| `([parexpr| ($e:expr)]) => mkexpr |$e
 
-macro_rules
-| `([list| [$e:expr_list] ]) => `([expr_list|$e])
+def mkCHANGEME : Syntax → Except String CHANGEME
+| `([list| [$e:expr_list] ]) => mkexpr_list |$e
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([structure_declaration| controller $id:ident $s ]) =>
   `(Description.controller $(Lean.quote $ id.getId.toString) [statement|$s])
 | `([structure_declaration| controller_entry $id:ident $s ]) =>
@@ -298,16 +324,14 @@ macro_rules
 | `([structure_declaration| transition $id:ident $s ]) =>
   `(Description.transition $(Lean.quote $ id.getId.toString) [statement|$s])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([internal_func_decl| $id:typed_identifier ( $args ){ $s }]) =>
   `(Description.function_definition [typed_identifier|$id] [arg_list|$args] [statement|$s])
 
-macro_rules
+def mkCHANGEME : Syntax → Except String CHANGEME
 | `([arg_list| $fst:typed_identifier $rest,*]) => do
   let initList <- `([typed_identifier|$fst])
   let argList <- rest.getElems.foldrM (init := initList) fun x xs => `([typed_identifier|$x] :: $xs)
   return argList
 
-macro_rules
-| `([constval| $x:num ]) => `(Const.num_lit $x)
-| `([constval| $x:str ]) => `(Const.str_lit $x)
+-/

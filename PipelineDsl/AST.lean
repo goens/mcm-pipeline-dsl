@@ -104,5 +104,12 @@ inductive Statement
 
 end  -- mutual
 
+private def constToString : Const → String
+  | .num_lit n => toString n
+  | .str_lit s => s
+
+instance : ToString Const where toString := constToString
+instance : Inhabited Const where default := Const.num_lit 0
 
 end Pipeline
+
