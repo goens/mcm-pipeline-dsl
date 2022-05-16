@@ -3,8 +3,8 @@ import Lean
 import PipelineDsl.Preprocess
 open Lean Pipeline
 
---def filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
-def filename := "Examples/dummy-test.file"
+def filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
+-- def filename := "Examples/dummy-test.file"
 
 def main : IO Unit := do
   let lines <- IO.FS.lines filename
@@ -14,4 +14,8 @@ def main : IO Unit := do
   initSearchPath (← Lean.findSysroot) ["build/lib"]
   let env ← importModules [{ module := `PipelineDsl.Parser }] {}
   let parsed := parse fileStr env
-  IO.println s!"Read: {fileStr} \n Parsed: {parsed}"
+  let res_str := match parsed.1 with
+    | some msg => "syntax error:\n" ++ msg
+    | none => s!"parse ok! round-trip: \n {parsed.2}"
+  IO.println res_str
+  --IO.println s!"Read: {fileStr} \n Parsed: {parsed}"
