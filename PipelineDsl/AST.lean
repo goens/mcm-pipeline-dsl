@@ -29,12 +29,8 @@ inductive Label
 | result_write : Label
 
 -- one or more catch blocks
-inductive CatchBlocks
-| multiple_statements :
-  /- catch  ( -/  QualifiedName /- ) { -/ → List Statement /- } -/ →
-  CatchBlocks → CatchBlocks
-| single_catch : -- one or more, this is the "one"
-  QualifiedName → Statement → CatchBlocks
+inductive CatchBlock
+| mk : QualifiedName → Statement → CatchBlock
 
 inductive Conditional
 -- if with else
@@ -77,12 +73,13 @@ inductive Expr
 | equal        : Term → Term → Expr
 | not_equal : Term → Term → Expr
 | some_term : Term → Expr
+| list : List Expr → Expr
 -- | Term : factor → Expr → Expr
 -- | nothing : Expr
 
 inductive Statement
 | labelled_statement : Label → Statement → Statement
-| declaration : TypedIdentifier → Statement -- declare a variable
+| variable_declaration : TypedIdentifier → Statement -- declare a variable
 | value_declaration : -- declare a variable with a value
   TypedIdentifier → /- = -/ Expr → Statement
 | variable_assignment : -- assign a var an expr
@@ -91,7 +88,7 @@ inductive Statement
   Conditional → Statement
 -- function call?
 | try_catch :
-  /- try { -/ Statement /- } -/ → CatchBlocks → Statement
+  /- try { -/ Statement /- } -/ → List CatchBlock → Statement
 | await :
   /- await { -/ Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :
@@ -143,6 +140,7 @@ private partial def exprToString : Expr → String
   | .geq    x y => (termToString x) ++ ">=" ++ (termToString y)
   | .equal        x y => (termToString x) ++ "==" ++ (termToString y)
   | .not_equal x y => (termToString x) ++ "!=" ++ (termToString y)
+  | .list xs => String.intercalate ", " (xs.map exprToString)
   | .some_term x => termToString x
 
 end -- mutual
@@ -154,6 +152,7 @@ instance : ToString Identifier where toString := identifierToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
+instance : Inhabited AST where default := AST.structure_descriptions []
 
 end Pipeline
 
