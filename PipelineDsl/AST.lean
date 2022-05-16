@@ -3,6 +3,8 @@ def TIden := Identifier
 -- def FunctionName := Identifier
 -- def StructureName := Identifier
 -- def Var := Identifier
+instance : ToString Identifier where toString := λ x => x
+instance : ToString TIden where toString := λ x => x
 
 namespace Pipeline
 
@@ -19,7 +21,7 @@ inductive Description
 | controller : Identifier → Statement → Description
 | entry : Identifier → Statement → Description
 | control_flow : Identifier → Statement → Description
-| transition : Identifier → Statement → Description
+| transition : Identifier → Description
 -- Function definition
 | function_definition :
   TypedIdentifier /- ( -/ → List TypedIdentifier /- ) { -/ → Statement /- } -/ →
@@ -103,26 +105,51 @@ inductive Statement
 end  -- mutual
 
 mutual
-private partial def constToString : Const → String
-  | .num_lit n => toString n
-  | .str_lit s => s
+
+private partial def astToString : AST → String
+  | .structure_descriptions descs => String.intercalate "\n" (descs.map descriptionToString)
+
+private partial def typedIdentifierToString : TypedIdentifier → String
+  | .mk t id => (toString t) ++ " " ++ (toString id)
+
+private partial def descriptionToString : Description → String
+| .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
+| .entry name desc => "controller_entry" ++ (toString name) ++ " " ++ (statementToString desc)
+| .control_flow name desc => "controller_control_flow" ++ (toString name) ++ " " ++ (statementToString desc)
+| .transition name => "transition" ++ (toString name)
+-- Function definition
+| .function_definition ret args body =>
+  (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
+  ++ (statementToString body)
+
+private partial def labelToString : Label → String
+  | .result_write => "result_write"
+
+private partial def catchBlockToString : CatchBlock → String
+| .mk name body => "catch (" ++ (qualifiedNameToString name) ++ ")\n" ++ (statementToString body)
+
+private partial def conditionalToString : Conditional → String
+| .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString then_br) ++ "else\n" ++ (statementToString else_br)
+| .if_statement cond then_br => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString then_br)
 
 private partial def termToString : Term → String
   | .negation t => "-" ++ (termToString t)
   | .logical_negation t => "!" ++ (termToString t)
   | .binary_negation t => "~" ++ (termToString t)
-  | .var i => identifierToString i
+  | .var i => toString i
   | .qualified_var n => qualifiedNameToString n
   | .const c => constToString c
   | .function_call n es => (qualifiedNameToString n) ++ "(" ++ String.intercalate ", " (es.map exprToString)  ++ ")"
 
-private partial def identifierToString : Identifier → String := λ x => x
+private partial def constToString : Const → String
+| .num_lit n => toString n
+| .str_lit s => s
 
 private partial def qualifiedNameToString : QualifiedName → String
   | .mk l => match l with
     | [] => ""
-    | n::[] => identifierToString n
-    | n::ns => (identifierToString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
+    | n::[] => toString n
+    | n::ns => (toString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
 
 private partial def exprToString : Expr → String
   | .add x y => (termToString x) ++ "+" ++ (termToString y)
@@ -143,12 +170,26 @@ private partial def exprToString : Expr → String
   | .list xs => String.intercalate ", " (xs.map exprToString)
   | .some_term x => termToString x
 
+private partial def statementToString : Statement → String
+  | .labelled_statement label stmt => (labelToString label) ++ " " ++ (statementToString stmt)
+  | .variable_declaration tid => (typedIdentifierToString tid)
+  | .value_declaration tid val => (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
+  | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
+  | .conditional_stmt cond => conditionalToString cond
+  | .try_catch try_block catches => (statementToString try_block) ++ "\n" ++ (String.intercalate "\n" (catches.map catchBlockToString))
+  | .await whens => "await\n" ++ (statementToString whens)
+  | .when msg body => "when ("  ++ (qualifiedNameToString msg) ++ ")" ++ (statementToString body)
+  | .transition lbl => "transition " ++ (toString lbl)
+  | .stray_expr e => exprToString e
+  | .block stmts => "{" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s ++ ";"))  ++ "\n}"
+  | .return_stmt e => "return " ++ exprToString e
+
 end -- mutual
 
 instance : ToString Const where toString := constToString
 instance : ToString Term where toString := termToString
 instance : ToString Expr where toString := exprToString
-instance : ToString Identifier where toString := identifierToString
+instance : ToString AST where toString := astToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default

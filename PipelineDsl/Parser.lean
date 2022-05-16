@@ -46,7 +46,7 @@ syntax structure_declaration : declaration
 syntax internal_func_decl : declaration
 syntax "controller_entry" ident statement : structure_declaration
 syntax "controller" ident statement : structure_declaration
-syntax "transition" ident statement : structure_declaration
+syntax "transition" ident : structure_declaration
 syntax "controller_control_flow" ident statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" "{" statement "}" : internal_func_decl
@@ -362,8 +362,8 @@ partial def mkStructureDeclaration : Syntax → Except String Description
     liftExcept (Description.entry id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_control_flow $id:ident $s ) =>
     liftExcept (Description.control_flow id.getId.toString) (mkStatement s)
-  | `(structure_declaration| transition $id:ident $s ) =>
-    liftExcept (Description.transition id.getId.toString) (mkStatement s)
+  | `(structure_declaration| transition $id:ident) =>
+    return (Description.transition id.getId.toString)
   | _ => throw "error parsing structure declaration"
 
 partial def mkInternalFuncDecl : Syntax → Except String Description
