@@ -164,7 +164,16 @@ private def liftExcept {α β : Type} : (α → β) → Except String α → Exc
   | .error msg => .error msg
   | .ok r => return f r
 
-def mkConstval : Syntax → Except String Const
+private def liftExcept2 {α β γ : Type} : (α → β → γ) → Except String α → Except String β → Except String γ :=
+  λ f c d => do
+    match c with
+    | .error msg => .error msg
+    | .ok r₁ => match d with
+      | .error msg => .error msg
+      | .ok r₂ => return f r₁ r₂
+
+mutual
+partial def mkConstval : Syntax → Except String Const
 | `(constval| $x:num ) => return Const.num_lit x.toNat
 | `(constval| $x:str ) => match x.isStrLit? with
   | some s => return Const.str_lit s
@@ -172,32 +181,59 @@ def mkConstval : Syntax → Except String Const
 | _ => throw "error parsing constant value"
 
 
-def mkTerm : Syntax → Except String Term
+partial def mkUnuaryop : Syntax → Except String Term
+  | `(unuaryop| -$x) => liftExcept Term.negation (mkTerm x)
+  -- | `(unuaryop| ~$x) => Term.logical_negation x
+  -- | `(unuaryop| !$x) => Term.binary_negation x
+  | _ => throw "error parsing unuary operator (not implemented)"
+
+partial def mkQualifiedName : Syntax → Except String QualifiedName
+  | `(qualified_name| $x:ident $[. $xs:ident ]* ) => do
+    let xStr : String := x.getId.toString
+    let xsList <- xs.foldrM (init := [xStr]) fun x xs => return (x.getId.toString :: xs)
+    return QualifiedName.mk xsList
+  | _ => throw "error parsing qualified name"
+
+partial def mkExprList : Syntax → Except String (List Expr)
+  | `(expr_list| $exprs:expr,*) => do
+    let joinFun := fun x xs => do -- lift this pattern into a HOF
+      let res := mkExpr x
+      match res with
+        | .error msg => .error msg
+        | .ok exp => return (exp::xs)
+    let valList <- exprs.getElems.foldrM (init := []) joinFun
+    return valList
+  | _ => throw "error parsing expression list"
+
+partial def mkExpr : Syntax → Except String Expr
+  | `(expr| $x:unuaryop ) => liftExcept Expr.some_term $ mkUnuaryop x
+  -- | `(expr| $x:binop ) => mkbinop x
+  -- | `(expr| $x:parexpr ) => mkparexpr x
+  -- | `(expr| $x:list ) => mklist x
+  | `(expr| $x:dsl_term ) => liftExcept Expr.some_term $ mkTerm x
+  | _ => throw "error, parser unimplemented"
+
+partial def mkCall : Syntax → Except String Term
+  | `(call| $n:qualified_name ( $e:expr_list )  ) =>
+    liftExcept2 Term.function_call (mkQualifiedName n) (mkExprList e)
+  | _ => throw "error parsing function call"
+
+partial def mkTerm : Syntax → Except String Term
   | `(dsl_term|  $c:constval ) => liftExcept (λ const => Term.const const) (mkConstval c)
   | `(dsl_term|  $i:ident ) => match i.isIdent with
     | true => Except.ok $ Term.var i.getId.toString
     | false => Except.error "error parsing variable"
-  | _ => throw "error: parser unimplemented"
-  -- | `(dsl_term|  $c:constval ) => do
-  -- match (mkConstval c) with
-  -- | .error msg => .error msg
-  -- | .ok p => return Term.const p
+  | `(dsl_term|  $n:qualified_name ) => liftExcept (λ x => Term.qualified_var x) (mkQualifiedName n)
+  | `(dsl_term|  $c:call ) => mkCall c
+  | _ => throw "error parsing term"
 
-  -- | `(dsl_term|  $c:call ) => mkCall c
-  -- | `(dsl_term|  $n:qualified_name ) => mkQualifiedName n
-
-/-
-def mkUnuaryop : Syntax → Except String Term
-| `(unuaryop| -$x) => do
-  mkTerm
-  Term.negation x
-| `(unuaryop| ~$x) => Term.logical_negation x
-| `(unuaryop| !$x) => Term.binary_negation x
-
+end
 
 def parseConstval := mkNonTerminalParser `constval mkConstval
-def parse := parseConstval
+def parseCall := mkNonTerminalParser `call mkCall
+def parse := parseCall
 
+/-
 def mkAST : Syntax → Except String AST
   | `(file|$[$decls:declaration]*) => do
     let declList <- decls.foldrM (init := []) fun x xs => (mkDescription x)::xs
@@ -216,12 +252,6 @@ def mkStatement : Syntax → Except String Statement
 | `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
 | `(statement| $x:expr $[;]? ) => Statement.stray_expr (mkExpr x)
 
-def mkCHANGEME : Syntax → Except String CHANGEME
-| `(expr| $x:unuaryop ) => mkunuaryop x
-| `(expr| $x:binop ) => mkbinop x
-| `(expr| $x:parexpr ) => mkparexpr x
-| `(expr| $x:list ) => mklist x
-| `(expr| $x:dsl_term ) => `(Expr.some_term [dsl_term| $x])
 
 def mkCHANGEME : Syntax → Except String CHANGEME
 | `(typed_identifier| $t:ident $x:ident ) => do
@@ -230,17 +260,6 @@ def mkCHANGEME : Syntax → Except String CHANGEME
   let tSyn : Lean.Syntax := Lean.quote tStr
   let xSyn : Lean.Syntax := Lean.quote xStr
   `(TypedIdentifier.mk $tSyn $xSyn)
-
-def mkCHANGEME : Syntax → Except String CHANGEME
-| `(qualified_name| $x:ident $[. $xs:ident ]* ) => do
-  let xStr : String := x.getId.toString
-  let xSyn := Lean.quote xStr
-  let initList <- `([$xSyn])
-  let xsList <- xs.foldrM (init := initList) fun x xs => do
-    let xStr : String := x.getId.toString
-    let xSyn : Lean.Syntax := Lean.quote xStr
-    `( $xSyn :: $xs)
-  `(QualifiedName.mk $xsList)
 
 def mkDescription : Syntax → Except String Description
 | `(declaration| $x:structure_declaration ) => mkStructureDeclaration x
@@ -299,10 +318,6 @@ def mkCHANGEME : Syntax → Except String CHANGEME
 
 
 def mkCHANGEME : Syntax → Except String CHANGEME
-| `(call| $n:qualified_name ( $e:expr_list )  ) =>
-  `(Term.function_call [qualified_name| $n] [expr_list| $e])
-
-def mkCHANGEME : Syntax → Except String CHANGEME
 | `(binop| $x:dsl_term + $y:dsl_term ) => `(Expr.add [dsl_term|$x] [dsl_term|$y])
 | `(binop| $x:dsl_term - $y:dsl_term ) => `(Expr.sub [dsl_term|$x] [dsl_term|$y])
 | `(binop| $x:dsl_term * $y:dsl_term ) => `(Expr.mul [dsl_term|$x] [dsl_term|$y])
@@ -319,11 +334,6 @@ def mkCHANGEME : Syntax → Except String CHANGEME
 | `(binop| $x:dsl_term == $y:dsl_term ) => `(Expr.equal [dsl_term|$x] [dsl_term|$y])
 | `(binop| $x:dsl_term != $y:dsl_term ) => `(Expr.not_equal [dsl_term|$x] [dsl_term|$y])
 
-def mkCHANGEME : Syntax → Except String CHANGEME
-| `(expr_list| $exprs:expr,*) => do
-  let initList <- `([])
-  let valList <- exprs.getElems.foldrM (init := initList) fun x xs => `([expr| $x]::$xs)
-  return valList
 
 def mkCHANGEME : Syntax → Except String CHANGEME
 | `(parexpr| ($e:expr)) => mkexpr |$e

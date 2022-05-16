@@ -48,6 +48,7 @@ inductive Term
 | logical_negation: Term → Term
 | binary_negation: Term → Term
 | var : Identifier → Term -- variable is a lean keyword...
+| qualified_var : QualifiedName → Term -- variable is a lean keyword...
 | const : Const → Term -- constant is a lean keyword...
 | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
 
@@ -104,12 +105,55 @@ inductive Statement
 
 end  -- mutual
 
-private def constToString : Const → String
+mutual
+private partial def constToString : Const → String
   | .num_lit n => toString n
   | .str_lit s => s
 
+private partial def termToString : Term → String
+  | .negation t => "-" ++ (termToString t)
+  | .logical_negation t => "!" ++ (termToString t)
+  | .binary_negation t => "~" ++ (termToString t)
+  | .var i => identifierToString i
+  | .qualified_var n => qualifiedNameToString n
+  | .const c => constToString c
+  | .function_call n es => (qualifiedNameToString n) ++ "(" ++ String.intercalate ", " (es.map exprToString)  ++ ")"
+
+private partial def identifierToString : Identifier → String := λ x => x
+
+private partial def qualifiedNameToString : QualifiedName → String
+  | .mk l => match l with
+    | [] => ""
+    | n::[] => identifierToString n
+    | n::ns => (identifierToString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
+
+private partial def exprToString : Expr → String
+  | .add x y => (termToString x) ++ "+" ++ (termToString y)
+  | .sub x y => (termToString x) ++ "-" ++ (termToString y)
+  | .mul x y => (termToString x) ++ "*" ++ (termToString y)
+  | .div x y => (termToString x) ++ "/" ++ (termToString y)
+  | .binand x y => (termToString x) ++ "&" ++ (termToString y)
+  | .binor x y => (termToString x) ++ "|" ++ (termToString y)
+  | .binxor x y => (termToString x) ++ "^" ++ (termToString y)
+  | .leftshift x y => (termToString x) ++ "<<" ++ (termToString y)
+  | .rightshift x y => (termToString x) ++ ">>" ++ (termToString y)
+  | .greater_than x y => (termToString x) ++ ">" ++ (termToString y)
+  | .less_than    x y => (termToString x) ++ "<" ++ (termToString y)
+  | .leq    x y => (termToString x) ++ "<=" ++ (termToString y)
+  | .geq    x y => (termToString x) ++ ">=" ++ (termToString y)
+  | .equal        x y => (termToString x) ++ "==" ++ (termToString y)
+  | .not_equal x y => (termToString x) ++ "!=" ++ (termToString y)
+  | .some_term x => termToString x
+
+end -- mutual
+
 instance : ToString Const where toString := constToString
+instance : ToString Term where toString := termToString
+instance : ToString Expr where toString := exprToString
+instance : ToString Identifier where toString := identifierToString
+instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : Inhabited Const where default := Const.num_lit 0
+instance : Inhabited Term where default := Term.const default
 
 end Pipeline
 
