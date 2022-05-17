@@ -1,10 +1,8 @@
-def Identifier := String
-def TIden := Identifier
+def Identifier := String deriving Inhabited, ToString
+def TIden := Identifier deriving Inhabited, ToString
 -- def FunctionName := Identifier
 -- def StructureName := Identifier
 -- def Var := Identifier
-instance : ToString Identifier where toString := λ x => x
-instance : ToString TIden where toString := λ x => x
 
 namespace Pipeline
 
@@ -21,7 +19,7 @@ inductive Description
 | controller : Identifier → Statement → Description
 | entry : Identifier → Statement → Description
 | control_flow : Identifier → Statement → Description
-| transition : Identifier → Description
+| transition : Identifier → Statement → Description
 -- Function definition
 | function_definition :
   TypedIdentifier /- ( -/ → List TypedIdentifier /- ) { -/ → Statement /- } -/ →
@@ -116,7 +114,7 @@ private partial def descriptionToString : Description → String
 | .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
 | .entry name desc => "controller_entry" ++ (toString name) ++ " " ++ (statementToString desc)
 | .control_flow name desc => "controller_control_flow" ++ (toString name) ++ " " ++ (statementToString desc)
-| .transition name => "transition" ++ (toString name)
+| .transition name body => "transition" ++ (toString name) ++ (statementToString body)
 -- Function definition
 | .function_definition ret args body =>
   (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
@@ -190,10 +188,15 @@ instance : ToString Const where toString := constToString
 instance : ToString Term where toString := termToString
 instance : ToString Expr where toString := exprToString
 instance : ToString AST where toString := astToString
+instance : ToString Statement where toString := statementToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
+instance : ToString Description where toString := descriptionToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
 instance : Inhabited AST where default := AST.structure_descriptions []
+instance : Inhabited Expr where default := Expr.some_term default
+instance : Inhabited Statement where default := Statement.block []
+instance : Inhabited Description where default := Description.controller default default
 
 end Pipeline
 

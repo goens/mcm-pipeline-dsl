@@ -9,10 +9,10 @@ def main (args : List String): IO Unit := do
   let filename := match args.get? 0 with
    | some fn => fn
    | nothing => default_filename
-  println! s!"parsing {filename}"
   let lines <- IO.FS.lines filename
   let preprocessed := Preprocess lines
   let fileStr := preprocessed.foldl (λ s₁ s₂ => s₁ ++ "\n" ++ s₂) ""
+  println! s!"parsing {filename}: \n {fileStr}"
   -- let pipeline := Lean.quote [file]
   initSearchPath (← Lean.findSysroot) ["build/lib"]
   let env ← importModules [{ module := `PipelineDsl.Parser }] {}

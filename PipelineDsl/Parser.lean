@@ -46,7 +46,8 @@ syntax structure_declaration : declaration
 syntax internal_func_decl : declaration
 syntax "controller_entry" ident statement : structure_declaration
 syntax "controller" ident statement : structure_declaration
-syntax "transition" ident : structure_declaration
+syntax "state_queue" ident statement : structure_declaration
+syntax "transition" ident statement : structure_declaration
 syntax "controller_control_flow" ident statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" "{" statement "}" : internal_func_decl
@@ -113,36 +114,6 @@ syntax dsl_term "!=" dsl_term : binop
 syntax expr,* : expr_list
 syntax "("  expr ")" : parexpr
 syntax "["  expr_list "]" : list
-
-syntax "[file|" file "]" : term 
-syntax "[statement|" statement "]" : term
-syntax "[expr|" expr "]" : term
-syntax "[typed_identifier|" typed_identifier "]" : term
-syntax "[qualified_name|" qualified_name "]" : term
-syntax "[declaration|" declaration "]" : term
-syntax "[variable_declaration|" variable_declaration "]" : term
-syntax "[labeled_statement|" labeled_statement "]" : term
-syntax "[label|" label "]" : term
-syntax "[assignment|" assignment "]" : term
-syntax "[conditional|" conditional "]" : term
-syntax "[block|" block "]" : term
-syntax "[await_block|" await_block "]" : term
-syntax "[when_block|" when_block "]" : term
-syntax "[try_catch|" try_catch "]" : term
-syntax "[catch_block|" catch_block "]" : term
-syntax "[return_stmt|" return_stmt "]" : term
-syntax "[dsl_term|" dsl_term "]" : term
-syntax "[call|" call "]" : term
-syntax "[unuaryop|" unuaryop "]" : term
-syntax "[binop|" binop "]" : term
-syntax "[expr_list|" expr_list "]" : term
-syntax "[parexpr|" parexpr "]" : term
-syntax "[list|" list "]" : term
-syntax "[structure_declaration|" structure_declaration "]" : term
-syntax "[internal_func_decl|" internal_func_decl "]" : term
-syntax "[arg_list|" arg_list "]" : term
-syntax "[constval|" constval "]" : term
-syntax "[dsl_transition|" dsl_transition "]" : term
 
 -- parsing
 
@@ -268,10 +239,10 @@ partial def mkTypedIdentifier : Syntax → Except String TypedIdentifier
     return TypedIdentifier.mk tStr xStr
   | _ => throw "error parsing typed identifier"
 
-
+-- this is a really weird behavior, why won't it work with `(declaration | $x:structure_declaration) ?
 partial def mkDescription : Syntax → Except String Description
-  | `(declaration| $x:structure_declaration ) => mkStructureDeclaration x
-  | `(declaration| $x:internal_func_decl ) => mkInternalFuncDecl x
+  | `(structure_declaration| $x:structure_declaration ) => mkStructureDeclaration x
+  | `(internal_func_decl| $x:internal_func_decl ) => mkInternalFuncDecl x
   | _ => throw "error parsing declaration"
 
 partial def mkVariableDeclaration : Syntax → Except String Statement
@@ -331,17 +302,17 @@ partial def mkCatchBlock : Syntax → Except String CatchBlock
   | _ => throw "error parsing catch block"
 
 partial def mkStatement : Syntax → Except String Statement
-| `(statement| $x:labeled_statement $[;]? ) => mkLabeledStatement x
-| `(statement| $x:dsl_transition $[;]? ) => mkTransition x
-| `(statement| $x:variable_declaration $[;]? ) => mkVariableDeclaration x
-| `(statement| $x:assignment $[;]? ) => mkAssigmnent x
-| `(statement| $x:conditional $[;]? ) => liftExcept Statement.conditional_stmt (mkConditional x) -- feels unnecessary
-| `(statement| $x:block $[;]? ) => mkBlock x
-| `(statement| $x:await_block $[;]? ) => mkAwaitBlock x
-| `(statement| $x:try_catch $[;]? ) => mkTryCatch x
-| `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
-| `(statement| $x:expr $[;]? ) => liftExcept Statement.stray_expr (mkExpr x)
-| _ => throw "error parsing statement"
+  | `(statement| $x:labeled_statement $[;]? ) => mkLabeledStatement x
+  | `(statement| $x:dsl_transition $[;]? ) => mkTransition x
+  | `(statement| $x:variable_declaration $[;]? ) => mkVariableDeclaration x
+  | `(statement| $x:assignment $[;]? ) => mkAssigmnent x
+  | `(statement| $x:conditional $[;]? ) => liftExcept Statement.conditional_stmt (mkConditional x) -- feels unnecessary
+  | `(statement| $x:block $[;]? ) => mkBlock x
+  | `(statement| $x:await_block $[;]? ) => mkAwaitBlock x
+  | `(statement| $x:try_catch $[;]? ) => mkTryCatch x
+  | `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
+  | `(statement| $x:expr $[;]? ) => liftExcept Statement.stray_expr (mkExpr x)
+  | _ => throw "error parsing statement"
 
 partial def mkReturnStmt : Syntax → Except String Statement
   | `(return_stmt| return $e ) => liftExcept Statement.return_stmt (mkExpr e)
@@ -358,12 +329,14 @@ partial def mkList : Syntax → Except String Expr
 partial def mkStructureDeclaration : Syntax → Except String Description
   | `(structure_declaration| controller $id:ident $s ) =>
     liftExcept (Description.controller id.getId.toString) (mkStatement s)
+  | `(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
+    liftExcept (Description.controller id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_entry $id:ident $s ) =>
     liftExcept (Description.entry id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_control_flow $id:ident $s ) =>
     liftExcept (Description.control_flow id.getId.toString) (mkStatement s)
-  | `(structure_declaration| transition $id:ident) =>
-    return (Description.transition id.getId.toString)
+  | `(structure_declaration| transition $id:ident $s:statement) =>
+    liftExcept (Description.transition id.getId.toString) (mkStatement s)
   | _ => throw "error parsing structure declaration"
 
 partial def mkInternalFuncDecl : Syntax → Except String Description
@@ -389,7 +362,81 @@ partial def mkAST : Syntax → Except String AST
   | _ => throw "error: can't parse file"
 end
 
+-- eDSL
+
+syntax "[file|" file "]" : term
+syntax "[statement|" statement "]" : term
+syntax "[expr|" expr "]" : term
+syntax "[typed_identifier|" typed_identifier "]" : term
+syntax "[qualified_name|" qualified_name "]" : term
+syntax "[declaration|" declaration "]" : term
+syntax "[variable_declaration|" variable_declaration "]" : term
+syntax "[labeled_statement|" labeled_statement "]" : term
+syntax "[label|" label "]" : term
+syntax "[assignment|" assignment "]" : term
+syntax "[conditional|" conditional "]" : term
+syntax "[block|" block "]" : term
+syntax "[await_block|" await_block "]" : term
+syntax "[when_block|" when_block "]" : term
+syntax "[try_catch|" try_catch "]" : term
+syntax "[catch_block|" catch_block "]" : term
+syntax "[return_stmt|" return_stmt "]" : term
+syntax "[dsl_term|" dsl_term "]" : term
+syntax "[call|" call "]" : term
+syntax "[unuaryop|" unuaryop "]" : term
+syntax "[binop|" binop "]" : term
+syntax "[expr_list|" expr_list "]" : term
+syntax "[parexpr|" parexpr "]" : term
+syntax "[list|" list "]" : term
+syntax "[structure_declaration|" structure_declaration "]" : term
+syntax "[internal_func_decl|" internal_func_decl "]" : term
+syntax "[arg_list|" arg_list "]" : term
+syntax "[constval|" constval "]" : term
+syntax "[dsl_transition|" dsl_transition "]" : term
+
+-- macro_rules
+--   | [constval| $x:constval ] => mkConstval x
+
+/-
+macro_rules
+  | [file| $x:file ] => 
+  | [statement| $x:statement ] => 
+  | [expr| $x:expr ] => 
+  | [typed_identifier| $x:typed_identifier ] => 
+  | [qualified_name| $x:qualified_name ] => 
+  | [declaration| $x:declaration ] => 
+  | [variable_declaration| $x:variable_declaration ] => 
+  | [labeled_statement| $x:labeled_statement ] => 
+  | [label| $x:label ] => 
+  | [assignment| $x:assignment ] => 
+  | [conditional| $x:conditional ] => 
+  | [block| $x:block ] => 
+  | [await_block| $x:await_block ] => 
+  | [when_block| $x:when_block ] => 
+  | [try_catch| $x:try_catch ] => 
+  | [catch_block| $x:catch_block ] => 
+  | [return_stmt| $x:return_stmt ] => 
+  | [dsl_term| $x:dsl_term ] => 
+  | [call| $x:call ] => 
+  | [unuaryop| $x:unuaryop ] => 
+  | [binop| $x:binop ] => 
+  | [expr_list| $x:expr_list ] => 
+  | [parexpr| $x:parexpr ] => 
+  | [list| $x:list ] => 
+  | [structure_declaration| $x:structure_declaration ] => 
+  | [internal_func_decl| $x:internal_func_decl ] => 
+  | [arg_list| $x:arg_list ] => 
+  | [constval| $x:constval ] => 
+  | [dsl_transition| $x:dsl_transition ] => 
+-/
+
+-- parse functions
 def parseConstval := mkNonTerminalParser `constval mkConstval
 def parseCall := mkNonTerminalParser `call mkCall
+def parseAssignment := mkNonTerminalParser `assignment mkAssigmnent
+def parseStatement := mkNonTerminalParser `statement mkStatement
+def parseDescription := mkNonTerminalParser `declaration mkDescription
+def parseStructureDeclaration := mkNonTerminalParser `structure_declaration mkDescription
+def parseExpr := mkNonTerminalParser `expr mkExpr
 def parseFile := mkNonTerminalParser `file mkAST
 def parse := parseFile
