@@ -90,7 +90,7 @@ inductive Statement
 | try_catch :
   /- try { -/ Statement /- } -/ → List CatchBlock → Statement
 | await :
-  /- await { -/ Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
+  /- await { -/ List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :
   /- when -/ QualifiedName /- { -/ → Statement /- } -/ → Statement
 | transition : -- transition to an explicit state
@@ -175,7 +175,7 @@ private partial def statementToString : Statement → String
   | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
   | .conditional_stmt cond => conditionalToString cond
   | .try_catch try_block catches => (statementToString try_block) ++ "\n" ++ (String.intercalate "\n" (catches.map catchBlockToString))
-  | .await whens => "await\n" ++ (statementToString whens)
+  | .await whens => "await\n" ++ String.intercalate "\n" (whens.map statementToString)
   | .when msg body => "when ("  ++ (qualifiedNameToString msg) ++ ")" ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .stray_expr e => exprToString e

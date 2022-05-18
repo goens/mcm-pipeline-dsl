@@ -3,7 +3,7 @@ import PipelineDsl.AST
 open Lean Lean.Syntax
 open Lean.Elab
 open Lean.Elab.Command
-import Lean.Elab.Deriving.Basic
+-- import Lean.Elab.Deriving.Basic
 open Lean.Meta
 
 namespace Pipeline
@@ -54,8 +54,8 @@ syntax "state_queue" ident statement : structure_declaration
 syntax "transition" ident statement : structure_declaration
 syntax "controller_control_flow" ident statement : structure_declaration
 
-syntax typed_identifier "(" arg_list ")" "{" statement "}" : internal_func_decl
-syntax typed_identifier typed_identifier,* : arg_list
+syntax typed_identifier "(" arg_list ")" statement : internal_func_decl
+syntax typed_identifier ("," typed_identifier)* : arg_list
 
 syntax labeled_statement ";"? : statement
 syntax dsl_transition ";"? : statement
@@ -72,11 +72,11 @@ syntax typed_identifier ("=" expr)? : variable_declaration
 syntax label statement : labeled_statement
 syntax "result_write" : label
 syntax qualified_name "=" expr : assignment -- maybe allow foo.bar?
-syntax ident "=" expr : assignment 
+syntax ident "=" expr : assignment
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
-syntax  "await"  "{"  (when_block)+  "}" : await_block
-syntax "when"  "("  qualified_name  ")"  statement : when_block
+syntax  "await"  "{"  (when_block)*  "}" : await_block -- this should be + but lean won't let me parse this
+syntax "when"  qualified_name  statement : when_block
 syntax "try"  statement  catch_block+ : try_catch
 syntax "catch"  "("  qualified_name  ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
@@ -90,11 +90,13 @@ syntax dsl_term : expr
 
 -- should be expression instead of access, but leaving this for now (left-recursion)
 syntax "("  expr  ")" : dsl_term
-syntax  call : dsl_term
+syntax  call : dsl_term -- TODO: check why TLB.translate(this.virt_addr) doesn't parse
 syntax qualified_name : dsl_term
+-- TODO: support nested expressions in accesses
 syntax constval : dsl_term
 syntax ident : dsl_term
 syntax qualified_name  "("  expr_list  ")" : call
+-- TODO: add kwargs
 
 syntax "!" dsl_term : unuaryop
 syntax "~" dsl_term : unuaryop
@@ -169,9 +171,9 @@ partial def mkConstval : Syntax → Except String Const
 
 partial def mkUnuaryop : Syntax → Except String Term
   | `(unuaryop| -$x) => liftExcept Term.negation (mkTerm x)
-  -- | `(unuaryop| ~$x) => Term.logical_negation x
-  -- | `(unuaryop| !$x) => Term.binary_negation x
-  | _ => throw "error parsing unuary operator (not implemented)"
+  | `(unuaryop| ~$x) => liftExcept Term.logical_negation (mkTerm x)
+  | `(unuaryop| !$x) => liftExcept Term.binary_negation (mkTerm x)
+  | u => throw s!"error parsing unuary operator (not implemented), {u}"
 
 partial def mkQualifiedName : Syntax → Except String QualifiedName
   | `(qualified_name| $x:ident $[. $xs:ident ]* ) => do
@@ -195,7 +197,7 @@ partial def mkExpr : Syntax → Except String Expr
   | `(expr| $x:unuaryop ) => liftExcept Expr.some_term $ mkUnuaryop x
   | `(expr| $x:binop ) => mkBinop x
   | `(expr| $x:parexpr ) => mkParExpr x
-  -- | `(expr| $x:list ) => liftExcept Expr.list mkList x
+  | `(expr| $x:list ) => mkList x
   | `(expr| $x:dsl_term ) => liftExcept Expr.some_term $ mkTerm x
   | _ => throw "error, parser unimplemented"
 
@@ -245,8 +247,8 @@ partial def mkTypedIdentifier : Syntax → Except String TypedIdentifier
 
 -- this is a really weird behavior, why won't it work with `(declaration | $x:structure_declaration) ?
 partial def mkDescription : Syntax → Except String Description
-  | `(structure_declaration| $x:structure_declaration ) => mkStructureDeclaration x
-  | `(internal_func_decl| $x:internal_func_decl ) => mkInternalFuncDecl x
+  | `(declaration| $x:structure_declaration ) => mkStructureDeclaration x
+  | `(declaration| $x:internal_func_decl ) => mkInternalFuncDecl x
   | _ => throw "error parsing declaration"
 
 partial def mkVariableDeclaration : Syntax → Except String Statement
@@ -280,17 +282,21 @@ partial def mkBlock : Syntax → Except String Statement
       let s <- mkStatement x
       return s::xs
     return Statement.block stmtList
-  | _ => throw "error parsing block statement"
+  | u => throw s!"error parsing block statement, unknown: {u}"
 
 
 partial def mkAwaitBlock : Syntax → Except String Statement
-| `(await_block| await { $w }) => liftExcept Statement.await (mkStatement w)
+| `(await_block| await { $[ $w:when_block ]* }) => do
+  let whenList <- w.foldrM (init := []) fun x xs => do
+    let wb <- mkWhenBlock x
+    return (wb::xs)
+  return Statement.await whenList
 | _ => throw "error parsing await block statement"
 
 partial def mkWhenBlock : Syntax → Except String Statement
-| `(when_block| when ($n) { $stmt }) => liftExcept2 Statement.when
+| `(when_block| when $n $stmt ) => liftExcept2 Statement.when
   (mkQualifiedName n) (mkStatement stmt)
-  | _ => throw "error parsing when block statement"
+  | u => throw s!"error parsing when block statement, unknown {u}"
 
 partial def mkTryCatch : Syntax → Except String Statement
   | `(try_catch| try $s:statement $[ $c:catch_block ]* ) => do -- why doesn't the '+' pattern work?
@@ -316,7 +322,7 @@ partial def mkStatement : Syntax → Except String Statement
   | `(statement| $x:try_catch $[;]? ) => mkTryCatch x
   | `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
   | `(statement| $x:expr $[;]? ) => liftExcept Statement.stray_expr (mkExpr x)
-  | _ => throw "error parsing statement"
+  | u => throw s!"error parsing statement, unknown statement {u}"
 
 partial def mkReturnStmt : Syntax → Except String Statement
   | `(return_stmt| return $e ) => liftExcept Statement.return_stmt (mkExpr e)
@@ -333,7 +339,7 @@ partial def mkList : Syntax → Except String Expr
 partial def mkStructureDeclaration : Syntax → Except String Description
   | `(structure_declaration| controller $id:ident $s ) =>
     liftExcept (Description.controller id.getId.toString) (mkStatement s)
-  | `(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
+  | m@`(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
     liftExcept (Description.controller id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_entry $id:ident $s ) =>
     liftExcept (Description.entry id.getId.toString) (mkStatement s)
@@ -341,17 +347,17 @@ partial def mkStructureDeclaration : Syntax → Except String Description
     liftExcept (Description.control_flow id.getId.toString) (mkStatement s)
   | `(structure_declaration| transition $id:ident $s:statement) =>
     liftExcept (Description.transition id.getId.toString) (mkStatement s)
-  | _ => throw "error parsing structure declaration"
+  | m => dbg_trace m; throw "error parsing structure declaration"
 
 partial def mkInternalFuncDecl : Syntax → Except String Description
-  | `(internal_func_decl| $id:typed_identifier ( $args ){ $s }) =>
+  | `(internal_func_decl| $id:typed_identifier ( $args ) $s ) =>
     liftExcept3 Description.function_definition (mkTypedIdentifier id) (mkArgList args) (mkStatement s)
   | _ => throw "error parsing internal function declaration"
 
 partial def mkArgList : Syntax → Except String (List TypedIdentifier)
-  | `(arg_list| $fst:typed_identifier $rest,*) => do
+  | `(arg_list| $fst:typed_identifier $[, $rest:typed_identifier]*) => do
       let initId <- mkTypedIdentifier fst
-      let argList <- rest.getElems.foldrM (init := [initId]) fun x xs => do
+      let argList <- rest.foldrM (init := [initId]) fun x xs => do
         let xid <- mkTypedIdentifier x
         return (xid::xs)
       return argList
