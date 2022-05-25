@@ -76,9 +76,9 @@ syntax ident "=" expr : assignment
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
 syntax  "await"  "{"  (when_block)*  "}" : await_block -- this should be + but lean won't let me parse this
-syntax "when"  qualified_name  statement : when_block
-syntax "try"  statement  catch_block+ : try_catch
-syntax "catch"  "("  qualified_name  ")"  statement* : catch_block
+syntax "when"  qualified_name "(" ident,* ")" statement : when_block
+syntax "listen"  statement  catch_block+ : try_catch
+syntax "handle"  qualified_name  "(" ident,* ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
 syntax "transition"  ident : dsl_transition
 
@@ -135,12 +135,6 @@ private def mkNonTerminalParser {α : Type} [Inhabited α] (syntaxcat : Name) (n
     | .error msg => (some msg, default)
     | .ok    p   => (none, p)
 
-private def liftExcept {α β : Type} : (α → β) → Except String α → Except String β :=
-λ f c => do
-  match c with
-  | .error msg => .error msg
-  | .ok r => return f r
-
 private def liftExcept2 {α β γ : Type} : (α → β → γ) → Except String α → Except String β → Except String γ :=
   λ f c d => do
     match c with
@@ -170,9 +164,9 @@ partial def mkConstval : Syntax → Except String Const
 
 
 partial def mkUnuaryop : Syntax → Except String Term
-  | `(unuaryop| -$x) => liftExcept Term.negation (mkTerm x)
-  | `(unuaryop| ~$x) => liftExcept Term.logical_negation (mkTerm x)
-  | `(unuaryop| !$x) => liftExcept Term.binary_negation (mkTerm x)
+  | `(unuaryop| -$x) => Except.map Term.negation (mkTerm x)
+  | `(unuaryop| ~$x) => Except.map Term.logical_negation (mkTerm x)
+  | `(unuaryop| !$x) => Except.map Term.binary_negation (mkTerm x)
   | u => throw s!"error parsing unuary operator (not implemented), {u}"
 
 partial def mkQualifiedName : Syntax → Except String QualifiedName
@@ -194,11 +188,11 @@ partial def mkExprList : Syntax → Except String (List Expr)
   | _ => throw "error parsing expression list"
 
 partial def mkExpr : Syntax → Except String Expr
-  | `(expr| $x:unuaryop ) => liftExcept Expr.some_term $ mkUnuaryop x
+  | `(expr| $x:unuaryop ) => Except.map Expr.some_term $ mkUnuaryop x
   | `(expr| $x:binop ) => mkBinop x
   | `(expr| $x:parexpr ) => mkParExpr x
   | `(expr| $x:list ) => mkList x
-  | `(expr| $x:dsl_term ) => liftExcept Expr.some_term $ mkTerm x
+  | `(expr| $x:dsl_term ) => Except.map Expr.some_term $ mkTerm x
   | _ => throw "error, parser unimplemented"
 
 partial def mkParExpr : Syntax → Except String Expr
@@ -230,11 +224,11 @@ partial def mkCall : Syntax → Except String Term
   | _ => throw "error parsing function call"
 
 partial def mkTerm : Syntax → Except String Term
-  | `(dsl_term|  $c:constval ) => liftExcept (λ const => Term.const const) (mkConstval c)
+  | `(dsl_term|  $c:constval ) => Except.map (λ const => Term.const const) (mkConstval c)
   | `(dsl_term|  $i:ident ) => match i.isIdent with
     | true => Except.ok $ Term.var i.getId.toString
     | false => Except.error "error parsing variable"
-  | `(dsl_term|  $n:qualified_name ) => liftExcept (λ x => Term.qualified_var x) (mkQualifiedName n)
+  | `(dsl_term|  $n:qualified_name ) => Except.map (λ x => Term.qualified_var x) (mkQualifiedName n)
   | `(dsl_term|  $c:call ) => mkCall c
   | _ => throw "error parsing term"
 
@@ -253,7 +247,7 @@ partial def mkDescription : Syntax → Except String Description
 
 partial def mkVariableDeclaration : Syntax → Except String Statement
   | `(variable_declaration| $x:typed_identifier = $e ) => liftExcept2 Statement.value_declaration (mkTypedIdentifier x) (mkExpr e)
-  | `(variable_declaration| $x:typed_identifier) => liftExcept Statement.variable_declaration (mkTypedIdentifier x)
+  | `(variable_declaration| $x:typed_identifier) => Except.map Statement.variable_declaration (mkTypedIdentifier x)
   | _ => throw "error parsing variable declaration"
 
 partial def mkLabeledStatement : Syntax → Except String Statement
@@ -267,7 +261,7 @@ partial def mkLabel : Syntax → Except String Label
 partial def mkAssigmnent : Syntax → Except String Statement
   | `(assignment| $q:qualified_name = $e ) => liftExcept2 Statement.variable_assignment (mkQualifiedName q) (mkExpr e)
   | `(assignment| $i:ident = $e ) => let name := (QualifiedName.mk [i.getId.toString])
-    liftExcept (Statement.variable_assignment name) (mkExpr e)
+    Except.map (Statement.variable_assignment name) (mkExpr e)
   | _ => throw "error parsing assignment"
 
 partial def mkConditional : Syntax → Except String Conditional
@@ -294,21 +288,25 @@ partial def mkAwaitBlock : Syntax → Except String Statement
 | _ => throw "error parsing await block statement"
 
 partial def mkWhenBlock : Syntax → Except String Statement
-| `(when_block| when $n $stmt ) => liftExcept2 Statement.when
-  (mkQualifiedName n) (mkStatement stmt)
-  | u => throw s!"error parsing when block statement, unknown {u}"
+| `(when_block| when $n($[$args],*) $stmt ) => do
+  let argsArr := args.map (λ x => x.getId.toString)
+  let createNodeFun := λ nameNode stmtNode => Statement.when nameNode  argsArr.toList stmtNode
+  liftExcept2  createNodeFun (mkQualifiedName n) (mkStatement stmt)
+| u => throw s!"error parsing when block statement, unknown {u}"
 
 partial def mkTryCatch : Syntax → Except String Statement
-  | `(try_catch| try $s:statement $[ $c:catch_block ]* ) => do -- why doesn't the '+' pattern work?
+  | `(try_catch| listen $s:statement $[ $c:catch_block ]* ) => do -- why doesn't the '+' pattern work?
     let catchList <- c.foldrM (init := []) fun x xs => do
       let cb <- mkCatchBlock x
       return (cb::xs)
-    liftExcept (λ stmt => Statement.try_catch stmt catchList) (mkStatement s)
+    Except.map (λ stmt => Statement.try_catch stmt catchList) (mkStatement s)
   | _ => throw "error parsing try-catch statement"
 
 partial def mkCatchBlock : Syntax → Except String CatchBlock
-  | `(catch_block| catch ( $n ) $s:statement ) => liftExcept2 CatchBlock.mk
-    (mkQualifiedName n) (mkStatement s)
+  | `(catch_block| handle  $n( $[$args],* ) $s:statement ) =>
+  let argsArr := args.map (λ x => x.getId.toString)
+  let createNodeFun := λ nameNode stmtNode => CatchBlock.mk nameNode  argsArr.toList stmtNode
+  liftExcept2 createNodeFun (mkQualifiedName n) (mkStatement s)
   | _ => throw "error parsing catch block"
 
 partial def mkStatement : Syntax → Except String Statement
@@ -316,16 +314,16 @@ partial def mkStatement : Syntax → Except String Statement
   | `(statement| $x:dsl_transition $[;]? ) => mkTransition x
   | `(statement| $x:variable_declaration $[;]? ) => mkVariableDeclaration x
   | `(statement| $x:assignment $[;]? ) => mkAssigmnent x
-  | `(statement| $x:conditional $[;]? ) => liftExcept Statement.conditional_stmt (mkConditional x) -- feels unnecessary
+  | `(statement| $x:conditional $[;]? ) => Except.map Statement.conditional_stmt (mkConditional x) -- feels unnecessary
   | `(statement| $x:block $[;]? ) => mkBlock x
   | `(statement| $x:await_block $[;]? ) => mkAwaitBlock x
   | `(statement| $x:try_catch $[;]? ) => mkTryCatch x
   | `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
-  | `(statement| $x:expr $[;]? ) => liftExcept Statement.stray_expr (mkExpr x)
+  | `(statement| $x:expr $[;]? ) => Except.map Statement.stray_expr (mkExpr x)
   | u => throw s!"error parsing statement, unknown statement {u}"
 
 partial def mkReturnStmt : Syntax → Except String Statement
-  | `(return_stmt| return $e ) => liftExcept Statement.return_stmt (mkExpr e)
+  | `(return_stmt| return $e ) => Except.map Statement.return_stmt (mkExpr e)
   | _ => throw "error parsing return statement"
 
 partial def mkTransition : Syntax → Except String Statement
@@ -333,20 +331,20 @@ partial def mkTransition : Syntax → Except String Statement
   | _ => throw "error parsing transition statement"
 
 partial def mkList : Syntax → Except String Expr
-  | `(list| [$e:expr_list] ) => liftExcept Expr.list (mkExprList e)
+  | `(list| [$e:expr_list] ) => Except.map Expr.list (mkExprList e)
   | _ => throw "error parsing expression list"
 
 partial def mkStructureDeclaration : Syntax → Except String Description
   | `(structure_declaration| controller $id:ident $s ) =>
-    liftExcept (Description.controller id.getId.toString) (mkStatement s)
+    Except.map (Description.controller id.getId.toString) (mkStatement s)
   | m@`(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
-    liftExcept (Description.controller id.getId.toString) (mkStatement s)
+    Except.map (Description.controller id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_entry $id:ident $s ) =>
-    liftExcept (Description.entry id.getId.toString) (mkStatement s)
+    Except.map (Description.entry id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_control_flow $id:ident $s ) =>
-    liftExcept (Description.control_flow id.getId.toString) (mkStatement s)
+    Except.map (Description.control_flow id.getId.toString) (mkStatement s)
   | `(structure_declaration| transition $id:ident $s:statement) =>
-    liftExcept (Description.transition id.getId.toString) (mkStatement s)
+    Except.map (Description.transition id.getId.toString) (mkStatement s)
   | m => dbg_trace m; throw "error parsing structure declaration"
 
 partial def mkInternalFuncDecl : Syntax → Except String Description

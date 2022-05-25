@@ -30,7 +30,7 @@ inductive Label
 
 -- one or more catch blocks
 inductive CatchBlock
-| mk : QualifiedName → Statement → CatchBlock
+| mk : QualifiedName → List Identifier → Statement → CatchBlock
 
 inductive Conditional
 -- if with else
@@ -92,7 +92,7 @@ inductive Statement
 | await :
   /- await { -/ List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :
-  /- when -/ QualifiedName /- { -/ → Statement /- } -/ → Statement
+  /- when -/ QualifiedName → List Identifier → Statement /- } -/ → Statement
 | transition : -- transition to an explicit state
   /- transition -/ Identifier → Statement
 -- should just be a function call
@@ -124,7 +124,9 @@ private partial def labelToString : Label → String
   | .result_write => "result_write"
 
 private partial def catchBlockToString : CatchBlock → String
-| .mk name body => "catch (" ++ (qualifiedNameToString name) ++ ")\n" ++ (statementToString body)
+| .mk name args body => "catch " ++ (qualifiedNameToString name) ++
+  "(" ++ (String.intercalate ", " (args.map toString)) ++
+ ")\n" ++ (statementToString body)
 
 private partial def conditionalToString : Conditional → String
 | .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString then_br) ++ "else\n" ++ (statementToString else_br)
@@ -176,7 +178,7 @@ private partial def statementToString : Statement → String
   | .conditional_stmt cond => conditionalToString cond
   | .try_catch try_block catches => (statementToString try_block) ++ "\n" ++ (String.intercalate "\n" (catches.map catchBlockToString))
   | .await whens => "await\n" ++ String.intercalate "\n" (whens.map statementToString)
-  | .when msg body => "when ("  ++ (qualifiedNameToString msg) ++ ")" ++ (statementToString body)
+  | .when msg args body => "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ ")" ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .stray_expr e => exprToString e
   | .block stmts => "{" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s ++ ";"))  ++ "\n}"

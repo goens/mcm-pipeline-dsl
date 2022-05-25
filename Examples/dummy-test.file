@@ -1,3 +1,2 @@
-transition rob {
-  init_entry = process_rob_head
-}
+TLB.translate(this.virt_addr)
+TLB . translate(this . virt_addr)
