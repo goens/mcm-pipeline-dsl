@@ -135,25 +135,6 @@ private def mkNonTerminalParser {α : Type} [Inhabited α] (syntaxcat : Name) (n
     | .error msg => (some msg, default)
     | .ok    p   => (none, p)
 
-private def liftExcept2 {α β γ : Type} : (α → β → γ) → Except String α → Except String β → Except String γ :=
-  λ f c d => do
-    match c with
-    | .error msg => .error msg
-    | .ok r₁ => match d with
-      | .error msg => .error msg
-      | .ok r₂ => return f r₁ r₂
-
-private def liftExcept3 {α β γ δ : Type} : (α → β → γ → δ) → Except String α → Except String β →
-Except String γ → Except String δ :=
-  λ f a b c => do
-  match a with
-  | .error msg => .error msg
-  | .ok r₁ => match b with
-    | .error msg => .error msg
-    | .ok r₂ => match c with
-      | .error msg => .error msg
-      | .ok r₃ => return f r₁ r₂ r₃
-
 mutual
 partial def mkConstval : Syntax → Except String Const
 | `(constval| $x:num ) => return Const.num_lit x.toNat
@@ -200,27 +181,27 @@ partial def mkParExpr : Syntax → Except String Expr
   | _ => throw "error parsing expression in parenthesis"
 
 partial def mkBinop : Syntax → Except String Expr
-  | `(binop| $x:dsl_term + $y:dsl_term ) => liftExcept2 Expr.add (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term - $y:dsl_term ) => liftExcept2 Expr.sub (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term * $y:dsl_term ) => liftExcept2 Expr.mul (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term / $y:dsl_term ) => liftExcept2 Expr.div (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term & $y:dsl_term ) => liftExcept2 Expr.binand (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term | $y:dsl_term ) => liftExcept2 Expr.binor (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term ^ $y:dsl_term ) => liftExcept2 Expr.binxor (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term << $y:dsl_term ) => liftExcept2 Expr.leftshift (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term >> $y:dsl_term ) => liftExcept2 Expr.rightshift (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term < $y:dsl_term ) => liftExcept2 Expr.less_than (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term > $y:dsl_term ) => liftExcept2 Expr.greater_than (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term <= $y:dsl_term ) => liftExcept2 Expr.leq (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term >= $y:dsl_term ) => liftExcept2 Expr.geq (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term == $y:dsl_term ) => liftExcept2 Expr.equal (mkTerm x) (mkTerm y)
-  | `(binop| $x:dsl_term != $y:dsl_term ) => liftExcept2 Expr.not_equal (mkTerm x) (mkTerm y)
+  | `(binop| $x:dsl_term + $y:dsl_term ) => pure Expr.add <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term - $y:dsl_term ) => pure Expr.sub <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term * $y:dsl_term ) => pure Expr.mul <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term / $y:dsl_term ) => pure Expr.div <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term & $y:dsl_term ) => pure Expr.binand <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term | $y:dsl_term ) => pure Expr.binor <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term ^ $y:dsl_term ) => pure Expr.binxor <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term << $y:dsl_term ) => pure Expr.leftshift <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term >> $y:dsl_term ) => pure Expr.rightshift <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term < $y:dsl_term ) => pure Expr.less_than <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term > $y:dsl_term ) => pure Expr.greater_than <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term <= $y:dsl_term ) => pure Expr.leq <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term >= $y:dsl_term ) => pure Expr.geq <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term == $y:dsl_term ) => pure Expr.equal <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term != $y:dsl_term ) => pure Expr.not_equal <*> (mkTerm x) <*> (mkTerm y)
   | _ => throw "error parsing binary operator"
 
 
 partial def mkCall : Syntax → Except String Term
   | `(call| $n:qualified_name ( $e:expr_list )  ) =>
-    liftExcept2 Term.function_call (mkQualifiedName n) (mkExprList e)
+    pure Term.function_call <*> (mkQualifiedName n) <*> (mkExprList e)
   | _ => throw "error parsing function call"
 
 partial def mkTerm : Syntax → Except String Term
@@ -246,12 +227,12 @@ partial def mkDescription : Syntax → Except String Description
   | _ => throw "error parsing declaration"
 
 partial def mkVariableDeclaration : Syntax → Except String Statement
-  | `(variable_declaration| $x:typed_identifier = $e ) => liftExcept2 Statement.value_declaration (mkTypedIdentifier x) (mkExpr e)
+  | `(variable_declaration| $x:typed_identifier = $e ) => pure Statement.value_declaration <*> (mkTypedIdentifier x)  <*> (mkExpr e)
   | `(variable_declaration| $x:typed_identifier) => Except.map Statement.variable_declaration (mkTypedIdentifier x)
   | _ => throw "error parsing variable declaration"
 
 partial def mkLabeledStatement : Syntax → Except String Statement
-  | `(labeled_statement| $l:label $s ) => liftExcept2 Statement.labelled_statement (mkLabel l) (mkStatement s)
+  | `(labeled_statement| $l:label $s ) => pure Statement.labelled_statement <*> (mkLabel l) <*> (mkStatement s)
   | _ => throw "error parsing labeled statement"
 
 partial def mkLabel : Syntax → Except String Label
@@ -259,15 +240,15 @@ partial def mkLabel : Syntax → Except String Label
   | _ => throw "error parsing label"
 
 partial def mkAssigmnent : Syntax → Except String Statement
-  | `(assignment| $q:qualified_name = $e ) => liftExcept2 Statement.variable_assignment (mkQualifiedName q) (mkExpr e)
+  | `(assignment| $q:qualified_name = $e ) => pure Statement.variable_assignment <*> (mkQualifiedName q) <*> (mkExpr e)
   | `(assignment| $i:ident = $e ) => let name := (QualifiedName.mk [i.getId.toString])
     Except.map (Statement.variable_assignment name) (mkExpr e)
   | _ => throw "error parsing assignment"
 
 partial def mkConditional : Syntax → Except String Conditional
-  | `(conditional| if ( $e ) $s else $es ) => liftExcept3 Conditional.if_else_statement
-    (mkExpr e) (mkStatement s) (mkStatement es)
-  | `(conditional| if ( $e ) $s ) => liftExcept2 Conditional.if_statement (mkExpr e) (mkStatement s)
+  | `(conditional| if ( $e ) $s else $es ) => pure Conditional.if_else_statement
+    <*> (mkExpr e) <*> (mkStatement s) <*> (mkStatement es)
+  | `(conditional| if ( $e ) $s ) => pure Conditional.if_statement <*> (mkExpr e) <*> (mkStatement s)
   | _ => throw "error parsing assignment"
 
 partial def mkBlock : Syntax → Except String Statement
@@ -291,7 +272,7 @@ partial def mkWhenBlock : Syntax → Except String Statement
 | `(when_block| when $n($[$args],*) $stmt ) => do
   let argsArr := args.map (λ x => x.getId.toString)
   let createNodeFun := λ nameNode stmtNode => Statement.when nameNode  argsArr.toList stmtNode
-  liftExcept2  createNodeFun (mkQualifiedName n) (mkStatement stmt)
+  pure  createNodeFun <*> (mkQualifiedName n) <*> (mkStatement stmt)
 | u => throw s!"error parsing when block statement, unknown {u}"
 
 partial def mkTryCatch : Syntax → Except String Statement
@@ -306,7 +287,7 @@ partial def mkCatchBlock : Syntax → Except String CatchBlock
   | `(catch_block| handle  $n( $[$args],* ) $s:statement ) =>
   let argsArr := args.map (λ x => x.getId.toString)
   let createNodeFun := λ nameNode stmtNode => CatchBlock.mk nameNode  argsArr.toList stmtNode
-  liftExcept2 createNodeFun (mkQualifiedName n) (mkStatement s)
+  pure createNodeFun <*> (mkQualifiedName n) <*> (mkStatement s)
   | _ => throw "error parsing catch block"
 
 partial def mkStatement : Syntax → Except String Statement
@@ -349,7 +330,7 @@ partial def mkStructureDeclaration : Syntax → Except String Description
 
 partial def mkInternalFuncDecl : Syntax → Except String Description
   | `(internal_func_decl| $id:typed_identifier ( $args ) $s ) =>
-    liftExcept3 Description.function_definition (mkTypedIdentifier id) (mkArgList args) (mkStatement s)
+    pure Description.function_definition <*> (mkTypedIdentifier id) <*> (mkArgList args) <*> (mkStatement s)
   | _ => throw "error parsing internal function declaration"
 
 partial def mkArgList : Syntax → Except String (List TypedIdentifier)
