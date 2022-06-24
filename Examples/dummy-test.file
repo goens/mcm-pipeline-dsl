@@ -1,2 +1,5 @@
-TLB.translate(this.virt_addr)
-TLB . translate(this . virt_addr)
+transition foo{
+
+a.b = 42
+
+}

@@ -1,5 +1,6 @@
 import Lean
 import PipelineDsl.AST
+import PipelineDsl.Preprocess
 open Lean Lean.Syntax
 open Lean.Elab
 open Lean.Elab.Command
@@ -23,7 +24,7 @@ declare_syntax_cat conditional
 declare_syntax_cat block
 declare_syntax_cat await_block
 declare_syntax_cat when_block
-declare_syntax_cat try_catch
+declare_syntax_cat listen_handle
 declare_syntax_cat catch_block
 declare_syntax_cat return_stmt
 declare_syntax_cat dsl_transition
@@ -64,7 +65,7 @@ syntax assignment ";"? : statement
 syntax conditional ";"? : statement
 syntax block ";"? : statement
 syntax await_block ";"? : statement
-syntax try_catch ";"? : statement
+syntax listen_handle ";"? : statement
 syntax return_stmt ";"? : statement
 syntax expr ";"? : statement
 
@@ -77,7 +78,7 @@ syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
 syntax  "await"  "{"  (when_block)*  "}" : await_block -- this should be + but lean won't let me parse this
 syntax "when"  qualified_name "(" ident,* ")" statement : when_block
-syntax "listen"  statement  catch_block+ : try_catch
+syntax "listen"  statement  catch_block+ : listen_handle
 syntax "handle"  qualified_name  "(" ident,* ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
 syntax "transition"  ident : dsl_transition
@@ -153,7 +154,7 @@ partial def mkUnuaryop : Syntax → Except String Term
 partial def mkQualifiedName : Syntax → Except String QualifiedName
   | `(qualified_name| $x:ident $[. $xs:ident ]* ) => do
     let xStr : String := x.getId.toString
-    let xsList <- xs.foldrM (init := [xStr]) fun x xs => return (x.getId.toString :: xs)
+    let xsList <- xs.foldlM (init := [xStr]) fun xs x => return (x.getId.toString :: xs)
     return QualifiedName.mk xsList
   | _ => throw "error parsing qualified name"
 
@@ -181,27 +182,27 @@ partial def mkParExpr : Syntax → Except String Expr
   | _ => throw "error parsing expression in parenthesis"
 
 partial def mkBinop : Syntax → Except String Expr
-  | `(binop| $x:dsl_term + $y:dsl_term ) => pure Expr.add <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term - $y:dsl_term ) => pure Expr.sub <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term * $y:dsl_term ) => pure Expr.mul <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term / $y:dsl_term ) => pure Expr.div <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term & $y:dsl_term ) => pure Expr.binand <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term | $y:dsl_term ) => pure Expr.binor <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term ^ $y:dsl_term ) => pure Expr.binxor <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term << $y:dsl_term ) => pure Expr.leftshift <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term >> $y:dsl_term ) => pure Expr.rightshift <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term < $y:dsl_term ) => pure Expr.less_than <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term > $y:dsl_term ) => pure Expr.greater_than <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term <= $y:dsl_term ) => pure Expr.leq <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term >= $y:dsl_term ) => pure Expr.geq <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term == $y:dsl_term ) => pure Expr.equal <*> (mkTerm x) <*> (mkTerm y)
-  | `(binop| $x:dsl_term != $y:dsl_term ) => pure Expr.not_equal <*> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term + $y:dsl_term ) =>  Expr.add <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term - $y:dsl_term ) => Expr.sub <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term * $y:dsl_term ) => Expr.mul <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term / $y:dsl_term ) => Expr.div <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term & $y:dsl_term ) => Expr.binand <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term | $y:dsl_term ) => Expr.binor <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term ^ $y:dsl_term ) => Expr.binxor <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term << $y:dsl_term ) => Expr.leftshift <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term >> $y:dsl_term ) => Expr.rightshift <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term < $y:dsl_term ) => Expr.less_than <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term > $y:dsl_term ) => Expr.greater_than <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term <= $y:dsl_term ) => Expr.leq <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term >= $y:dsl_term ) => Expr.geq <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term == $y:dsl_term ) => Expr.equal <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term != $y:dsl_term ) => Expr.not_equal <$> (mkTerm x) <*> (mkTerm y)
   | _ => throw "error parsing binary operator"
 
 
 partial def mkCall : Syntax → Except String Term
   | `(call| $n:qualified_name ( $e:expr_list )  ) =>
-    pure Term.function_call <*> (mkQualifiedName n) <*> (mkExprList e)
+    Term.function_call <$> (mkQualifiedName n) <*> (mkExprList e)
   | _ => throw "error parsing function call"
 
 partial def mkTerm : Syntax → Except String Term
@@ -227,12 +228,12 @@ partial def mkDescription : Syntax → Except String Description
   | _ => throw "error parsing declaration"
 
 partial def mkVariableDeclaration : Syntax → Except String Statement
-  | `(variable_declaration| $x:typed_identifier = $e ) => pure Statement.value_declaration <*> (mkTypedIdentifier x)  <*> (mkExpr e)
+  | `(variable_declaration| $x:typed_identifier = $e ) => Statement.value_declaration <$> (mkTypedIdentifier x)  <*> (mkExpr e)
   | `(variable_declaration| $x:typed_identifier) => Except.map Statement.variable_declaration (mkTypedIdentifier x)
   | _ => throw "error parsing variable declaration"
 
 partial def mkLabeledStatement : Syntax → Except String Statement
-  | `(labeled_statement| $l:label $s ) => pure Statement.labelled_statement <*> (mkLabel l) <*> (mkStatement s)
+  | `(labeled_statement| $l:label $s ) => Statement.labelled_statement <$> (mkLabel l) <*> (mkStatement s)
   | _ => throw "error parsing labeled statement"
 
 partial def mkLabel : Syntax → Except String Label
@@ -240,15 +241,15 @@ partial def mkLabel : Syntax → Except String Label
   | _ => throw "error parsing label"
 
 partial def mkAssigmnent : Syntax → Except String Statement
-  | `(assignment| $q:qualified_name = $e ) => pure Statement.variable_assignment <*> (mkQualifiedName q) <*> (mkExpr e)
+  | `(assignment| $q:qualified_name = $e ) => Statement.variable_assignment <$> (mkQualifiedName q) <*> (mkExpr e)
   | `(assignment| $i:ident = $e ) => let name := (QualifiedName.mk [i.getId.toString])
     Except.map (Statement.variable_assignment name) (mkExpr e)
   | _ => throw "error parsing assignment"
 
 partial def mkConditional : Syntax → Except String Conditional
-  | `(conditional| if ( $e ) $s else $es ) => pure Conditional.if_else_statement
-    <*> (mkExpr e) <*> (mkStatement s) <*> (mkStatement es)
-  | `(conditional| if ( $e ) $s ) => pure Conditional.if_statement <*> (mkExpr e) <*> (mkStatement s)
+  | `(conditional| if ( $e ) $s else $es ) => Conditional.if_else_statement <$>
+    (mkExpr e) <*> (mkStatement s) <*> (mkStatement es)
+  | `(conditional| if ( $e ) $s ) => Conditional.if_statement <$> (mkExpr e) <*> (mkStatement s)
   | _ => throw "error parsing assignment"
 
 partial def mkBlock : Syntax → Except String Statement
@@ -272,22 +273,22 @@ partial def mkWhenBlock : Syntax → Except String Statement
 | `(when_block| when $n($[$args],*) $stmt ) => do
   let argsArr := args.map (λ x => x.getId.toString)
   let createNodeFun := λ nameNode stmtNode => Statement.when nameNode  argsArr.toList stmtNode
-  pure  createNodeFun <*> (mkQualifiedName n) <*> (mkStatement stmt)
+  createNodeFun <$> (mkQualifiedName n) <*> (mkStatement stmt)
 | u => throw s!"error parsing when block statement, unknown {u}"
 
-partial def mkTryCatch : Syntax → Except String Statement
-  | `(try_catch| listen $s:statement $[ $c:catch_block ]* ) => do -- why doesn't the '+' pattern work?
+partial def mkListenhandle : Syntax → Except String Statement
+  | `(listen_handle| listen $s:statement $[ $c:catch_block ]* ) => do -- why doesn't the '+' pattern work?
     let catchList <- c.foldrM (init := []) fun x xs => do
-      let cb <- mkCatchBlock x
+      let cb <- mkHandleblock x
       return (cb::xs)
-    Except.map (λ stmt => Statement.try_catch stmt catchList) (mkStatement s)
+    Except.map (λ stmt => Statement.listen_handle stmt catchList) (mkStatement s)
   | _ => throw "error parsing try-catch statement"
 
-partial def mkCatchBlock : Syntax → Except String CatchBlock
+partial def mkHandleblock : Syntax → Except String HandleBlock
   | `(catch_block| handle  $n( $[$args],* ) $s:statement ) =>
   let argsArr := args.map (λ x => x.getId.toString)
-  let createNodeFun := λ nameNode stmtNode => CatchBlock.mk nameNode  argsArr.toList stmtNode
-  pure createNodeFun <*> (mkQualifiedName n) <*> (mkStatement s)
+  let createNodeFun := λ nameNode stmtNode => HandleBlock.mk nameNode  argsArr.toList stmtNode
+  createNodeFun <$> (mkQualifiedName n) <*> (mkStatement s)
   | _ => throw "error parsing catch block"
 
 partial def mkStatement : Syntax → Except String Statement
@@ -298,7 +299,7 @@ partial def mkStatement : Syntax → Except String Statement
   | `(statement| $x:conditional $[;]? ) => Except.map Statement.conditional_stmt (mkConditional x) -- feels unnecessary
   | `(statement| $x:block $[;]? ) => mkBlock x
   | `(statement| $x:await_block $[;]? ) => mkAwaitBlock x
-  | `(statement| $x:try_catch $[;]? ) => mkTryCatch x
+  | `(statement| $x:listen_handle $[;]? ) => mkListenhandle x
   | `(statement| $x:return_stmt $[;]? ) => mkReturnStmt x
   | `(statement| $x:expr $[;]? ) => Except.map Statement.stray_expr (mkExpr x)
   | u => throw s!"error parsing statement, unknown statement {u}"
@@ -330,7 +331,7 @@ partial def mkStructureDeclaration : Syntax → Except String Description
 
 partial def mkInternalFuncDecl : Syntax → Except String Description
   | `(internal_func_decl| $id:typed_identifier ( $args ) $s ) =>
-    pure Description.function_definition <*> (mkTypedIdentifier id) <*> (mkArgList args) <*> (mkStatement s)
+    Description.function_definition <$> (mkTypedIdentifier id) <*> (mkArgList args) <*> (mkStatement s)
   | _ => throw "error parsing internal function declaration"
 
 partial def mkArgList : Syntax → Except String (List TypedIdentifier)
@@ -367,7 +368,7 @@ syntax "[conditional|" conditional "]" : term
 syntax "[block|" block "]" : term
 syntax "[await_block|" await_block "]" : term
 syntax "[when_block|" when_block "]" : term
-syntax "[try_catch|" try_catch "]" : term
+syntax "[listen_handle|" listen_handle "]" : term
 syntax "[catch_block|" catch_block "]" : term
 syntax "[return_stmt|" return_stmt "]" : term
 syntax "[dsl_term|" dsl_term "]" : term
@@ -440,7 +441,7 @@ macro_rules
    | .ok v => return (quote v)
 
 
-def foo := [constval| 42]     
+def foo := [constval| 42]
 #reduce foo
 
 def bar := [dsl_term| 42]
@@ -585,7 +586,7 @@ macro_rules
   | [block| $x:block ] => 
   | [await_block| $x:await_block ] => 
   | [when_block| $x:when_block ] => 
-  | [try_catch| $x:try_catch ] => 
+  | [listen_handle| $x:listen_handle ] => 
   | [catch_block| $x:catch_block ] => 
   | [return_stmt| $x:return_stmt ] => 
   | [dsl_term| $x:dsl_term ] => 
@@ -602,6 +603,9 @@ macro_rules
   | [dsl_transition| $x:dsl_transition ] => 
 -/
 
+def toSyntax : String → Lean.MacroM Lean.Syntax :=
+λ file  => `([file| $(Lean.quote file)])
+
 -- parse functions
 def parseConstval := mkNonTerminalParser `constval mkConstval
 def parseCall := mkNonTerminalParser `call mkCall
@@ -612,3 +616,17 @@ def parseStructureDeclaration := mkNonTerminalParser `structure_declaration mkDe
 def parseExpr := mkNonTerminalParser `expr mkExpr
 def parseFile := mkNonTerminalParser `file mkAST
 def parse := parseFile
+
+-- Round-tripping
+def mkRoundTripFun {α : Type} [ToString α] :
+  (String → Environment → Option String × α) → Environment → α → Option String × α
+  | parseFun, env, a =>
+    let rtString := toString a
+    let rtLines := rtString.split λ c => c == '\n'
+    let rtLArray := Array.mk rtLines
+    let rtPreprocessed := preprocess rtLArray
+    let rt := rtPreprocessed.foldl (λ s₁ s₂ => s₁ ++ "\n" ++ s₂) ""
+    dbg_trace s!"round-trip preprocessed: {rt}"
+    parseFun rt env
+
+def roundTrip := mkRoundTripFun parse

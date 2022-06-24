@@ -1,5 +1,5 @@
-def Identifier := String deriving Inhabited, ToString
-def TIden := Identifier deriving Inhabited, ToString
+def Identifier := String deriving Inhabited, ToString, BEq
+def TIden := Identifier deriving Inhabited, ToString, BEq
 -- def FunctionName := Identifier
 -- def StructureName := Identifier
 -- def Var := Identifier
@@ -8,6 +8,7 @@ namespace Pipeline
 
 mutual
 
+--@[deriving BEq]
 inductive AST
 | structure_descriptions : List Description → AST
 
@@ -29,8 +30,8 @@ inductive Label
 | result_write : Label
 
 -- one or more catch blocks
-inductive CatchBlock
-| mk : QualifiedName → List Identifier → Statement → CatchBlock
+inductive HandleBlock
+| mk : QualifiedName → List Identifier → Statement → HandleBlock
 
 inductive Conditional
 -- if with else
@@ -79,26 +80,18 @@ inductive Expr
 
 inductive Statement
 | labelled_statement : Label → Statement → Statement
-| variable_declaration : TypedIdentifier → Statement -- declare a variable
-| value_declaration : -- declare a variable with a value
-  TypedIdentifier → /- = -/ Expr → Statement
-| variable_assignment : -- assign a var an expr
-  QualifiedName /- = -/ → Expr → Statement
-| conditional_stmt : -- if statement, if else statement
-  Conditional → Statement
--- function call?
-| try_catch :
-  /- try { -/ Statement /- } -/ → List CatchBlock → Statement
-| await :
-  /- await { -/ List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
-| when :
-  /- when -/ QualifiedName → List Identifier → Statement /- } -/ → Statement
-| transition : -- transition to an explicit state
-  /- transition -/ Identifier → Statement
--- should just be a function call
+| variable_declaration : TypedIdentifier → Statement
+| value_declaration : TypedIdentifier →  Expr → Statement
+| variable_assignment : QualifiedName  → Expr → Statement
+| conditional_stmt : Conditional → Statement
+| listen_handle : Statement → List HandleBlock → Statement
+| await : List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
+| when :  QualifiedName → List Identifier → Statement → Statement
+| transition : Identifier → Statement
 | stray_expr : Expr → Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
+-- what about function call?
 
 end  -- mutual
 
@@ -112,19 +105,19 @@ private partial def typedIdentifierToString : TypedIdentifier → String
 
 private partial def descriptionToString : Description → String
 | .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
-| .entry name desc => "controller_entry" ++ (toString name) ++ " " ++ (statementToString desc)
-| .control_flow name desc => "controller_control_flow" ++ (toString name) ++ " " ++ (statementToString desc)
-| .transition name body => "transition" ++ (toString name) ++ (statementToString body)
+| .entry name desc => "controller_entry " ++ (toString name) ++ " " ++ (statementToString desc)
+| .control_flow name desc => "controller_control_flow " ++ (toString name) ++ " " ++ (statementToString desc)
+| .transition name body => "transition " ++ (toString name) ++ (statementToString body)
 -- Function definition
 | .function_definition ret args body =>
   (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
   ++ (statementToString body)
 
 private partial def labelToString : Label → String
-  | .result_write => "result_write"
+  | .result_write => "result_write "
 
-private partial def catchBlockToString : CatchBlock → String
-| .mk name args body => "catch " ++ (qualifiedNameToString name) ++
+private partial def handleBlockToString : HandleBlock → String
+| .mk name args body => "handle " ++ (qualifiedNameToString name) ++
   "(" ++ (String.intercalate ", " (args.map toString)) ++
  ")\n" ++ (statementToString body)
 
@@ -151,23 +144,24 @@ private partial def qualifiedNameToString : QualifiedName → String
     | n::[] => toString n
     | n::ns => (toString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
 
+
 private partial def exprToString : Expr → String
-  | .add x y => (termToString x) ++ "+" ++ (termToString y)
-  | .sub x y => (termToString x) ++ "-" ++ (termToString y)
-  | .mul x y => (termToString x) ++ "*" ++ (termToString y)
-  | .div x y => (termToString x) ++ "/" ++ (termToString y)
-  | .binand x y => (termToString x) ++ "&" ++ (termToString y)
-  | .binor x y => (termToString x) ++ "|" ++ (termToString y)
-  | .binxor x y => (termToString x) ++ "^" ++ (termToString y)
-  | .leftshift x y => (termToString x) ++ "<<" ++ (termToString y)
-  | .rightshift x y => (termToString x) ++ ">>" ++ (termToString y)
-  | .greater_than x y => (termToString x) ++ ">" ++ (termToString y)
-  | .less_than    x y => (termToString x) ++ "<" ++ (termToString y)
-  | .leq    x y => (termToString x) ++ "<=" ++ (termToString y)
-  | .geq    x y => (termToString x) ++ ">=" ++ (termToString y)
-  | .equal        x y => (termToString x) ++ "==" ++ (termToString y)
-  | .not_equal x y => (termToString x) ++ "!=" ++ (termToString y)
-  | .list xs => String.intercalate ", " (xs.map exprToString)
+  | .add x y => (termToString x) ++ " + " ++ (termToString y)
+  | .sub x y => (termToString x) ++ " - " ++ (termToString y)
+  | .mul x y => (termToString x) ++ " * " ++ (termToString y)
+  | .div x y => (termToString x) ++ " / " ++ (termToString y)
+  | .binand x y => (termToString x) ++ " & " ++ (termToString y)
+  | .binor x y => (termToString x) ++ " | " ++ (termToString y)
+  | .binxor x y => (termToString x) ++ " ^ " ++ (termToString y)
+  | .leftshift x y => (termToString x) ++ " << " ++ (termToString y)
+  | .rightshift x y => (termToString x) ++ " >> " ++ (termToString y)
+  | .greater_than x y => (termToString x) ++ " > " ++ (termToString y)
+  | .less_than    x y => (termToString x) ++ " < " ++ (termToString y)
+  | .leq    x y => (termToString x) ++ " <= " ++ (termToString y)
+  | .geq    x y => (termToString x) ++ " >= " ++ (termToString y)
+  | .equal        x y => (termToString x) ++ " == " ++ (termToString y)
+  | .not_equal x y => (termToString x) ++ " != " ++ (termToString y)
+  | .list xs => "[" ++ String.intercalate ", " (xs.map exprToString) ++ "]"
   | .some_term x => termToString x
 
 private partial def statementToString : Statement → String
@@ -176,12 +170,12 @@ private partial def statementToString : Statement → String
   | .value_declaration tid val => (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
   | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
   | .conditional_stmt cond => conditionalToString cond
-  | .try_catch try_block catches => (statementToString try_block) ++ "\n" ++ (String.intercalate "\n" (catches.map catchBlockToString))
-  | .await whens => "await\n" ++ String.intercalate "\n" (whens.map statementToString)
+  | .listen_handle listen_block catches => "listen " ++ (statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map handleBlockToString))
+  | .await whens => "await {\n" ++ String.intercalate "\n" (whens.map statementToString) ++ "\n}\n"
   | .when msg args body => "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ ")" ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .stray_expr e => exprToString e
-  | .block stmts => "{" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s ++ ";"))  ++ "\n}"
+  | .block stmts => " {\n" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s))  ++ "\n}\n"
   | .return_stmt e => "return " ++ exprToString e
 
 end -- mutual
