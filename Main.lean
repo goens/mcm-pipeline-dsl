@@ -1,6 +1,7 @@
 import PipelineDsl
 import Lean
 import PipelineDsl.Preprocess
+import PipelineDsl.translation
 open Lean Pipeline
 
 def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -25,5 +26,12 @@ def main (args : List String): IO Unit := do
   println! s!"round-trip: \n---\n{round.2}\n---\n"
   let sanity_check := toString parsed.2 == toString round.2
   println! s!"parse . toString . parse . toString == parse . toString? : {sanity_check}"
+
+  -- -- transform tests...
+  -- let tsfm0 := ast0002_get_controllers parsed.2
+  -- let tsfm1 := ast0004 (ast0002_get_controllers parsed.2)
+  -- println! s!"controller entries: {tsfm0}"
+  -- println! s!"controller inits: {tsfm1}"
+
   return ()
 
