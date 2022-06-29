@@ -95,38 +95,55 @@ def ast0000 ( input : Pipeline.AST) : Identifier :=
 open Pipeline AST
 -- How to write this more idiomatically?
 
+
+-- === Funcs to get last assn stmt identifier from controllers list ===
+
 -- NOTE: Shouldn't get an empty list?
 -- But going to write this for now...
 def ast0009_last_identifier (idens : List Identifier) [Inhabited Identifier] :=
   match idens with 
-  | [one] => dbg_trace idens
+  | [one] => --dbg_trace idens
   one
   | h::t => ast0009_last_identifier t
   | [] => default
 
 def ast0008_qname (qname : QualifiedName) :=
   match qname with
-  | QualifiedName.mk lst =>  dbg_trace "TEST5"
+  | QualifiedName.mk lst => -- dbg_trace "TEST5"
   ast0009_last_identifier lst
 
+def ast0018_term_var (term : Term) :=
+  match term with
+  | Term.var var => var
+  | _ => default
 
-def ast0007_find_init (stmt : Statement) :=
-  match stmt with
-  | Statement.variable_assignment qname expr => dbg_trace "TEST4"
-  ast0008_qname qname
+def ast0017_expr_to_ident (expr : Expr) :=
+  match expr with
+  | Expr.some_term term => ast0018_term_var term
   | _ => default
   
 
+-- Now this returns a "list" of identifiers
+-- for a given statement
+def ast0007_find_init (stmt : Statement) :=
+  match stmt with
+  | Statement.variable_assignment qname expr => -- dbg_trace "TEST4"
+  if (ast0008_qname qname) == "init_entry"
+    then [ast0017_expr_to_ident expr]
+    else []
+  | _ => default
+
+
 def ast0006_match_block (stmts : Statement) :=
   match stmts with
-  | Statement.block blk =>  dbg_trace "TEST3"
-    blk.map ast0007_find_init
+  | Statement.block blk => -- dbg_trace "TEST3"
+    List.join (blk.map ast0007_find_init)
   | _ => []
 
 
 def ast0005 (ctrl : Description) :=
   match ctrl with
-  | Description.controller identifier stmt =>  dbg_trace "TEST2"
+  | Description.controller identifier stmt => -- dbg_trace "TEST2"
     ast0006_match_block stmt
   | _ => []
   -- find stmt with init transition
@@ -139,8 +156,10 @@ def ast0004 (controller_list : List Description) :=
   -- -- then all other transitions
   -- | lst => lst
   -- | [] => []
- dbg_trace "TEST1"
+ --dbg_trace "TEST1"
   List.join (controller_list.map ast0005)
+
+-- ======= Funcs used to get controller descripts =========
 
 def ast0003_get_controllers (descript : Description) : List Description :=
   match descript with
@@ -149,11 +168,169 @@ def ast0003_get_controllers (descript : Description) : List Description :=
 
 def ast0002_get_controllers (ast : AST) : List Description :=
   match ast with
-  | structure_descriptions lst => dbg_trace "TEST"
+  | structure_descriptions lst => --dbg_trace "TEST"
   List.join (lst.map ast0003_get_controllers)
 
----------- Attempt to Extract controller info ----------
+-- ======= Funcs used to get controller entries descripts =========
 
+def ast0011_get_entries (descript : Description) : List Description :=
+  match descript with
+  | Description.entry iden stmt => [descript]
+  | _ => []
+
+structure controller_info where
+  -- Name, like LQ, SQ, SB, etc.
+  name : Identifier
+  -- The controller description, probably some info here...
+  controller_descript : Description
+  -- The entry description, probably some info here...
+  entry_descript : Description
+  -- The init transition
+  init_trans : Identifier
+  -- Entry vars, like seq_num, ld_seq_num, inst, read_value
+  -- NOTE: leave for now, figure out tomorrow
+  -- Or translate from the entry_descript
+  state_vars : List Identifier
+  -- list of transitions this structure takes
+  -- should be: Description.transition
+  -- NOTE: Should probably get this tomorrow first
+  -- since after getting this info,
+  -- there's technically enough info to do the
+  -- translation to Murphi...
+  transition_list : List Description
+
+-- def controller_info_ToString : controller_info → String
+--   "=== controller_info ===\n" ++ toString name
+
+-- instance : ToString controller_info where toString := controller_info_ToString
+instance : ToString controller_info := ⟨ λ i => "===controller===\n" ++ "NAME: " ++ toString i.name ++ "\n" ++ "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++ "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++ "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++ "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++ "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"⟩ 
+
+def ast0021_empty_controller : controller_info :=
+  {name := default, controller_descript := default, entry_descript := default, init_trans := default, state_vars := default, transition_list := default}
+
+def ast0022_set_controller_name ( name : Identifier ) (ctrl : controller_info) : controller_info :=
+  {name := name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ctrl.state_vars, transition_list := ctrl.transition_list}
+
+def ast0024_set_entry_descript (ctrl : controller_info) ( descript : Description ) : controller_info :=
+  {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := descript, init_trans := ctrl.init_trans, state_vars := ctrl.state_vars, transition_list := ctrl.transition_list}
+
+def ast0025_set_entry_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0024_set_entry_descript ctrl_and_entry.1 ctrl_and_entry.2 
+
+def ast0026_set_controller_init (ctrl : controller_info) ( trans : Identifier ) : controller_info :=
+  {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := trans, state_vars := ctrl.state_vars, transition_list := ctrl.transition_list}
+
+def ast0027_set_controller_init ( ctrl_and_entry : controller_info × Identifier ) :=
+  ast0026_set_controller_init ctrl_and_entry.1 ctrl_and_entry.2 
+
+def ast0023_entry_to_name (entry : Description) :=
+  match entry with
+  | Description.entry iden stmt => [iden]
+  | _ => []
+
+-- Description is really entries (return type)
+def ast0010_get_entries (ast : AST) : List Description :=
+  match ast with
+  | structure_descriptions lst =>
+  --dbg_trace "gettin' entries y'all!"
+  List.join (lst.map ast0011_get_entries)
+
+-- Get Description of Controller
+
+def ast0028_get_controllers (descript : Description) : List Description :=
+  match descript with
+  | Description.controller iden stmt => [descript]
+  | _ => []
+
+def ast0029_get_controllers (ast : AST) : List Description :=
+  match ast with
+  | structure_descriptions lst =>
+  --dbg_trace "gettin' entries y'all!"
+  List.join (lst.map ast0028_get_controllers)
+
+def ast0030_set_controller_descript (ctrl : controller_info) ( descript : Description ) : controller_info :=
+  {name := ctrl.name, controller_descript := descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ctrl.state_vars, transition_list := ctrl.transition_list}
+
+def ast0031_set_controller_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0030_set_controller_descript ctrl_and_entry.1 ctrl_and_entry.2 
+
+---------- Extract entry info ----------
+-- find stmt with init transition
+def ast0014_map_statements (ctrl : Description) :=
+  match ctrl with
+  | Description.entry identifier stmt =>
+    --dbg_trace "searching thru stmts"
+    ast0006_match_block stmt
+  | _ => []
+
+def ast0016_get_ident ( input: Description ) :=
+  -- Get the get ident
+  match input with
+  | Description.entry iden stmt => [iden]
+  | _ => []
+
+--def ast0015_pair_together (entry_list)
+def ast0015_entry_name (entry_list : List Description) :=
+  --dbg_trace "get entry structure names"
+    List.join (entry_list.map ast0016_get_ident)
+
+-- from list of entries, process each one
+def ast0013_map_entries (entry_list : List Description) :=
+  --dbg_trace "Workin' through dem' entries"
+  List.join (entry_list.map ast0014_map_statements)
+  -- Don't join list, for each one we try to find transitions
+  -- connected to each list
+  -- (entry_list.map ast0014_map_statements)
+
+-- ===== Get info about 
+
+-- def ast0020_combine_controller_lists ( entries : list description) (init_t : identifier) :=
+--   -- join the two lists elem by elem
+--   ...
+--   -- then run a function on them to join each tuple into the struct
+def ast0020_controllers_from_ident_list (iden : Identifier) :=
+  ast0022_set_controller_name iden ast0021_empty_controller
+
+-- Tie ast0010 (entries / names / identifiers)
+-- and ast0013 entry first transition
+-- into a controller_into struct
+def ast0019_controller_info (ast : AST) :=
+  -- ast0020_combine_controller_lists (ast0010_get_entries ast) (ast0013_map_entries (ast0010_get_entries ast))
+  -- First get entries, then entry names
+  (
+  (
+  (
+  (
+  (
+  (
+    (
+      (
+        List.join
+        ((ast0010_get_entries ast).map ast0023_entry_to_name)
+      ).map
+    -- Now this makes "controller_info" objects from the names
+    ast0020_controllers_from_ident_list
+    ).zip
+    -- Then add the entry AST objs to the controller
+    -- First zip the list of controllers & entry AST objs
+    (ast0010_get_entries ast)
+  ).map
+  -- Then map the tuple list to a fn to add the entry Description info
+  ast0025_set_entry_descript
+  -- Now zip this with the init transition name
+  ).zip
+  (ast0013_map_entries (ast0010_get_entries ast))
+  ).map
+  -- and map it to add the init_transition name to the controller
+  ast0027_set_controller_init
+  ).zip
+  -- Zip with the controller info
+  (ast0029_get_controllers ast)
+  ).map
+  -- map to add it to the controller description
+  ast0031_set_controller_descript
+  )
+  
 
 --- ==== AST tests =====
 

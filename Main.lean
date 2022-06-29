@@ -28,10 +28,29 @@ def main (args : List String): IO Unit := do
   println! s!"parse . toString . parse . toString == parse . toString? : {sanity_check}"
 
   -- -- transform tests...
-  -- let tsfm0 := ast0002_get_controllers parsed.2
-  -- let tsfm1 := ast0004 (ast0002_get_controllers parsed.2)
-  -- println! s!"controller entries: {tsfm0}"
-  -- println! s!"controller inits: {tsfm1}"
+  -- println! s!"===== Transform Testing ====="
+
+  -- println! s!"=== tsfm0 ==="
+  -- let tsfm0_controllers := ast0002_get_controllers parsed.2
+  -- println! s!"controller entries: \n{tsfm0_controllers}"
+
+  -- println! s!"=== tsfm1 ==="
+  -- let tsfm1_last_assn_stmt := ast0004 (ast0002_get_controllers parsed.2)
+  -- println! s!"controller inits: \n{tsfm1_last_assn_stmt}"
+
+  -- println! s!"=== tsfm2 ==="
+  -- let tsfm2_entries := ast0010_get_entries parsed.2
+  -- println! s!"controller entries: \n{tsfm2_entries}"
+
+  -- println! s!"=== tsfm3 ==="
+  -- let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
+  -- println! s!"controller entries: \n{tsfm3_last_assn_stmt}"
+
+  -- println! s!"=== tsfm4 ==="
+  -- let tsfm4 := ast0019_controller_info parsed.2
+  -- println! s!"controller entries: \n{tsfm4}"
+
+  -- println! s!"===== Transform Testing Concluding ====="
 
   return ()
 
