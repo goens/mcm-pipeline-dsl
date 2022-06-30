@@ -190,7 +190,7 @@ structure controller_info where
   -- Entry vars, like seq_num, ld_seq_num, inst, read_value
   -- NOTE: leave for now, figure out tomorrow
   -- Or translate from the entry_descript
-  state_vars : List Identifier
+  state_vars : List TypedIdentifier
   -- list of transitions this structure takes
   -- should be: Description.transition
   -- NOTE: Should probably get this tomorrow first
@@ -203,7 +203,16 @@ structure controller_info where
 --   "=== controller_info ===\n" ++ toString name
 
 -- instance : ToString controller_info where toString := controller_info_ToString
-instance : ToString controller_info := ⟨ λ i => "===controller===\n" ++ "NAME: " ++ toString i.name ++ "\n" ++ "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++ "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++ "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++ "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++ "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"⟩ 
+instance : ToString controller_info := ⟨
+  λ i =>
+    "===controller===\n" ++
+    "NAME: " ++ toString i.name ++ "\n" ++
+    "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++
+    "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
+    "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
+    "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
+    "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
+  ⟩ 
 
 def ast0021_empty_controller : controller_info :=
   {name := default, controller_descript := default, entry_descript := default, init_trans := default, state_vars := default, transition_list := default}
@@ -291,12 +300,31 @@ def ast0013_map_entries (entry_list : List Description) :=
 def ast0020_controllers_from_ident_list (iden : Identifier) :=
   ast0022_set_controller_name iden ast0021_empty_controller
 
+def ast0034_get_var_decls ( decl : Statement ) :=
+  match decl with
+  | Statement.variable_declaration type_iden => [type_iden]
+  | _ => []
+
+def ast0033_get_block ( blk : Statement ) :=
+  match blk with
+  | Statement.block lst => List.join (lst.map ast0034_get_var_decls)
+  | _ => []
+
+def ast0032_get_entry_vars ( entry : Description ) :=
+  match entry with
+  | Description.entry iden stmt => ast0033_get_block stmt
+  | _ => default
+
+def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
+  {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ast0032_get_entry_vars ctrl.entry_descript, transition_list := ctrl.transition_list}
+
 -- Tie ast0010 (entries / names / identifiers)
 -- and ast0013 entry first transition
 -- into a controller_into struct
 def ast0019_controller_info (ast : AST) :=
   -- ast0020_combine_controller_lists (ast0010_get_entries ast) (ast0013_map_entries (ast0010_get_entries ast))
   -- First get entries, then entry names
+  (
   (
   (
   (
@@ -329,7 +357,14 @@ def ast0019_controller_info (ast : AST) :=
   ).map
   -- map to add it to the controller description
   ast0031_set_controller_descript
+  ).map
+  ast0035_ctrl_obj_set_vars
   )
+  -- Now it has a: name, ctrl descript, entry discript
+  -- Still need: state vars, transition list
+  -- So: (1) Write func to check Controller obj to extract state vars
+  -- from the entry
+  -- (2) get the transition list by some kind of tree search
   
 
 --- ==== AST tests =====
