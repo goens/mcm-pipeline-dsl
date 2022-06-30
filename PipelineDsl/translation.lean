@@ -342,7 +342,49 @@ def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
 -- 3. Was trying to put it into a DFS or BFS func framework
 -- Trying to figure out how to get it to work with foldl
 -- to traverse the different nodes
-def ast0038_get_child_descripts
+
+-- def get_transitions_from_description_transition
+-- (transit : Description)
+-- :=
+--   match transit with
+--   | Description.transition iden stmt =>
+--     match stmt with
+--     | Statement.block lst =>
+--       lst.filter
+--       (
+--         λ stmt1 => match stmt1 with
+--         | Statement.transition iden1 => true
+--         | _ => false
+--       )
+--     | Statement.await await_lst => 
+--     | Statement.when
+--     | Statement.block
+--     | Statement.listen_handle
+--     | _ => []
+--   | _ => []
+
+partial def get_stmts_with_transitions
+(stmt : Statement)
+:=
+          dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          dbg_trace stmt
+          dbg_trace "==END GET-TRANSITIONS ==\n"
+
+  match stmt with
+  | Statement.transition ident => [ident]
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
+    | Conditional.if_statement expr1 stmt1 => get_stmts_with_transitions stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
+  | Statement.await lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
+  | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
+  -- | Statement.listen_handle  => 
+  | _ => default
+
+-- partial def ast0038_get_child_descripts
+
+partial def ast0038_trans_ident_to_trans_list
 (trans_name : Identifier)
 -- basically, list of all transitions, the "graph". this should always be
 -- the same.
@@ -355,15 +397,25 @@ def ast0038_get_child_descripts
     if (visited.contains next)
       then visited
       else -- find the child nodes
-        ast0038_get_child_descripts next list visited
+        -- dbg_trace "==&&&&&&&&==\n"
+        -- dbg_trace next
+        -- dbg_trace "==&&&&&&&&==\n"
+        ast0038_trans_ident_to_trans_list next list visited
   )
   -- append the current node (trans_name)
   (visited.cons trans_name)
   (
+  List.join
+  (
   -- Attempt to get child nodes from this node
   -- If element's identifier matches trans_name
+  -- NOTE:
+  -- Must also do a kind of "deeper"
+  -- search if Description can contain
+  -- more statements, like await, or when
   (
   List.join (
+  -- This list is actually just the current node...
   (
   list.filter (
     λ descript => match descript with
@@ -372,35 +424,97 @@ def ast0038_get_child_descripts
     | _ => false
   )
   ).map
-  -- with this list, now we find the transition stmts inside the
+  -- current node (in a list) now we find the transition stmts inside the
   -- matching transitions, these transition identifiers are
   -- the "child nodes"
   (
     λ transit => match transit with
     | Description.transition iden stmt =>
+          
+        dbg_trace "==BEGIN &&&&&&&&==\n"
+        dbg_trace trans_name
+        dbg_trace stmt
+        dbg_trace "==END &&&&&&&&==\n"
       match stmt with
       | Statement.block lst =>
         lst.filter
         (
           λ stmt1 => match stmt1 with
+          | Statement.conditional_stmt cond => true
           | Statement.transition iden1 => true
+          | Statement.block lst_stmts1 => true
+          | Statement.await await_lst =>
+          dbg_trace "==BEGIN await ==\n"
+          dbg_trace trans_name
+          dbg_trace await_lst
+          dbg_trace "==END await ==\n"
+          true
+          | Statement.when qname ident_list stmt =>
+          dbg_trace "==BEGIN when ==\n"
+          dbg_trace trans_name
+          dbg_trace stmt
+          dbg_trace "==END when ==\n"
+          true
           | _ => false
         )
+      | Statement.await await_lst => await_lst
+      | Statement.when qname ident_list stmt => [stmt]
+      | Statement.transition iden2 => [stmt]
+      | Statement.conditional_stmt cond => [stmt]
+      -- | Statement.listen_handle  => 
       | _ => []
     | _ => []
   )
   )
   ).map
-  (
-    λ trans_stmt => match trans_stmt with
-    | Statement.transition ident => ident
-    | _ => default
-  )
+  get_stmts_with_transitions
+  -- (
+  --   λ trans_stmt => match trans_stmt with
+  --   | Statement.transition ident => ident
+  --   | _ => default
+  -- )
+
   -- Now try to recursively go through this list of child nodes
   -- Select the child nodes
   )
+  )
   -- 
 
+def ast0039_trans_ident_to_list
+(trans_names : List Identifier)
+(list : List Description)
+:=
+  -- for each transition identifier,
+  -- find it's corresponding transition object!
+  List.join
+  (
+  trans_names.map
+  (
+    λ iden =>
+      list.filter
+      (
+        λ descript =>
+          match descript with
+          | Description.transition iden1 stmt =>
+            if (iden1 == iden)
+              then true
+              else false
+          | _ => false
+      )
+  )
+  )
+
+def ast0040_get_trans
+(ast : AST)
+:=
+  match ast with
+  | structure_descriptions lst =>
+    lst.filter
+    (
+      λ descript => match descript with
+        | Description.transition iden stmt => true
+        | _ => false
+    )
 
 -- A transition is a subtype of a Description,
 -- so returning a list of transitions is a list of descriptions
@@ -416,24 +530,39 @@ def ast0038_get_child_descripts
 --      -- each child node does the same thing
 -- each child node should have a list of visited nodes
 -- visited nodes are removed from list of to visit nodes
-def ast0037_trans_ident_to_trans_list
--- node to visit
-(trans_name : Identifier)
--- All the AST nodes
-(list : List Description)
--- visited nodes
+
+-- def ast0037_trans_ident_to_trans_list
+-- -- node to visit
+-- (trans_name : Identifier)
+-- -- All the AST nodes
+-- (list : List Description)
+-- -- visited nodes
 -- (visited : List Identifier)
-: List Description
+-- : List Description
+-- :=
+--   -- add this node to visited list
+--   -- get list of child nodes to visit
+--   -- work through this list of child nodes
+--   ast0038_get_child_descripts trans_name list
+
+--   --visited.concat trans_name
+
+def ast0036_ctrl_obj_find_trans
+-- (ctrl : controller_info)
+-- (all_transitions : List Description)
+(ctrl_and_all_trans : controller_info × List Description)
+: controller_info :=
+  {name := ctrl_and_all_trans.1.name, controller_descript := ctrl_and_all_trans.1.controller_descript, entry_descript := ctrl_and_all_trans.1.entry_descript, init_trans := ctrl_and_all_trans.1.init_trans, state_vars := ctrl_and_all_trans.1.state_vars, transition_list := ast0039_trans_ident_to_list (ast0038_trans_ident_to_trans_list ctrl_and_all_trans.1.init_trans ctrl_and_all_trans.2 []) ctrl_and_all_trans.2}
+
+def ast0041_list_ctrl_find_trans
+(ctrls : List controller_info)
+(all_transitions : List Description)
 :=
-  -- add this node to visited list
-  -- get list of child nodes to visit
-  -- work through this list of child nodes
-  ast0038_get_child_descripts trans_name list
-
-  --visited.concat trans_name
-
-def ast0036_ctrl_obj_find_trans (ctrl : controller_info) : controller_info :=
-  {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ctrl.state_vars, transition_list := ast0037_trans_ident_to_trans_list ctrl.init_trans}
+  (
+  ctrls.zip
+  (List.replicate ctrls.length all_transitions)
+  ).map
+  ast0036_ctrl_obj_find_trans
 
 -- Tie ast0010 (entries / names / identifiers)
 -- and ast0013 entry first transition
@@ -441,6 +570,8 @@ def ast0036_ctrl_obj_find_trans (ctrl : controller_info) : controller_info :=
 def ast0019_controller_info (ast : AST) :=
   -- ast0020_combine_controller_lists (ast0010_get_entries ast) (ast0013_map_entries (ast0010_get_entries ast))
   -- First get entries, then entry names
+  ast0041_list_ctrl_find_trans
+  -- Arg1
   (
   (
   (
@@ -477,11 +608,14 @@ def ast0019_controller_info (ast : AST) :=
   ).map
   ast0035_ctrl_obj_set_vars
   )
+  -- Arg2
+  (ast0040_get_trans ast)
   -- Now it has a: name, ctrl descript, entry discript
   -- Still need: state vars, transition list
   -- So: (1) Write func to check Controller obj to extract state vars
   -- from the entry
   -- (2) get the transition list by some kind of tree search
+
   
 
 --- ==== AST tests =====
