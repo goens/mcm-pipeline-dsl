@@ -210,7 +210,7 @@ instance : ToString controller_info := ⟨
     "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++
     "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
     "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
-    "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
+    -- "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 
@@ -317,6 +317,119 @@ def ast0032_get_entry_vars ( entry : Description ) :=
 
 def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
   {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ast0032_get_entry_vars ctrl.entry_descript, transition_list := ctrl.transition_list}
+
+-- def ast0039_match_ident
+-- ()
+-- ()
+
+-- def ast0039_descript_ident_matches_ident
+-- ( descript : Description )
+-- ( ident : Identifier )
+-- :=
+--   match descript with
+--   | Description.transition iden stmt =>
+--     iden == ident
+--     -- match stmt with
+--     -- | Statement.block lst =>
+--     --   lst.filter (
+--     --     λ stmt1 => match stmt1 with
+--     --     | Statement.transition iden1 => iden1 /- where stmts are transitions-/)
+
+-- AZ CHECKPOINT:
+-- 1. Was working on a graph traversal func
+-- 2. The core of the logic is in the parenthesis
+-- in the else case in the if statement
+-- 3. Was trying to put it into a DFS or BFS func framework
+-- Trying to figure out how to get it to work with foldl
+-- to traverse the different nodes
+def ast0038_get_child_descripts
+(trans_name : Identifier)
+(list : List Description)
+(visited : List Identifier)
+:=
+  List.foldl (
+    λ visited trans_name =>
+    if (visited.contains trans_name)
+      then visited
+      else -- find the child nodes
+        (
+        -- Attempt to get child nodes from this node
+        -- If element's identifier matches trans_name
+        (
+        List.join (
+        (
+        list.filter (
+          λ descript => match descript with
+          | Description.transition iden stmt =>
+            iden == trans_name
+          | _ => false
+        )
+        ).map
+        -- with this list, now we find the transition stmts inside the
+        -- matching transitions, these transition identifiers are
+        -- the "child nodes"
+        (
+          λ transit => match transit with
+          | Description.transition iden stmt =>
+            match stmt with
+            | Statement.block lst =>
+              lst.filter
+              (
+                λ stmt1 => match stmt1 with
+                | Statement.transition iden1 => true
+                | _ => false
+              )
+            | _ => []
+          | _ => []
+        )
+        )
+        ).map
+        (
+          λ trans_stmt => match trans_stmt with
+          | Statement.transition ident => ident
+          | _ => default
+        )
+        -- Now try to recursively go through this list of child nodes
+        -- Select the child nodes
+        )
+  )
+  -- append the current node (trans_name)
+  (visited.cons trans_name)
+  -- 
+
+
+-- A transition is a subtype of a Description,
+-- so returning a list of transitions is a list of descriptions
+-- This should be recursively applied on a list of Transitions....
+-- Algorithm Idea:
+-- Inputs: (1) List of transition names to search for,
+-- and a flag to show if it has been visited?
+-- 1. remove node i'm visiting from nodes to visit 
+-- 2. (do op on this node)
+-- 3. work on child nodes:
+-- 3.a) DFS operate one by one
+--      recursively call this fn on each child node
+--      -- each child node does the same thing
+-- each child node should have a list of visited nodes
+-- visited nodes are removed from list of to visit nodes
+def ast0037_trans_ident_to_trans_list
+-- node to visit
+(trans_name : Identifier)
+-- All the AST nodes
+(list : List Description)
+-- visited nodes
+-- (visited : List Identifier)
+: List Description
+:=
+  -- add this node to visited list
+  -- get list of child nodes to visit
+  -- work through this list of child nodes
+  ast0038_get_child_descripts trans_name list
+
+  --visited.concat trans_name
+
+def ast0036_ctrl_obj_find_trans (ctrl : controller_info) : controller_info :=
+  {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ctrl.state_vars, transition_list := ast0037_trans_ident_to_trans_list ctrl.init_trans}
 
 -- Tie ast0010 (entries / names / identifiers)
 -- and ast0013 entry first transition
