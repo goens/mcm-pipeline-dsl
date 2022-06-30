@@ -344,57 +344,61 @@ def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
 -- to traverse the different nodes
 def ast0038_get_child_descripts
 (trans_name : Identifier)
+-- basically, list of all transitions, the "graph". this should always be
+-- the same.
 (list : List Description)
 (visited : List Identifier)
 :=
-  List.foldl (
-    λ visited trans_name =>
-    if (visited.contains trans_name)
+  List.foldl
+  (
+    λ visited next =>
+    if (visited.contains next)
       then visited
       else -- find the child nodes
-        (
-        -- Attempt to get child nodes from this node
-        -- If element's identifier matches trans_name
-        (
-        List.join (
-        (
-        list.filter (
-          λ descript => match descript with
-          | Description.transition iden stmt =>
-            iden == trans_name
-          | _ => false
-        )
-        ).map
-        -- with this list, now we find the transition stmts inside the
-        -- matching transitions, these transition identifiers are
-        -- the "child nodes"
-        (
-          λ transit => match transit with
-          | Description.transition iden stmt =>
-            match stmt with
-            | Statement.block lst =>
-              lst.filter
-              (
-                λ stmt1 => match stmt1 with
-                | Statement.transition iden1 => true
-                | _ => false
-              )
-            | _ => []
-          | _ => []
-        )
-        )
-        ).map
-        (
-          λ trans_stmt => match trans_stmt with
-          | Statement.transition ident => ident
-          | _ => default
-        )
-        -- Now try to recursively go through this list of child nodes
-        -- Select the child nodes
-        )
+        ast0038_get_child_descripts next list visited
   )
   -- append the current node (trans_name)
   (visited.cons trans_name)
+  (
+  -- Attempt to get child nodes from this node
+  -- If element's identifier matches trans_name
+  (
+  List.join (
+  (
+  list.filter (
+    λ descript => match descript with
+    | Description.transition iden stmt =>
+      iden == trans_name
+    | _ => false
+  )
+  ).map
+  -- with this list, now we find the transition stmts inside the
+  -- matching transitions, these transition identifiers are
+  -- the "child nodes"
+  (
+    λ transit => match transit with
+    | Description.transition iden stmt =>
+      match stmt with
+      | Statement.block lst =>
+        lst.filter
+        (
+          λ stmt1 => match stmt1 with
+          | Statement.transition iden1 => true
+          | _ => false
+        )
+      | _ => []
+    | _ => []
+  )
+  )
+  ).map
+  (
+    λ trans_stmt => match trans_stmt with
+    | Statement.transition ident => ident
+    | _ => default
+  )
+  -- Now try to recursively go through this list of child nodes
+  -- Select the child nodes
+  )
   -- 
 
 
