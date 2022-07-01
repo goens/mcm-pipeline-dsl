@@ -193,16 +193,22 @@ structure controller_info where
   state_vars : List TypedIdentifier
   -- list of transitions this structure takes
   -- should be: Description.transition
-  -- NOTE: Should probably get this tomorrow first
-  -- since after getting this info,
-  -- there's technically enough info to do the
-  -- translation to Murphi...
   transition_list : List Description
 
--- def controller_info_ToString : controller_info → String
---   "=== controller_info ===\n" ++ toString name
+-- private partial def typedIdentifierToString : TypedIdentifier → String
+--   | .mk t id => (toString t) ++ " " ++ (toString id)
 
--- instance : ToString controller_info where toString := controller_info_ToString
+-- instance : ToString (TypedIdentifier) :=
+-- ⟨
+--   -- The (toString t) cannot synthesize!
+--   λ t id => (toString t) ++ " " ++ (toString id)
+-- ⟩
+
+-- instance : ToString (List TypedIdentifier) :=
+-- ⟨
+--   λ lst => String.join ( (lst.map toString).intercalate [[","]] )  --.intercalate
+-- ⟩
+
 instance : ToString controller_info := ⟨
   λ i =>
     "===controller===\n" ++
@@ -318,57 +324,12 @@ def ast0032_get_entry_vars ( entry : Description ) :=
 def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
   {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ast0032_get_entry_vars ctrl.entry_descript, transition_list := ctrl.transition_list}
 
--- def ast0039_match_ident
--- ()
--- ()
-
--- def ast0039_descript_ident_matches_ident
--- ( descript : Description )
--- ( ident : Identifier )
--- :=
---   match descript with
---   | Description.transition iden stmt =>
---     iden == ident
---     -- match stmt with
---     -- | Statement.block lst =>
---     --   lst.filter (
---     --     λ stmt1 => match stmt1 with
---     --     | Statement.transition iden1 => iden1 /- where stmts are transitions-/)
-
--- AZ CHECKPOINT:
--- 1. Was working on a graph traversal func
--- 2. The core of the logic is in the parenthesis
--- in the else case in the if statement
--- 3. Was trying to put it into a DFS or BFS func framework
--- Trying to figure out how to get it to work with foldl
--- to traverse the different nodes
-
--- def get_transitions_from_description_transition
--- (transit : Description)
--- :=
---   match transit with
---   | Description.transition iden stmt =>
---     match stmt with
---     | Statement.block lst =>
---       lst.filter
---       (
---         λ stmt1 => match stmt1 with
---         | Statement.transition iden1 => true
---         | _ => false
---       )
---     | Statement.await await_lst => 
---     | Statement.when
---     | Statement.block
---     | Statement.listen_handle
---     | _ => []
---   | _ => []
-
 partial def get_stmts_with_transitions
 (stmt : Statement)
 :=
-          dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
-          dbg_trace stmt
-          dbg_trace "==END GET-TRANSITIONS ==\n"
+          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          -- dbg_trace stmt
+          -- dbg_trace "==END GET-TRANSITIONS ==\n"
 
   match stmt with
   | Statement.transition ident => [ident]
@@ -381,8 +342,6 @@ partial def get_stmts_with_transitions
   | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
   -- | Statement.listen_handle  => 
   | _ => default
-
--- partial def ast0038_get_child_descripts
 
 partial def ast0038_trans_ident_to_trans_list
 (trans_name : Identifier)
@@ -413,6 +372,8 @@ partial def ast0038_trans_ident_to_trans_list
   -- Must also do a kind of "deeper"
   -- search if Description can contain
   -- more statements, like await, or when
+  -- NOTE:
+  -- Also Conditionals (if statements) as well!
   (
   List.join (
   -- This list is actually just the current node...
@@ -431,10 +392,10 @@ partial def ast0038_trans_ident_to_trans_list
     λ transit => match transit with
     | Description.transition iden stmt =>
           
-        dbg_trace "==BEGIN &&&&&&&&==\n"
-        dbg_trace trans_name
-        dbg_trace stmt
-        dbg_trace "==END &&&&&&&&==\n"
+        -- dbg_trace "==BEGIN &&&&&&&&==\n"
+        -- dbg_trace trans_name
+        -- dbg_trace stmt
+        -- dbg_trace "==END &&&&&&&&==\n"
       match stmt with
       | Statement.block lst =>
         lst.filter
@@ -444,16 +405,16 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.transition iden1 => true
           | Statement.block lst_stmts1 => true
           | Statement.await await_lst =>
-          dbg_trace "==BEGIN await ==\n"
-          dbg_trace trans_name
-          dbg_trace await_lst
-          dbg_trace "==END await ==\n"
+          -- dbg_trace "==BEGIN await ==\n"
+          -- dbg_trace trans_name
+          -- dbg_trace await_lst
+          -- dbg_trace "==END await ==\n"
           true
           | Statement.when qname ident_list stmt =>
-          dbg_trace "==BEGIN when ==\n"
-          dbg_trace trans_name
-          dbg_trace stmt
-          dbg_trace "==END when ==\n"
+          -- dbg_trace "==BEGIN when ==\n"
+          -- dbg_trace trans_name
+          -- dbg_trace stmt
+          -- dbg_trace "==END when ==\n"
           true
           | _ => false
         )
@@ -468,17 +429,8 @@ partial def ast0038_trans_ident_to_trans_list
   )
   ).map
   get_stmts_with_transitions
-  -- (
-  --   λ trans_stmt => match trans_stmt with
-  --   | Statement.transition ident => ident
-  --   | _ => default
-  -- )
-
-  -- Now try to recursively go through this list of child nodes
-  -- Select the child nodes
   )
   )
-  -- 
 
 def ast0039_trans_ident_to_list
 (trans_names : List Identifier)
@@ -515,37 +467,6 @@ def ast0040_get_trans
         | Description.transition iden stmt => true
         | _ => false
     )
-
--- A transition is a subtype of a Description,
--- so returning a list of transitions is a list of descriptions
--- This should be recursively applied on a list of Transitions....
--- Algorithm Idea:
--- Inputs: (1) List of transition names to search for,
--- and a flag to show if it has been visited?
--- 1. remove node i'm visiting from nodes to visit 
--- 2. (do op on this node)
--- 3. work on child nodes:
--- 3.a) DFS operate one by one
---      recursively call this fn on each child node
---      -- each child node does the same thing
--- each child node should have a list of visited nodes
--- visited nodes are removed from list of to visit nodes
-
--- def ast0037_trans_ident_to_trans_list
--- -- node to visit
--- (trans_name : Identifier)
--- -- All the AST nodes
--- (list : List Description)
--- -- visited nodes
--- (visited : List Identifier)
--- : List Description
--- :=
---   -- add this node to visited list
---   -- get list of child nodes to visit
---   -- work through this list of child nodes
---   ast0038_get_child_descripts trans_name list
-
---   --visited.concat trans_name
 
 def ast0036_ctrl_obj_find_trans
 -- (ctrl : controller_info)
