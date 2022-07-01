@@ -198,7 +198,7 @@ structure controller_info where
 -- private partial def typedIdentifierToString : TypedIdentifier → String
 --   | .mk t id => (toString t) ++ " " ++ (toString id)
 
--- instance : ToString (TypedIdentifier) :=
+-- instance : ToString TypedIdentifier :=
 -- ⟨
 --   -- The (toString t) cannot synthesize!
 --   λ t id => (toString t) ++ " " ++ (toString id)
@@ -491,6 +491,7 @@ def ast0041_list_ctrl_find_trans
 def ast0019_controller_info (ast : AST) :=
   -- ast0020_combine_controller_lists (ast0010_get_entries ast) (ast0013_map_entries (ast0010_get_entries ast))
   -- First get entries, then entry names
+  (
   ast0041_list_ctrl_find_trans
   -- Arg1
   (
@@ -536,8 +537,28 @@ def ast0019_controller_info (ast : AST) :=
   -- So: (1) Write func to check Controller obj to extract state vars
   -- from the entry
   -- (2) get the transition list by some kind of tree search
-
+  -- Transition Description objs collected by ast0041 func
+  )
+  -- So now that we have transition objects,
+  -- Start doing the to Murphi conversions
+  -- Things we need for Murphi:
+  -- (1) Constants (from Description.controller)
+  -- i.e. num of elems in a buffer
+  -- This is used in the records to specify num of entries
+  -- (2) Records (from state vars of the structures)
+  -- a buffer of some number of entries
+  -- An instance of these records will also be added to the "core"
+  -- (3) Transitions (from the Description.transition objects)
+  -- This requires a more involved translation algo
+  -- (a) init transition: an amalgamation of all controller's init trans
+  -- (b) other transitions: This is where we do things like split
+  -- transitions at await to have an awaiting state in Murphi,
+  -- and transitions to 
   
+  -- Start the constants
+  -- > also generate the variables to do the searchs in the controllers
+  -- > like search younger than, etc.
+  -- > Should be something that's expected?
 
 --- ==== AST tests =====
 
