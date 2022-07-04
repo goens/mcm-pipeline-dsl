@@ -223,6 +223,12 @@ structure controller_info where
 --   λ lst => String.join ( (lst.map toString).intercalate [[","]] )  --.intercalate
 -- ⟩
 
+-- a trick: you can use the s! too (like printf in C or fstrings in python)
+def TypedIdentifier.toString : TypedIdentifier → String
+  | .mk type_iden iden => s!"{type_iden} {iden}"
+
+instance : ToString TypedIdentifier where toString := TypedIdentifier.toString
+
 instance : ToString controller_info := ⟨
   λ i =>
     "===controller===\n" ++
