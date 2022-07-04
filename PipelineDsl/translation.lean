@@ -178,6 +178,20 @@ def ast0011_get_entries (descript : Description) : List Description :=
   | Description.entry iden stmt => [descript]
   | _ => []
 
+structure murphi_consts where
+  num_elems : Nat
+structure murphi_records where
+  state_vars : List TypedIdentifier
+-- Transitions... is there a Murphi format
+-- that's convenient to use?
+-- AZ CHECKPOINT:
+-- First thing to do is to do a "basic block"
+  -- or "basic transition break down"
+  -- This is since the await + when combinations
+  -- are allowed to be interleaved at the moment
+structure murphi_transitions where
+  transitions : List Description
+
 structure controller_info where
   -- Name, like LQ, SQ, SB, etc.
   name : Identifier
@@ -333,6 +347,21 @@ partial def get_stmts_with_transitions
 
   match stmt with
   | Statement.transition ident => [ident]
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [get_stmts_with_transitions stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            get_stmts_with_transitions stmt1
+        )
+      )
+    )
   | Statement.conditional_stmt cond =>
     match cond with
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
@@ -416,13 +445,14 @@ partial def ast0038_trans_ident_to_trans_list
           -- dbg_trace stmt
           -- dbg_trace "==END when ==\n"
           true
+          | Statement.listen_handle stmt1 lst => true
           | _ => false
         )
       | Statement.await await_lst => await_lst
       | Statement.when qname ident_list stmt => [stmt]
       | Statement.transition iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
-      -- | Statement.listen_handle  => 
+      | Statement.listen_handle stmt1 lst => [stmt]
       | _ => []
     | _ => []
   )
@@ -484,6 +514,151 @@ def ast0041_list_ctrl_find_trans
   (List.replicate ctrls.length all_transitions)
   ).map
   ast0036_ctrl_obj_find_trans
+
+def ast0042_gen_constants
+(ctrl : controller_info)
+:=
+  none
+
+
+def ast0045_recursive_check_await
+(stmt : Statement)
+:=
+  match stmt with
+  | Statement.when qname lst_iden stmt' => ast0045_recursive_check_await stmt'
+  | Statement.listen_handle stmt' lst => ast0045_recursive_check_await stmt'
+  | Statement.conditional_stmt cond => true
+  | Statement.block lst_stmt =>
+    -- either 1. this is simple, there's an await in a block and we split there
+    -- 2. There's an await nested in sth, like a conditional
+    -- meaning the block must be split at this conditional
+    -- but this must be split until a common point in the CFG
+    -- so original might be: trans{code -> if with some branches -> await -> code}
+    -- split: trans{code -> if with some branches} trans{await} trans{code}
+    -- I believe i have this case somewhere, so i should fill in this case
+    -- at some point...
+    -- (*) and this is a separate case from the simple await case below...
+    -- Or maybe there is a nice way to handle this recursively???
+    -- if we could go up and down the tree
+  | Statement.await lst_stmt =>
+    -- split this block....
+    -- i.e. take the contents of this await block, and
+    -- move into a new transition, gen a name
+    -- return the original and the new one
+
+-- def ast0044_check_await_and_split_transition_bb
+-- (stmt : Statement)
+-- :=
+--   if 
+-- -- Map Description to list of description
+-- -- This will be likely in a list of list of descript
+-- remember to join / flatten
+
+-- def ast0043_transition_to_bb
+-- (descript : Description)
+-- :=
+--   -- try to split transitions await
+--   -- Cases of await stmt to handle:
+--   -- (1) There is code then an await (i.e. await isn't first thing):
+--   -- (a) split transition at this pt, results in 2 transitions.
+--   -- The first transition can have the old name
+--   -- The second one can have some string appended to it's name
+--   -- (b) add second transition to list of transitions to check
+--   -- (2) There's an await+when inside an await+when
+--   -- This can be seen as a chain of await transitions
+--   -- (3) There's an await with multiple whens
+--   -- 
+--   -- General strategy
+--   -- Check if transition has stmts then await block(s), split block
+--   -- return the first half and the second half with the await
+--   -- else if await block is the first stmt
+--   -- then we "process" the await block
+--   -- which is:
+--   -- (a) breaking down nested await into an await+when chain
+--   -- (b) if there are multiple whens, this doesn't need to be handled
+--   -- here (no splitting or whatever, it's already a fork in the BB)
+--   -- else there are no awaits, just return the transition
+--   match descript with
+--   | Description.transition iden stmt =>
+--     match stmt with
+--     | Statement.block lst_stmts =>
+--       (lst_stmts.take 1).map
+--       (
+--         λ lst_stmts' =>
+--           if
+--             (
+--               -- wait this doesn't check for the first one!
+--               match lst_stmts' with
+--               | Statement.await await_lst_stmt => true
+--               | _ => false
+--             )
+--             then
+--               -- handle the await blk (check for nested await+when)
+--               -- Things to do: 
+--             else
+--               -- no first await, means we check if there're any awaits
+--               -- if there are, we split at that await in the stmt list
+--               -- (*) This means we either foldl or apply this iteratively to
+--               -- a fixed point
+
+--               -- when splitting:
+--               -- (1) create the first half transition
+--               -- (2) create the 2nd half transition, and recursively
+--               -- call this function ast0043 on it
+--       )
+
+def ast0046_transition_to_bb
+(descript : Description)
+:=
+  -- try to split transitions await
+  -- Cases of await stmt to handle:
+  -- (1) There is code then an await (i.e. await isn't first thing):
+  -- (a) split transition at this pt, results in 2 transitions.
+  -- The first transition can have the old name
+  -- The second one can have some string appended to it's name
+  -- (b) add second transition to list of transitions to check
+  -- (2) There's an await+when inside an await+when
+  -- This can be seen as a chain of await transitions
+  -- (3) There's an await with multiple whens
+  -- 
+  -- General strategy
+  -- Check if transition has stmts then await block(s), split block
+  -- return the first half and the second half with the await
+  -- else if await block is the first stmt
+  -- then we "process" the await block
+  -- which is:
+  -- (a) breaking down nested await into an await+when chain
+  -- (b) if there are multiple whens, this doesn't need to be handled
+  -- here (no splitting or whatever, it's already a fork in the BB)
+  -- else there are no awaits, just return the transition
+  match descript with
+  | Description.transition iden stmt =>
+    match stmt with
+    | Statement.block lst_stmts =>
+      (lst_stmts.take 1).map
+      (
+        λ lst_stmts' =>
+          if
+            (
+              -- wait this doesn't check for the first one!
+              match lst_stmts' with
+              | Statement.await await_lst_stmt => true
+              | _ => false
+            )
+            then
+              -- handle the await blk (check for nested await+when)
+              -- Things to do: 
+            else
+              -- no first await, means we check if there're any awaits
+              -- if there are, we split at that await in the stmt list
+              -- (*) This means we either foldl or apply this iteratively to
+              -- a fixed point
+
+              -- when splitting:
+              -- (1) create the first half transition
+              -- (2) create the 2nd half transition, and recursively
+              -- call this function ast0043 on it
+      )
 
 -- Tie ast0010 (entries / names / identifiers)
 -- and ast0013 entry first transition
@@ -556,9 +731,11 @@ def ast0019_controller_info (ast : AST) :=
   -- and transitions to 
   
   -- Start the constants
+  -- Then Records
   -- > also generate the variables to do the searchs in the controllers
   -- > like search younger than, etc.
   -- > Should be something that's expected?
+
 
 --- ==== AST tests =====
 
