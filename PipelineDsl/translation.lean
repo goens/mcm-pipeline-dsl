@@ -515,36 +515,37 @@ def ast0041_list_ctrl_find_trans
   ).map
   ast0036_ctrl_obj_find_trans
 
-def ast0042_gen_constants
-(ctrl : controller_info)
-:=
-  none
+-- -- AZ TODO: Generate any constants for Murphi
+-- def ast0042_gen_constants
+-- (ctrl : controller_info)
+-- :=
+--   none
 
 
-def ast0045_recursive_check_await
-(stmt : Statement)
-:=
-  match stmt with
-  | Statement.when qname lst_iden stmt' => ast0045_recursive_check_await stmt'
-  | Statement.listen_handle stmt' lst => ast0045_recursive_check_await stmt'
-  | Statement.conditional_stmt cond => true
-  | Statement.block lst_stmt =>
-    -- either 1. this is simple, there's an await in a block and we split there
-    -- 2. There's an await nested in sth, like a conditional
-    -- meaning the block must be split at this conditional
-    -- but this must be split until a common point in the CFG
-    -- so original might be: trans{code -> if with some branches -> await -> code}
-    -- split: trans{code -> if with some branches} trans{await} trans{code}
-    -- I believe i have this case somewhere, so i should fill in this case
-    -- at some point...
-    -- (*) and this is a separate case from the simple await case below...
-    -- Or maybe there is a nice way to handle this recursively???
-    -- if we could go up and down the tree
-  | Statement.await lst_stmt =>
-    -- split this block....
-    -- i.e. take the contents of this await block, and
-    -- move into a new transition, gen a name
-    -- return the original and the new one
+-- def ast0045_recursive_check_await
+-- (stmt : Statement)
+-- :=
+--   match stmt with
+--   | Statement.when qname lst_iden stmt' => ast0045_recursive_check_await stmt'
+--   | Statement.listen_handle stmt' lst => ast0045_recursive_check_await stmt'
+--   | Statement.conditional_stmt cond => true
+--   | Statement.block lst_stmt =>
+--     -- either 1. this is simple, there's an await in a block and we split there
+--     -- 2. There's an await nested in sth, like a conditional
+--     -- meaning the block must be split at this conditional
+--     -- but this must be split until a common point in the CFG
+--     -- so original might be: trans{code -> if with some branches -> await -> code}
+--     -- split: trans{code -> if with some branches} trans{await} trans{code}
+--     -- I believe i have this case somewhere, so i should fill in this case
+--     -- at some point...
+--     -- (*) and this is a separate case from the simple await case below...
+--     -- Or maybe there is a nice way to handle this recursively???
+--     -- if we could go up and down the tree
+--   | Statement.await lst_stmt =>
+--     -- split this block....
+--     -- i.e. take the contents of this await block, and
+--     -- move into a new transition, gen a name
+--     -- return the original and the new one
 
 -- def ast0044_check_await_and_split_transition_bb
 -- (stmt : Statement)
@@ -612,265 +613,354 @@ def ast0045_recursive_check_await
 -- ()
 -- ()
 
--- Info/State for the ast0046_transition_to_bb func
-structure splitting_info where
-  -- (Actually should be Description.transition)
-  lst_transitions : List Description
-  lst_stmts : List Statement
-  nested_stmts : List Statement
+-- -- Info/State for the ast0046_transition_to_bb func
+-- structure splitting_info where
+--   -- (Actually should be Description.transition)
+--   lst_transitions : List Description
+--   -- lst_stmts : List Statement
+--   nested_stmts : List Statement
+--   top_transition_ident : Identifier
 
-instance : ToString splitting_info := ⟨
-  λ i =>
-    "\n=== Splitting Info ===\n" ++
-    "TRANSITIONS CREATED: " ++ toString i.lst_transitions ++ "\n" ++
-    "STATEMENTS CHECKED: " ++ toString i.lst_stmts ++ "\n" ++
-    "\n=== End Splitting Info ===\n"
-  ⟩
+-- instance : ToString splitting_info := ⟨
+--   λ i =>
+--     "\n=== Splitting Info ===\n" ++
+--     "TRANSITIONS CREATED: " ++ toString i.lst_transitions ++ "\n" ++
+--     -- "STATEMENTS CHECKED: " ++ toString i.lst_stmts ++ "\n" ++
+--     "\n=== End Splitting Info ===\n"
+--   ⟩
 
-def add_stmt_to_checked_list
-( stmt : Statement )
-( splitting_inf : splitting_info )
-: (splitting_info)
+-- def create_splitting_info_with_lst_stmts
+-- (lst_stmts : List Statement)
+-- (split_info : splitting_info)
+-- : (splitting_info)
+-- :=
+--   {lst_stmts := lst_stmts, lst_transitions := split_info.lst_transitions, nested_stmts := split_info.nested_stmts, top_transition_ident := split_info.top_transition_ident}
+
+-- def add_stmt_to_checked_list
+-- ( stmt : Statement )
+-- ( splitting_inf : splitting_info )
+-- : (splitting_info)
+-- :=
+--   {lst_stmts := splitting_inf.lst_stmts.cons stmt, lst_transitions := splitting_inf.lst_transitions, nested_stmts := splitting_inf.nested_stmts, top_transition_ident := splitting_inf.top_transition_ident}
+
+def create_transition_from_lst_stmts
+-- stmts in the transition...
+( lst_stmts : List Statement )
+-- the name of the transition...
+( identifier : Identifier )
+-- return the Description.transition
+: (Description)
 :=
-  {lst_stmts := splitting_inf.lst_stmts.cons stmt, lst_transitions := splitting_inf.lst_transitions, nested_stmts := splitting_inf.nested_stmts}
+  -- Create a Description.transition
+  Description.transition
+  identifier
+  (Statement.block lst_stmts)
 
--- Aux function
+-- Aux function for recursive fn ast0046
 -- is likely required:
 -- got to handle reading things in a subcase
 
-def ast0046_examine_statements
+-- def ast0046_examine_statements
 -- (lst_stmts : List Statement)
-( visit_nested : splitting_info )
-:=
-  -- try to split transitions await
-  -- Cases of await stmt to handle:
-  -- (1) There is code then an await (i.e. await isn't first thing):
-  -- (a) split transition at this pt, results in 2 transitions.
-  -- The first transition can have the old name
-  -- The second one can have some string appended to it's name
-  -- (b) add second transition to list of transitions to check
-  -- (2) There's an await+when inside an await+when
-  -- This can be seen as a chain of await transitions
-  -- (3) There's an await with multiple whens
-  -- 
-  -- General strategy
-  -- Check if transition has stmts then await block(s), split block
-  -- return the first half and the second half with the await
-  -- else if await block is the first stmt
-  -- then we "process" the await block
-  -- which is:
-  -- (a) breaking down nested await into an await+when chain
-  -- (b) if there are multiple whens, this doesn't need to be handled
-  -- here (no splitting or whatever, it's already a fork in the BB)
-  -- else there are no awaits, just return the transition
+-- --( visit_nested : splitting_info )
+-- (lst_transitions : List Description)
+-- (top_transition_ident : Identifier)
+-- (nested_stmts : List Statement)
+-- :=
+--   -- try to split transitions await
+--   -- Cases of await stmt to handle:
+--   -- (1) There is code then an await (i.e. await isn't first thing):
+--   -- (a) split transition at this pt, results in 2 transitions.
+--   -- The first transition can have the old name
+--   -- The second one can have some string appended to it's name
+--   -- (b) add second transition to list of transitions to check
+--   -- (2) There's an await+when inside an await+when
+--   -- This can be seen as a chain of await transitions
+--   -- (3) There's an await with multiple whens
+--   -- 
+--   -- General strategy
+--   -- Check if transition has stmts then await block(s), split block
+--   -- return the first half and the second half with the await
+--   -- else if await block is the first stmt
+--   -- then we "process" the await block
+--   -- which is:
+--   -- (a) breaking down nested await into an await+when chain
+--   -- (b) if there are multiple whens, this doesn't need to be handled
+--   -- here (no splitting or whatever, it's already a fork in the BB)
+--   -- else there are no awaits, just return the transition
 
-  -- want to extract
-  -- match lst_stmts with
-  -- | Statement.block lst_stmts =>
-  --   List.foldl
-  --   ()
-  --   ()
-  --   ()
+--   -- want to extract
+--   -- match lst_stmts with
+--   -- | Statement.block lst_stmts =>
+--   --   List.foldl
+--   --   ()
+--   --   ()
+--   --   ()
 
-  List.foldl
-  (
-    λ checked next_stmt =>
-    -- [base case]
-    if (
-      -- if the next_stmt is the head of the transition
-      -- and an await, then continue to next stmt
-      and
-      (
-        and
-        (
-          -- next_stmt is await
-          match next_stmt with
-          | Statement.await lst_stmts => true
-          | _ => false
-        )
-        -- and the list of checked stmts
-        -- is empty (await is the head)
-        (checked.lst_stmts.length == 0)
-      )
-      -- ensure we're also not nested
-      (checked.nested_stmts.length == 0)
-    )
-    -- if await is the head stmt
-    -- then continue!
-    -- But we will add this to the
-    -- previously checked nodes
-    then add_stmt_to_checked_list checked next_stmt
-    else
-    -- [next inductive step]
-    -- now check if we encounter an await later
-    -- and this await is not nested
-    if (
-      and
-      (
-        and
-        (
-          -- NOTE: there's a difference between
-          -- a list of transitions to return,
-          -- and the level of nesting
+--   List.foldl
+--   (
+--     λ checked next_stmt =>
+--     -- [base case]
+--     if (
+--       -- if the next_stmt is the head of the transition
+--       -- and an await, then continue to next stmt
+--       and
+--       (
+--         and
+--         (
+--           -- next_stmt is await
+--           match next_stmt with
+--           | Statement.await lst_stmts => true
+--           | _ => false
+--         )
+--         -- and the list of checked stmts
+--         -- is empty (await is the head)
+--         (lst_stmts.length == 0)
+--       )
+--       -- ensure we're also not nested
+--       (nested_stmts.length == 0)
+--     )
+--     -- if await is the head stmt
+--     -- then continue!
+--     -- But we will add this to the
+--     -- previously checked nodes
+--     then --add_stmt_to_checked_list checked next_stmt
+--       checked.cons next_stmt
+--     else
+--     -- [next inductive step]
+--     -- now check if we encounter an await later
+--     -- and this await is not nested
+--     if (
+--       and
+--       (
+--         and
+--         (
+--           -- NOTE: there's a difference between
+--           -- a list of transitions to return,
+--           -- and the level of nesting
 
-          -- I will need another list state
-          -- var for nested stmts
+--           -- I will need another list state
+--           -- var for nested stmts
 
-          -- next_stmt is await
-          (
-            match next_stmt with
-            | Statement.await lst_stmts => true
-            | _ => false
-          )
-          -- and the list of checked stmts
-          -- is not empty (this await is the head)
-        )
-        (checked.lst_stmts.length != 0)
-      )
-      -- we have not nested into a stmt block
-      (checked.nested_stmts.length == 0)
-    )
-    then
-    -- AZ CHECKPOINT:
-    -- Thought up to here
-    -- Just putting the "cases"
-    -- here for now, fill them in later
+--           -- next_stmt is await
+--           (
+--             match next_stmt with
+--             | Statement.await lst_stmts => true
+--             | _ => false
+--           )
+--           -- and the list of checked stmts
+--           -- is not empty (this await is the head)
+--         )
+--         (lst_stmts.length != 0)
+--       )
+--       -- we have not nested into a stmt block
+--       (nested_stmts.length == 0)
+--     )
+--     then
+--       none
+--     -- AZ CHECKPOINT:
+--     -- Thought up to here
+--     -- Just putting the "cases"
+--     -- here for now, fill them in later
 
-    -- TODO: 
-    -- actually write in the TODO cases
+--     -- TODO: 
+--     -- actually write in the TODO cases
 
-      -- split the transition
-      -- (1) take above items 
-      -- (2) separate the below not yet checked items
-      -- (can get them with removing common items
-      -- from the initially provided list)
-    else
-    -- [next inductive step]
-    -- now check if we encounter an await later
-    -- and this await is nested
-    -- (this case comes from when we try to handle
-    -- stmt blocks)
-    if (
-      and
-      (
-        and
-        (
-          -- NOTE: there's a difference between
-          -- a list of transitions to return,
-          -- and the level of nesting
+--       -- split the transition
+--       -- (1) take above items 
+--       -- (2) separate the below not yet checked items
+--       -- (can get them with removing common items
+--       -- from the initially provided list)
 
-          -- I will need another list state
-          -- var for nested stmts
+--       -- If this is the first transition made,
+--       -- use the same original name, so
+--       -- transitions targeting this one will
+--       -- reach this
+--     else
+--     if (lst_transitions.length == 0)
+--       then -- build new trans w/ original name
+--         -- recursively call this func
+--         -- on the created transition's
+--         -- statements list
+--         [
+--           create_transition_from_lst_stmts
+--           lst_stmts
+--           top_transition_ident
+--           ,
+--           create_transition_from_lst_stmts
+--           -- get the remaining stmts in this thing
+--           (
+--           lst_stmts.filter
+--           (
+--             -- return the remaining unchecked elems
+--             λ elem =>
+--               List.notElem
+--               elem lst_stmts
+--           )
+--           )
+--           -- generate a clever/useful identifier name
+--           (
+--             -- base top-transition ident
+--             top_transition_ident
+--             ++ 
+--             -- suffix
+--             (
+--               match next_stmt with
+--               | Statement.await lst_stmts => 
+--                 lst_stmts.map
+--                 (
+--                   λ stmt' =>
+--                   match stmt' with
+--                   | Statement.when
+--                     qname lst_iden stmt
+--                     =>
+--                     match qname with
+--                     | lst_ident' =>
+--                       [List.intercalate lst_ident']
+--                   | _ => []
+--                 )
+--               | _ => []
+--             ).intercalate
+--           )
+--         ]
+--     else
+--     -- [next inductive step]
+--     -- now check if we encounter an await later
+--     -- and this await is nested
+--     -- (this case comes from when we try to handle
+--     -- stmt blocks)
+--     if (
+--       and
+--       (
+--         and
+--         (
+--           -- NOTE: there's a difference between
+--           -- a list of transitions to return,
+--           -- and the level of nesting
 
-          -- next_stmt is await
-          (
-            match next_stmt with
-            | Statement.await lst_stmts => true
-            | _ => false
-          )
-          -- and the list of checked stmts
-          -- is not empty (this await is the head)
-        )
-        (checked.lst_stmts.length != 0)
-      )
-      -- we have not nested into a stmt block
-      (checked.nested_stmts.length != 0)
-    )
-    -- [other case]
-    -- handle stmts which can nest into sub-stmts
-    if (
-      -- next_stmt is a conditional
-      (
-        match next_stmt with
-        | Statement.conditional_stmt cond => true
-        | _ => false
-      )
-    )
-    then
-      -- recursively call this fn on the
-      -- nested stmt block
-      -- Also remember to update the
-      -- nesting info in the
-      -- checked var
+--           -- I will need another list state
+--           -- var for nested stmts
 
-      -- Do the recursive call by
-      -- matching into the stmts list
-      -- i.e. we don't have an if
-      -- case here in this lambda func
-      -- for block
-    else
-    if (
-      -- next_stmt is a when?
-      (
-        match next_stmt with
-        | Statement.when qname lst_iden stmt => true
-        | _ => false
-      )
-    )
-    else
-      -- if neither of these cases
-      -- then we just add the stmt to the checked list
-      -- and continue!
-      add_stmt_to_checked_list checked next_stmt
+--           -- next_stmt is await
+--           (
+--             match next_stmt with
+--             | Statement.await lst_stmts => true
+--             | _ => false
+--           )
+--           -- and the list of checked stmts
+--           -- is not empty (this await is the head)
+--         )
+--         (lst_stmts.length != 0)
+--       )
+--       -- we have not nested into a stmt block
+--       (nested_stmts.length != 0)
+--     )
+--     then
+--       none
+--     else
+--     -- [other case]
+--     -- handle stmts which can nest into sub-stmts
+--     if (
+--       -- next_stmt is a conditional
+--       (
+--         match next_stmt with
+--         | Statement.conditional_stmt cond => true
+--         | _ => false
+--       )
+--     )
+--     then
+--       none
+--       -- recursively call this fn on the
+--       -- nested stmt block
+--       -- Also remember to update the
+--       -- nesting info in the
+--       -- checked var
 
-  )
-  -- initial list of stmts to visit
-  -- and depth
-  -- so w
-  (
-    match visit_nested.lst_stmts with
-    | h::t => h
-    | [] => default
-  )
-  (
-    match visit_nested.lst_stmts with
-    | h::t => t
-    | [] => default
-  )
+--       -- Do the recursive call by
+--       -- matching into the stmts list
+--       -- i.e. we don't have an if
+--       -- case here in this lambda func
+--       -- for block
+--     else
+--     if (
+--       -- next_stmt is a when?
+--       (
+--         match next_stmt with
+--         | Statement.when qname lst_iden stmt => true
+--         | _ => false
+--       )
+--     )
+--     then
+--       none
+--     else
+--       -- if neither of these cases
+--       -- then we just add the stmt to the checked list
+--       -- and continue!
+--       --add_stmt_to_checked_list checked next_stmt
+--       checked.cons next_stmt
 
-  -- To get this to work with a foldl:
-  -- The function returns a tuple/structure of 2 items:
-    -- the transition we'll return in place of this one
-    -- and the stmts we've nested into in order to search for an await
-  -- We try to process the current stmt in the transition
-  -- check if it's an await, and there are statements ahead of this!
-    -- if it's an await, and we aren't nested, we can split this block
-      -- How do we handle nested awaits?
-        -- Do we recursively call this fn?
-        -- Or do we do "iteration to a fixed point"?
-      -- i think we'll recursively call this
-      -- Not important either way
-  -- check if it's a nestable stmt:
-    -- Conditional stmt,
-    -- Await that is the first stmt,
-    -- When stmt
-    -- listen_statement,
-    -- Block stmt (duh!)
+--   )
+--   -- initial list of stmts to visit
+--   -- and depth
+--   -- so w
+--   (
+--     -- match visit_nested.lst_stmts with
+--     match lst_stmts with
+--     | h::t => [h]
+--       -- create_splitting_info_with_lst_stmts [h] visit_nested
+--     | [] => [] --create_splitting_info_with_lst_stmts [] visit_nested
+--   )
+--   (
+--     -- match visit_nested.lst_stmts with
+--     match lst_stmts with
+--     | h::t => t
+--       -- create_splitting_info_with_lst_stmts t visit_nested
+--     | [] => []
+--   )
 
-    -- Nestable statements mean we recurse a layer
-    -- recursing a layer means we check for awaits again
-    -- Checking for awaits means we check if an await is:
-    -- (1) At the top of a transition (in this case no)
-    -- (2) Not at the top of a transition
-    -- (3) if the Await is nested
-    -- If it's nested then we return a new transition List
-    -- which must split & consider all nested parts and statements
-  -- record if not either way to our list of stmts? or just the nesting?
-    -- heh. just the nesting :)
+--   -- To get this to work with a foldl:
+--   -- The function returns a tuple/structure of 2 items:
+--     -- the transition we'll return in place of this one
+--     -- and the stmts we've nested into in order to search for an await
+--   -- We try to process the current stmt in the transition
+--   -- check if it's an await, and there are statements ahead of this!
+--     -- if it's an await, and we aren't nested, we can split this block
+--       -- How do we handle nested awaits?
+--         -- Do we recursively call this fn?
+--         -- Or do we do "iteration to a fixed point"?
+--       -- i think we'll recursively call this
+--       -- Not important either way
+--   -- check if it's a nestable stmt:
+--     -- Conditional stmt,
+--     -- Await that is the first stmt,
+--     -- When stmt
+--     -- listen_statement,
+--     -- Block stmt (duh!)
+
+--     -- Nestable statements mean we recurse a layer
+--     -- recursing a layer means we check for awaits again
+--     -- Checking for awaits means we check if an await is:
+--     -- (1) At the top of a transition (in this case no)
+--     -- (2) Not at the top of a transition
+--     -- (3) if the Await is nested
+--     -- If it's nested then we return a new transition List
+--     -- which must split & consider all nested parts and statements
+--   -- record if not either way to our list of stmts? or just the nesting?
+--     -- heh. just the nesting :)
       
 
-def ast0047_access_transition_info
-(descript : Description)
-:=
-  match descript with
-  | Description.transition iden stmt =>
-    match stmt with
-    | Statement.block lst_stmt' =>
-      ast0046_examine_statements [stmt]
-    -- want to error if this is not a block
-    -- first stmt in transition should be a block!
-    | _ => []
-  | _ => []
+-- def ast0047_access_transition_info
+-- (descript : Description)
+-- :=
+--   match descript with
+--   | Description.transition iden stmt =>
+--     match stmt with
+--     | Statement.block lst_stmt' =>
+--       ast0046_examine_statements [stmt]
+--     -- want to error if this is not a block
+--     -- first stmt in transition should be a block!
+--     | _ => []
+--   | _ => []
 
 -- Tie ast0010 (entries / names / identifiers)
 -- and ast0013 entry first transition
