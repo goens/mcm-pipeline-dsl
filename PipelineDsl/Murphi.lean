@@ -128,6 +128,7 @@ inductive Quantifier
 | <putstmt>		/* output statement */
 | <returnstmt>		/* function return */
 
+<assignment> ::= <designator> := <expression>
 <ifstmt> ::= if <expr> then [ <stmts> ]
               { elsif <expr> then [ <stmts> ] }
               [ else [ <stmts> ] ]
@@ -147,6 +148,7 @@ inductive Quantifier
 <returnstmt> ::= return [ <expr> ]
 -/
 inductive Statement
+  | assignment : Designator → Expr → Statement
   | ifstmt : Expr → List Statement → Option (Expr × List Statement) → List Statement → Statement
   | switchstmt : Expr → List (List Expr × List Statement) → List Statement → Statement
   | forstmt : Quantifier → List Statement → Statement
@@ -219,19 +221,19 @@ private partial def exprToString : Expr → String
   | .call id actuals => "{id}(" ++ ", ".intercalate (actuals.map exprToString) ++ ")"
   | .universal quant doexp => "forall " ++ quantifierToString quant ++ " do " ++ exprToString doexp ++ " endforall"
   | .existential quant doexp => "exists " ++ quantifierToString quant ++ " do " ++ exprToString doexp ++ " endexists"
-  | .binop op lhs rhs => exprToString lhs ++ s!" {op} " ++ exprToString rhs
-  | .negation exp => "!" ++ exprToString exp
+  | .binop op lhs rhs => "(" ++ exprToString lhs ++ s!" {op} " ++ exprToString rhs ++ ")"
+  | .negation exp => "!(" ++ exprToString exp ++ ")"
   | .conditional cond thenexp elseexp => exprToString cond ++ " ? " ++ exprToString thenexp ++ " : " ++ exprToString elseexp
 
 private partial def formalToString : Formal → String
   | .mk var ids type => (if var then "var " else "") ++ ", ".intercalate ids ++ " : " ++ typeExprToString type
 
 private partial def procDeclToString : ProcDecl → String
-  | .procedure id formals decls statements => "procedure {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ");\n"
+  | .procedure id formals decls statements => s!"procedure {id} (" ++ "; ".intercalate (formals.map formalToString) ++ ");\n"
     ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n" ++ ";\n".intercalate (statements.map statementToString)
     ++ "\n end;"
-  | .function id formals type decls statements => "function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ");\n"
-    ++ " : " ++ typeExprToString type ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n"
+  | .function id formals type decls statements => s!"function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ")"
+    ++ " : " ++ typeExprToString type ++ ";\n" ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n"
     ++ ";\n".intercalate (statements.map statementToString) ++ "\n end;"
 
 private partial def designatorToString : Designator → String
@@ -252,6 +254,7 @@ private partial def quantifierToString : Quantifier → String
     s!"{id} := {expS} to {toexpS} {byexpS}"
 
 private partial def statementToString : Statement → String
+  | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
   | .ifstmt cond thenstmts elifop elsestmts =>
     let thenS := ";\n".intercalate $ thenstmts.map statementToString
     let elseS := if elsestmts.length == 0 then ""
@@ -298,14 +301,14 @@ private partial def ruleToString : Rule → String
     let expS := match opExp with
       | none => ""
       | some exp => exprToString exp ++ " ==>\n"
-    s!"rule {nameS}{expS}{declsS} begin {stmtsS} end"
+    s!"rule {nameS}{expS}{declsS}\n begin {stmtsS} end"
   | .startstate opName decls stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
     let declsS := String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
       | some name => name
-    s!"startstate {nameS}{declsS} begin {stmtsS} end"
+    s!"startstate {nameS}{declsS}\n begin {stmtsS} end"
   | .invariant opName exp =>
     let nameS := match opName with
       | none => ""
@@ -358,3 +361,5 @@ def Program.toString : Program → String
     let rules := String.intercalate ";\n" $ prog.rules.map Rule.toString
   s!"{decls} \n {procdecls} \n {rules}"
 instance : ToString Program where toString := Program.toString
+
+end Murϕ
