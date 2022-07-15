@@ -2,6 +2,7 @@ import PipelineDsl
 import Lean
 import PipelineDsl.Preprocess
 import PipelineDsl.translation
+import PipelineDsl.MurphiTests
 open Lean Pipeline
 
 def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -26,6 +27,8 @@ def main (args : List String): IO Unit := do
   println! s!"round-trip: \n---\n{round.2}\n---\n"
   let sanity_check := toString parsed.2 == toString round.2
   println! s!"parse . toString . parse . toString == parse . toString? : {sanity_check}"
+  println! "---- test murhpi ----"
+  println! testprog.toString
 
   -- -- transform tests...
   -- println! s!"===== Transform Testing ====="

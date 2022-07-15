@@ -101,7 +101,7 @@ inductive Expr
 
 -- <designator> :=	<ID> { . <ID> | \[ <expr> \] }
 inductive Designator
-| mk : ID → List (Sum ID Expr) → Designator
+| mk : ID → List (ID ⊕ Expr) → Designator
 
 /-
 <quantifier> ::= <ID> : <typeExpr>
@@ -160,7 +160,7 @@ inductive Statement
   | assertstmt : Expr → String → Statement
   | putstmtexp : Expr → Statement
   | putstmtstr : String → Statement
-  | returnstmt : Expr → Statement
+  | returnstmt : Option Expr → Statement
 
 -- <alias> ::= <ID> : <expr>
 inductive Alias
@@ -286,7 +286,7 @@ private partial def statementToString : Statement → String
   | .assertstmt exp msg => s!"assert {exprToString exp} {msg}"
   | .putstmtexp exp => s!"put {exprToString exp}"
   | .putstmtstr str => s!"put {str}"
-  | .returnstmt exp => "return " ++ exprToString exp
+  | .returnstmt opExp => "return " ++ (match opExp with | none => "" | some exp => exprToString exp)
 
 private partial def aliasToString : Alias → String
   | .mk id exp => s!"{id} : {exprToString exp}"
@@ -323,6 +323,7 @@ private partial def ruleToString : Rule → String
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
     s!"alias {aliasesS} do {rulesS} end"
 end
+
 
 def Formal.toString : Formal → String := formalToString
 instance : ToString Formal where toString := Formal.toString
@@ -362,4 +363,152 @@ def Program.toString : Program → String
   s!"{decls} \n {procdecls} \n {rules}"
 instance : ToString Program where toString := Program.toString
 
+def Designator.concat : Designator → (ID ⊕ Expr) → Designator
+  | .mk id rest, new => Designator.mk id (new::rest)
+
+declare_syntax_cat formal
+declare_syntax_cat proc_decl
+declare_syntax_cat designator
+declare_syntax_cat quantifier
+declare_syntax_cat statement
+declare_syntax_cat mur_alias
+declare_syntax_cat mur_rule
+declare_syntax_cat expr
+declare_syntax_cat type_expr
+declare_syntax_cat decl
+declare_syntax_cat program
+
+syntax ("var")? ident (ident),* ":" type_expr : formal
+syntax "procedure" ident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
+syntax "function" ident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")* statement* "end" ";" : proc_decl
+-- TODO: this needs space for the ".", should fix it
+syntax ident : designator
+syntax designator "." ident : designator
+syntax designator "[" expr "]" : designator
+syntax ident ":" type_expr : quantifier
+syntax ident ":=" expr "to" expr ("by" expr)? : quantifier
+syntax designator ":=" expr : statement
+syntax "if" expr "then" statement* ("elsif" expr "then" statement*)? ("else" statement*)? "endif" : statement
+syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
+syntax "for" quantifier "do" statement* "endfor" : statement
+syntax "while" expr "do" statement* "end" : statement
+syntax "alias" sepBy(mur_alias,";") "do" statement* "end" : statement
+syntax ident "(" expr,+ ")" : statement
+syntax "clear" designator : statement
+syntax "error" str : statement
+syntax "assert" expr (str)? : statement
+syntax "put" (expr <|> str) : statement
+syntax "return" (expr)? : statement
+syntax ident ":" expr : mur_alias
+syntax  "rule" (str)? (expr "==>")? (decl* "begin")? sepBy(statement,";") "end" : mur_rule
+-- commenting this out with the above removes the errors on individual statements, which makes no sense to me
+-- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
+syntax  "startstate" (str)? (decl* "begin")? statement* "end" : mur_rule
+syntax "invariant" (str)? expr : mur_rule
+syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "end" : mur_rule
+syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
+syntax "(" expr ")" : expr
+syntax designator : expr
+syntax num : expr
+syntax ident "(" expr,* ")" : expr -- still don't know what "actuals" are
+syntax "forall" quantifier "do" expr "endforall" : expr
+syntax "exists" quantifier "do" expr "endexists" : expr
+syntax expr ("+" <|> "-" <|> "*" <|> "/" <|> "%" <|> "|" <|> "&" <|>
+             "->" <|> "<" <|> "<=" <|> ">" <|> ">=" <|> "=" <|> "!=") expr : expr
+syntax "!" expr : expr
+syntax expr "?" expr ":" expr : expr
+syntax ident : type_expr
+syntax expr ".." expr : type_expr
+syntax "enum" "{" ident,+ "}" : type_expr
+syntax "record" decl* "end" : type_expr
+syntax "array" "[" type_expr "]" "of" type_expr : type_expr
+syntax "const" sepBy((ident ":" expr),";",";",allowTrailingSep) : decl
+syntax "type" sepBy((ident ":" type_expr),";",";",allowTrailingSep) : decl
+syntax "var" sepBy((ident,+ ":" type_expr),";",";",allowTrailingSep) : decl
+syntax decl decl decl : program
+
+
+syntax "[murϕ|" formal "]" : term
+syntax "[murϕ|" proc_decl "]" : term
+syntax "[murϕ|" designator "]" : term
+syntax "[murϕ|" quantifier "]" : term
+syntax "[murϕ|" statement "]" : term
+syntax "[murϕ|" mur_alias "]" : term
+syntax "[murϕ|" mur_rule "]" : term
+syntax "[murϕ|" expr "]" : term
+syntax "[murϕ|" type_expr "]" : term
+syntax "[murϕ|" decl "]" : term
+syntax "[murϕ|" program "]" : term
+
+macro_rules
+  | `([murϕ| $x:decl ]) => `(decl| $x)
+
+macro_rules
+  | `(decl| var $x : $t ) => `(Decl.var $(Lean.quote [x.getId.toString]) $t) -- TODO: multiple
+
+macro_rules
+  | `(type_expr| $x:ident) => `(TypeExpr.previouslyDefined $(Lean.quote x.getId.toString))
+
+macro_rules
+  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $(stmts)* end) =>
+    let xSyn := match x with
+      | none => Lean.quote ""
+      | some x' => Lean.quote x'.getId.toString
+    let dsSyn := Lean.quote $ ds.getEvenElems.toList
+    let stmtsSyn := Lean.quote $ stmts.getEvenElems.toList
+    `(Rule.simplerule $xSyn $e $dsSyn $stmtsSyn)
+
+macro_rules
+  | `(expr| $x = $y) => `(Expr.binop "=" $x $y)
+  | `(expr| $x:designator ) => `(Expr.designator $x)
+
+macro_rules
+  | `(designator| $x:ident ) => `(Designator.mk $(Lean.quote x.getId.toString) [])
+  | `(designator| $d:designator [$e:expr] ) => `(Designator.concat $d $ Sum.inr $e)
+  | `(designator| $d:designator . $x:ident ) => `(Designator.concat $d $ Sum.inl $(Lean.quote x.getId.toString))
+
+macro_rules
+  | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
+
+macro_rules
+  | `([murϕ| $x:formal     ]) => `(formal| $x)
+  | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
+  | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
+  | `([murϕ| $x:statement  ]) => `(statement| $x)
+  | `([murϕ| $x:mur_alias  ]) => `(mur_alias| $x)
+  | `([murϕ| $x:mur_rule   ]) => `(mur_rule| $x)
+  | `([murϕ| $x:expr       ]) => `(expr| $x)
+  | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
+  | `([murϕ| $x:decl       ]) => `(decl| $x)
+  | `([murϕ| $x:program    ]) => `(program| $x)
+ -- | `([murϕ| $x:designator ]) => `(designator| $x)
+
+#check [murϕ| var foo : bar]
+
+#check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
+#check [murϕ| next_state .core_[j] .lsq_ .lq_ .ld_entries[i] := ld_entry]
+#check [murϕ|
+rule "await_translation TO await_fwd_check"
+Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
+==>
+-- decls
+var next_state : STATE;
+var ld_entry : LD_ENTRY_VALUES;
+begin
+next_state := Sta;
+ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
+
+--# "translate" the address
+--#NOTE TODO: access tlb? not quite necessary for litmus tests
+ld_entry.phys_addr := ld_entry.virt_addr;
+
+ld_entry.ld_state := await_fwd_check;
+
+next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
+
+Sta := next_state;
+end;
+
+
+]
 end Murϕ
