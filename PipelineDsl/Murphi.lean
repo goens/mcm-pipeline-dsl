@@ -1,3 +1,5 @@
+import Lean
+
 namespace Murϕ
 
 abbrev ID := String
@@ -371,11 +373,15 @@ declare_syntax_cat proc_decl
 declare_syntax_cat designator
 declare_syntax_cat quantifier
 declare_syntax_cat statement
+declare_syntax_cat statements
 declare_syntax_cat mur_alias
 declare_syntax_cat mur_rule
 declare_syntax_cat expr
 declare_syntax_cat type_expr
 declare_syntax_cat decl
+declare_syntax_cat var_decl
+declare_syntax_cat const_decl
+declare_syntax_cat type_decl
 declare_syntax_cat program
 
 syntax ("var")? ident (ident),* ":" type_expr : formal
@@ -399,11 +405,13 @@ syntax "error" str : statement
 syntax "assert" expr (str)? : statement
 syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
+syntax statement : statements
+syntax statement ";" statements : statements
 syntax ident ":" expr : mur_alias
-syntax  "rule" (str)? (expr "==>")? (decl* "begin")? sepBy(statement,";") "end" : mur_rule
+syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
-syntax  "startstate" (str)? (decl* "begin")? statement* "end" : mur_rule
+syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
 syntax "invariant" (str)? expr : mur_rule
 syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "end" : mur_rule
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
@@ -422,9 +430,12 @@ syntax expr ".." expr : type_expr
 syntax "enum" "{" ident,+ "}" : type_expr
 syntax "record" decl* "end" : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
-syntax "const" sepBy((ident ":" expr),";",";",allowTrailingSep) : decl
-syntax "type" sepBy((ident ":" type_expr),";",";",allowTrailingSep) : decl
-syntax "var" sepBy((ident,+ ":" type_expr),";",";",allowTrailingSep) : decl
+syntax (name := vardecl) ident,+ ":" type_expr : var_decl
+syntax ident ":" expr : const_decl
+syntax ident ":" type_expr : type_decl
+syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
+syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
+syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
 syntax decl decl decl : program
 
 
@@ -440,23 +451,32 @@ syntax "[murϕ|" type_expr "]" : term
 syntax "[murϕ|" decl "]" : term
 syntax "[murϕ|" program "]" : term
 
-macro_rules
-  | `([murϕ| $x:decl ]) => `(decl| $x)
+@[macro vardecl]
+def expandVarDecl : Lean.Macro
+  | `(var_decl| $[$ids],* : $t ) => `(Decl.var $(Lean.quote $ ids.toList.map λ x => x.getId.toString) $t) -- TODO: multiple
+  | _ => Lean.Macro.throwUnsupported
 
 macro_rules
-  | `(decl| var $x : $t ) => `(Decl.var $(Lean.quote [x.getId.toString]) $t) -- TODO: multiple
+  | `(decl| var $[$vardecls];*) => do
+    let arraySyn <- vardecls.mapM expandVarDecl
+    let listSyn := Lean.quote arraySyn.toList
+    return listSyn
 
 macro_rules
   | `(type_expr| $x:ident) => `(TypeExpr.previouslyDefined $(Lean.quote x.getId.toString))
 
 macro_rules
-  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $(stmts)* end) =>
+  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) =>
     let xSyn := match x with
       | none => Lean.quote ""
       | some x' => Lean.quote x'.getId.toString
-    let dsSyn := Lean.quote $ ds.getEvenElems.toList
-    let stmtsSyn := Lean.quote $ stmts.getEvenElems.toList
-    `(Rule.simplerule $xSyn $e $dsSyn $stmtsSyn)
+    let dsSyn := Lean.quote $ ds.toList
+    dbg_trace s!"ds: {ds}"
+    `(Rule.simplerule $xSyn $e (List.join $dsSyn ) $stmts)
+
+macro_rules
+  | `(statements| $stmt:statement) => `( [ $stmt ])
+  | `(statements| $stmt:statement ; $stmts:statements) => `($stmt :: $stmts)
 
 macro_rules
   | `(expr| $x = $y) => `(Expr.binop "=" $x $y)
@@ -506,8 +526,8 @@ ld_entry.ld_state := await_fwd_check;
 
 next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
-Sta := next_state;
-end;
+Sta := next_state
+end
 
 
 ]
