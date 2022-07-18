@@ -383,6 +383,10 @@ declare_syntax_cat var_decl
 declare_syntax_cat const_decl
 declare_syntax_cat type_decl
 declare_syntax_cat program
+declare_syntax_cat paramident
+
+syntax (name := paramident1) ident : paramident
+syntax (name := paramident2) "£" ident : paramident
 
 syntax ("var")? ident (ident),* ":" type_expr : formal
 syntax "procedure" ident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
@@ -430,7 +434,7 @@ syntax expr ".." expr : type_expr
 syntax "enum" "{" ident,+ "}" : type_expr
 syntax "record" decl* "end" : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
-syntax (name := vardecl) ident,+ ":" type_expr : var_decl
+syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
 syntax ident ":" expr : const_decl
 syntax ident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
@@ -451,9 +455,21 @@ syntax "[murϕ|" type_expr "]" : term
 syntax "[murϕ|" decl "]" : term
 syntax "[murϕ|" program "]" : term
 
+@[macro paramident1]
+def expandParamIdent : Lean.Macro
+  |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
+  |  `(paramident| £ $x:ident ) => `($x)
+  | _ => Lean.Macro.throwUnsupported
+
+-- This feels very hacky! But it won't work with <|>. TODO: I should produce an MWE
+@[macro paramident2]
+def expandParamIdent2 : Lean.Macro := expandParamIdent
+
 @[macro vardecl]
 def expandVarDecl : Lean.Macro
-  | `(var_decl| $[$ids],* : $t ) => `(Decl.var $(Lean.quote $ ids.toList.map λ x => x.getId.toString) $t) -- TODO: multiple
+  | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
+    let idsList <- ids.toList.mapM expandParamIdent
+    `(Decl.var $(Lean.quote idsList) $t) -- TODO: multiple
   | _ => Lean.Macro.throwUnsupported
 
 macro_rules
@@ -471,7 +487,6 @@ macro_rules
       | none => Lean.quote ""
       | some x' => Lean.quote x'.getId.toString
     let dsSyn := Lean.quote $ ds.toList
-    dbg_trace s!"ds: {ds}"
     `(Rule.simplerule $xSyn $e (List.join $dsSyn ) $stmts)
 
 macro_rules
@@ -503,8 +518,11 @@ macro_rules
   | `([murϕ| $x:program    ]) => `(program| $x)
  -- | `([murϕ| $x:designator ]) => `(designator| $x)
 
-#check [murϕ| var foo : bar]
+def foo := "bar"
+#eval [murϕ| var foo : baz]
+#eval [murϕ| var £foo : baz]
 
+#check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| next_state .core_[j] .lsq_ .lq_ .ld_entries[i] := ld_entry]
 #check [murϕ|
