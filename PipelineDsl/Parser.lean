@@ -76,8 +76,8 @@ syntax qualified_name "=" expr : assignment -- maybe allow foo.bar?
 syntax ident "=" expr : assignment
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
 syntax "{"  statement*  "}" : block
-syntax  "await"  "{"  (when_block)*  "}" : await_block -- this should be + but lean won't let me parse this
-syntax "when"  qualified_name "(" ident,* ")" statement : when_block
+syntax  "await" (call)? "{"  (when_block)*  "}" : await_block -- this should be + but lean won't let me parse this
+syntax "when"  ident "(" ident,* ")" "from" ident statement : when_block
 syntax "listen"  statement  catch_block+ : listen_handle
 syntax "handle"  qualified_name  "(" ident,* ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
@@ -258,18 +258,24 @@ partial def mkBlock : Syntax → Except String Statement
 
 
 partial def mkAwaitBlock : Syntax → Except String Statement
-| `(await_block| await { $[ $w:when_block ]* }) => do
+| `(await_block| await $(opcall)? { $[ $w:when_block ]* }) => do
   let whenList <- w.foldrM (init := []) fun x xs => do
     let wb <- mkWhenBlock x
     return (wb::xs)
-  return Statement.await whenList
+  let call <-  match opcall with
+    | none => Except.ok none
+    | some c => do
+    let callObj <- mkCall c
+    Except.ok $ some callObj
+  return Statement.await call whenList
 | _ => throw "error parsing await block statement"
 
 partial def mkWhenBlock : Syntax → Except String Statement
-| `(when_block| when $n($[$args],*) $stmt ) => do
+| `(when_block| when $n($[$args],*) from $src $stmt ) => do
   let argsArr := args.map (λ x => x.getId.toString)
   let createNodeFun := λ nameNode stmtNode => Statement.when nameNode  argsArr.toList stmtNode
-  createNodeFun <$> (mkQualifiedName n) <*> (mkStatement stmt)
+  let qn := QualifiedName.mk [src.getId.toString, n.getId.toString]
+  createNodeFun qn <$> (mkStatement stmt)
 | u => throw s!"error parsing when block statement, unknown {u}"
 
 partial def mkListenhandle : Syntax → Except String Statement
@@ -315,7 +321,7 @@ partial def mkList : Syntax → Except String Expr
 partial def mkStructureDeclaration : Syntax → Except String Description
   | `(structure_declaration| controller $id:ident $s ) =>
     Except.map (Description.controller id.getId.toString) (mkStatement s)
-  | m@`(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
+  | `(structure_declaration| state_queue $id:ident $s ) => -- TODO: difference to controller?
     Except.map (Description.controller id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_entry $id:ident $s ) =>
     Except.map (Description.entry id.getId.toString) (mkStatement s)
