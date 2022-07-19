@@ -394,9 +394,12 @@ declare_syntax_cat const_decl
 declare_syntax_cat type_decl
 declare_syntax_cat program
 declare_syntax_cat paramident
+declare_syntax_cat paramstr
 
 syntax (name := paramident1) ident : paramident
 syntax (name := paramident2) "£" ident : paramident
+syntax  str : paramstr
+syntax  "£" ident : paramstr
 
 syntax ("var")? paramident (paramident),* ":" type_expr : formal
 syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
@@ -422,7 +425,7 @@ syntax "return" (expr)? : statement
 syntax statement : statements
 syntax statement ";" statements : statements
 syntax paramident ":" expr : mur_alias
-syntax (name := simplerule) "rule" (str)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
+syntax (name := simplerule) "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
 syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
@@ -475,6 +478,9 @@ def expandParamIdent : Macro
 @[macro paramident2]
 def expandParamIdent2 : Macro := expandParamIdent
 
+macro_rules
+  |  `(paramstr| $x:str) => `($x)
+  |  `(paramstr| £ $x:ident ) => `($x)
 
 @[macro vardecl]
 def expandVarDecl : Macro
@@ -524,9 +530,11 @@ macro_rules
 @[macro simplerule]
 def expandSimpleRule : Lean.Macro
   | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) => do
-    let xSyn := match x with
-      | none => Lean.quote ""
-      | some x' => Lean.quote x'.getId.toString
+    let xSyn <- match x with
+      | none => `(none)
+      | some x' =>
+        let expanded <- expandMacros x'
+        `(some $expanded)
     let dsSynList <-  ds.toList.map (λ x => x.raw) |>.mapM expandMacros
     let dsSyn <- liftListSyntax dsSynList
     `(Rule.simplerule $xSyn $e (List.join $dsSyn ) $stmts)
