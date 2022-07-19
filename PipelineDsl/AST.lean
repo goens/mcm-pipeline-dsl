@@ -144,7 +144,6 @@ private partial def qualifiedNameToString : QualifiedName → String
     | n::[] => toString n
     | n::ns => (toString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
 
-
 private partial def exprToString : Expr → String
   | .add x y => (termToString x) ++ " + " ++ (termToString y)
   | .sub x y => (termToString x) ++ " - " ++ (termToString y)
@@ -180,6 +179,7 @@ private partial def statementToString : Statement → String
 
 end -- mutual
 
+
 instance : ToString Const where toString := constToString
 instance : ToString Term where toString := termToString
 instance : ToString Expr where toString := exprToString
@@ -187,6 +187,7 @@ instance : ToString AST where toString := astToString
 instance : ToString Statement where toString := statementToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : ToString Description where toString := descriptionToString
+instance : ToString TypedIdentifier where toString := typedIdentifierToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
 instance : Inhabited AST where default := AST.structure_descriptions []
@@ -195,4 +196,3 @@ instance : Inhabited Statement where default := Statement.block []
 instance : Inhabited Description where default := Description.controller default default
 
 end Pipeline
-
