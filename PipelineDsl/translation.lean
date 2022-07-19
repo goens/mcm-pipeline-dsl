@@ -367,7 +367,7 @@ partial def get_stmts_with_transitions
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
     | Conditional.if_statement expr1 stmt1 => get_stmts_with_transitions stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
-  | Statement.await lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
+  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
   | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
   -- | Statement.listen_handle  => 
   | _ => default
@@ -433,7 +433,7 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.conditional_stmt cond => true
           | Statement.transition iden1 => true
           | Statement.block lst_stmts1 => true
-          | Statement.await await_lst =>
+          | Statement.await none await_lst =>
           -- dbg_trace "==BEGIN await ==\n"
           -- dbg_trace trans_name
           -- dbg_trace await_lst
@@ -448,7 +448,7 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.listen_handle stmt1 lst => true
           | _ => false
         )
-      | Statement.await await_lst => await_lst
+      | Statement.await none await_lst => await_lst
       | Statement.when qname ident_list stmt => [stmt]
       | Statement.transition iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
@@ -1061,7 +1061,7 @@ def ex0004 : Statement := Statement.stray_expr ex0003
 def ex0005 : Conditional := Conditional.if_else_statement ex0003 ex0004 ex0004
 
 -- === await
-def ex0006 : Statement := Statement.await [ex0004]
+def ex0006 : Statement := Statement.await none [ex0004]
 
 -- === descriptions
 def ex0007 : Description := Description.controller "example_structure" ex0006

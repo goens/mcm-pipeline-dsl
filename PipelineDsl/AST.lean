@@ -85,7 +85,7 @@ inductive Statement
 | variable_assignment : QualifiedName  → Expr → Statement
 | conditional_stmt : Conditional → Statement
 | listen_handle : Statement → List HandleBlock → Statement
-| await : List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
+| await : Option Term → List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :  QualifiedName → List Identifier → Statement → Statement
 | transition : Identifier → Statement
 | stray_expr : Expr → Statement
@@ -94,6 +94,9 @@ inductive Statement
 -- what about function call?
 
 end  -- mutual
+
+def QualifiedName.toList : QualifiedName → List Identifier
+| .mk ids => ids
 
 mutual
 
@@ -170,8 +173,15 @@ private partial def statementToString : Statement → String
   | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
   | .conditional_stmt cond => conditionalToString cond
   | .listen_handle listen_block catches => "listen " ++ (statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map handleBlockToString))
-  | .await whens => "await {\n" ++ String.intercalate "\n" (whens.map statementToString) ++ "\n}\n"
-  | .when msg args body => "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ ")" ++ (statementToString body)
+  | .await opcall whens =>
+    let call := match opcall with
+      | none => ""
+      | some c => termToString c ++ " "
+    s!"await {call}\{\n" ++ String.intercalate "\n" (whens.map statementToString) ++ "\n}\n"
+  | .when src_and_msg args body =>
+    let src := src_and_msg.toList.head!
+    let msg := QualifiedName.mk src_and_msg.toList.tail!
+   "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .stray_expr e => exprToString e
   | .block stmts => " {\n" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s))  ++ "\n}\n"
