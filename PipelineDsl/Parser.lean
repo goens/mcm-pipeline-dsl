@@ -138,10 +138,8 @@ private def mkNonTerminalParser {α : Type} [Inhabited α] (syntaxcat : Name) (n
 
 mutual
 partial def mkConstval : Syntax → Except String Const
-| `(constval| $x:num ) => return Const.num_lit x.toNat
-| `(constval| $x:str ) => match x.isStrLit? with
-  | some s => return Const.str_lit s
-  | none   => unreachable! -- because of `s:str`
+| `(constval| $x:num ) => return Const.num_lit x.getNat
+| `(constval| $x:str ) => return Const.str_lit x.getString
 | _ => throw "error parsing constant value"
 
 
@@ -207,9 +205,7 @@ partial def mkCall : Syntax → Except String Term
 
 partial def mkTerm : Syntax → Except String Term
   | `(dsl_term|  $c:constval ) => Except.map (λ const => Term.const const) (mkConstval c)
-  | `(dsl_term|  $i:ident ) => match i.isIdent with
-    | true => Except.ok $ Term.var i.getId.toString
-    | false => Except.error "error parsing variable"
+  | `(dsl_term|  $i:ident ) => return Term.var i.getId.toString
   | `(dsl_term|  $n:qualified_name ) => Except.map (λ x => Term.qualified_var x) (mkQualifiedName n)
   | `(dsl_term|  $c:call ) => mkCall c
   | _ => throw "error parsing term"
@@ -384,68 +380,6 @@ syntax "[arg_list|" arg_list "]" : term
 syntax "[constval|" constval "]" : term
 syntax "[dsl_transition|" dsl_transition "]" : term
 
-class QuoteM (a: Type)  where
-  quoteM : a -> MacroM Syntax
-
-open QuoteM
-
-instance [Quote a] : QuoteM a where
-  quoteM a := return (quote a)
-
-
--- abbrev MacroM := ReaderT Macro.Context (EStateM Macro.Exception Macro.State)
-
-def runMacroM (defaultA: a) (ma: MacroM a): a :=
-  let estate := ReaderT.run ma (Macro.Context.mk default `syntheticMainModule 0 0 99999 Syntax.missing)
-  let aopt := estate.run' (Macro.State.mk 0 [])
-  aopt.getD defaultA
-
-def quoteMConst : Const → MacroM Syntax
- | .num_lit n => `(Const.num_lit $(quote n))
- | .str_lit s => `(Const.str_lit $(quote s))
-
-
-
-instance : QuoteM Const where
-  quoteM := quoteMConst
-
-def quoteMTerm : Term -> MacroM Syntax
-| .negation t => do
-     `(Term.negation $(<- (quoteMTerm t)))
-| .logical_negation t => do
-     `(Term.logical_negation $(<- (quoteMTerm t)))
-| .const c => do
-  `(Term.const $(<- (quoteM c)))
-| _ => Macro.throwError "unhandled term case"
-
-instance : QuoteM Term where
-  quoteM := quoteMTerm
-
-instance [Inhabited a] [QuoteM a] : Quote a where
-  quote (val: a) := runMacroM default (quoteM val)
-
-
-macro_rules
-  | `([constval| $x:constval ]) => do
-     let val := mkConstval x
-     match val with
-       | .error msg => Macro.throwError msg
-       | .ok v => return (quote v)
-
-
-macro_rules
-| `([dsl_term| $x ]) => do
-   let val := mkTerm x
-   match val with
-   | .error msg => Macro.throwError msg
-   | .ok v => return (quote v)
-
-
-def foo := [constval| 42]
-#reduce foo
-
-def bar := [dsl_term| 42]
-#reduce bar
 
 
 -- CUSTOM DERIVING
@@ -602,9 +536,6 @@ macro_rules
   | [constval| $x:constval ] => 
   | [dsl_transition| $x:dsl_transition ] => 
 -/
-
-def toSyntax : String → Lean.MacroM Lean.Syntax :=
-λ file  => `([file| $(Lean.quote file)])
 
 -- parse functions
 def parseConstval := mkNonTerminalParser `constval mkConstval

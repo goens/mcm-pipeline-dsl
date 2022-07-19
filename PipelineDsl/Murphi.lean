@@ -1,4 +1,14 @@
 import Lean
+open Lean
+open Syntax
+
+-- Utility:
+def Monad.kleisliLeftToRight {A B C : Type} [Monad M] : (A → M B) → (B → M C) → A → M C
+ | f₁, f₂, a => do
+   let b <- f₁ a
+   f₂ b
+
+infixl:55 " >=> "  => Monad.kleisliLeftToRight
 
 namespace Murϕ
 
@@ -220,7 +230,7 @@ private partial def declToString : Decl → String
 private partial def exprToString : Expr → String
   | .designator des => designatorToString des
   | .integerConst i => i.repr
-  | .call id actuals => "{id}(" ++ ", ".intercalate (actuals.map exprToString) ++ ")"
+  | .call id actuals => s!"{id}(" ++ ", ".intercalate (actuals.map exprToString) ++ ")"
   | .universal quant doexp => "forall " ++ quantifierToString quant ++ " do " ++ exprToString doexp ++ " endforall"
   | .existential quant doexp => "exists " ++ quantifierToString quant ++ " do " ++ exprToString doexp ++ " endexists"
   | .binop op lhs rhs => "(" ++ exprToString lhs ++ s!" {op} " ++ exprToString rhs ++ ")"
@@ -282,7 +292,7 @@ private partial def statementToString : Statement → String
   | .aliasstmt aliases stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
     "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS} end"
-  | .proccall id args => s!"id (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
+  | .proccall id args => s!"{id} (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
   | .clearstmt des => s!"clear {designatorToString des}"
   | .errorstmt msg => s!"error {msg}"
   | .assertstmt exp msg => s!"assert {exprToString exp} {msg}"
@@ -388,22 +398,22 @@ declare_syntax_cat paramident
 syntax (name := paramident1) ident : paramident
 syntax (name := paramident2) "£" ident : paramident
 
-syntax ("var")? ident (ident),* ":" type_expr : formal
-syntax "procedure" ident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
-syntax "function" ident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")* statement* "end" ";" : proc_decl
+syntax ("var")? paramident (paramident),* ":" type_expr : formal
+syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
+syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")* statement* "end" ";" : proc_decl
 -- TODO: this needs space for the ".", should fix it
-syntax ident : designator
-syntax designator "." ident : designator
+syntax paramident : designator
+syntax designator "." paramident : designator
 syntax designator "[" expr "]" : designator
-syntax ident ":" type_expr : quantifier
-syntax ident ":=" expr "to" expr ("by" expr)? : quantifier
+syntax (name := simplequantifier) paramident ":" type_expr : quantifier
+syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : quantifier
 syntax designator ":=" expr : statement
 syntax "if" expr "then" statement* ("elsif" expr "then" statement*)? ("else" statement*)? "endif" : statement
 syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
 syntax "for" quantifier "do" statement* "endfor" : statement
 syntax "while" expr "do" statement* "end" : statement
 syntax "alias" sepBy(mur_alias,";") "do" statement* "end" : statement
-syntax ident "(" expr,+ ")" : statement
+syntax paramident "(" expr,+ ")" : statement
 syntax "clear" designator : statement
 syntax "error" str : statement
 syntax "assert" expr (str)? : statement
@@ -411,32 +421,32 @@ syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
 syntax statement : statements
 syntax statement ";" statements : statements
-syntax ident ":" expr : mur_alias
-syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
+syntax paramident ":" expr : mur_alias
+syntax (name := simplerule) "rule" (str)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
 syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
 syntax "invariant" (str)? expr : mur_rule
-syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "end" : mur_rule
+syntax (name := rulesetsyn) "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
 syntax "(" expr ")" : expr
 syntax designator : expr
 syntax num : expr
-syntax ident "(" expr,* ")" : expr -- still don't know what "actuals" are
+syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
 syntax "forall" quantifier "do" expr "endforall" : expr
 syntax "exists" quantifier "do" expr "endexists" : expr
 syntax expr ("+" <|> "-" <|> "*" <|> "/" <|> "%" <|> "|" <|> "&" <|>
              "->" <|> "<" <|> "<=" <|> ">" <|> ">=" <|> "=" <|> "!=") expr : expr
 syntax "!" expr : expr
 syntax expr "?" expr ":" expr : expr
-syntax ident : type_expr
+syntax paramident : type_expr
 syntax expr ".." expr : type_expr
-syntax "enum" "{" ident,+ "}" : type_expr
+syntax "enum" "{" paramident,+ "}" : type_expr
 syntax "record" decl* "end" : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
-syntax ident ":" expr : const_decl
-syntax ident ":" type_expr : type_decl
+syntax paramident ":" expr : const_decl
+syntax paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
@@ -456,38 +466,83 @@ syntax "[murϕ|" decl "]" : term
 syntax "[murϕ|" program "]" : term
 
 @[macro paramident1]
-def expandParamIdent : Lean.Macro
+def expandParamIdent : Macro
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
   |  `(paramident| £ $x:ident ) => `($x)
   | _ => Lean.Macro.throwUnsupported
 
 -- This feels very hacky! But it won't work with <|>. TODO: I should produce an MWE
 @[macro paramident2]
-def expandParamIdent2 : Lean.Macro := expandParamIdent
+def expandParamIdent2 : Macro := expandParamIdent
+
 
 @[macro vardecl]
-def expandVarDecl : Lean.Macro
+def expandVarDecl : Macro
   | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
-    let idsList <- ids.toList.mapM expandParamIdent
-    `(Decl.var $(Lean.quote idsList) $t) -- TODO: multiple
+    let idsListSyn : List Syntax := ids.toList.map λ stx => stx.raw
+    let idsList' <- idsListSyn.mapM expandParamIdent
+    let idsList : List Term := idsList'.map λ stx => ⟨stx⟩
+    let texp : Term ← Lean.expandMacros t |>.map λ stx => ⟨stx⟩
+    `(Decl.var $(Lean.quote idsList) $texp)
   | _ => Lean.Macro.throwUnsupported
+
+/-
+syntax (name := quantifier1) paramident ":" type_expr : quantifier
+syntax (name := quantifier2) paramident ":=" expr "to" expr ("by" expr)? : quantifier
+-/
+open TSyntax.Compat
+def liftListSyntax : List Syntax → MacroM Syntax
+  | [] => `([])
+  | syn::syns => do
+    let syns' <- liftListSyntax syns
+    `($syn ::$syns')
+
+@[macro simplequantifier]
+def expandSimpleQuantifier : Lean.Macro
+  | `(quantifier| $x:paramident : $t) => do `(Quantifier.simple $(← expandParamIdent x) $t)
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro quantifierassign]
+def expandQuantifierAssign : Lean.Macro
+  | `(quantifier| $x:paramident := $e₁ to $e₂ $[by $e₃]?) => do
+    let x' <- expandParamIdent x
+    -- TODO: deal with e₃
+    `(Quantifier.assign $x' $e₁ $e₂ none)
+  | _ => Lean.Macro.throwUnsupported
+
+def expandQuantifier := expandSimpleQuantifier >=> expandQuantifierAssign
 
 macro_rules
   | `(decl| var $[$vardecls];*) => do
     let arraySyn <- vardecls.mapM expandVarDecl
-    let listSyn := Lean.quote arraySyn.toList
+    let listSyn <- liftListSyntax arraySyn.toList
     return listSyn
 
 macro_rules
-  | `(type_expr| $x:ident) => `(TypeExpr.previouslyDefined $(Lean.quote x.getId.toString))
+  | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
 
-macro_rules
-  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) =>
+@[macro simplerule]
+def expandSimpleRule : Lean.Macro
+  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) => do
     let xSyn := match x with
       | none => Lean.quote ""
       | some x' => Lean.quote x'.getId.toString
-    let dsSyn := Lean.quote $ ds.toList
+    let dsSynList <-  ds.toList.map (λ x => x.raw) |>.mapM expandMacros
+    let dsSyn <- liftListSyntax dsSynList
     `(Rule.simplerule $xSyn $e (List.join $dsSyn ) $stmts)
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro rulesetsyn]
+def expandRuleset : Lean.Macro
+  | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset) => do
+    let qs' <- quantifiers.mapM expandMacros
+    let qs <- liftListSyntax qs'.toList
+    let rs' <- rules.toList.map (λ x => x.raw) |>.mapM expandMacros
+    let rs <- liftListSyntax rs'
+    `(Rule.ruleset $qs $rs)
+  | _ => do
+    Lean.Macro.throwUnsupported
+
 
 macro_rules
   | `(statements| $stmt:statement) => `( [ $stmt ])
@@ -498,9 +553,9 @@ macro_rules
   | `(expr| $x:designator ) => `(Expr.designator $x)
 
 macro_rules
-  | `(designator| $x:ident ) => `(Designator.mk $(Lean.quote x.getId.toString) [])
+  | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
   | `(designator| $d:designator [$e:expr] ) => `(Designator.concat $d $ Sum.inr $e)
-  | `(designator| $d:designator . $x:ident ) => `(Designator.concat $d $ Sum.inl $(Lean.quote x.getId.toString))
+  | `(designator| $d:designator . $x:paramident ) => do `(Designator.concat $d $ Sum.inl $(← expandParamIdent x))
 
 macro_rules
   | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
@@ -525,7 +580,9 @@ def foo := "bar"
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| next_state .core_[j] .lsq_ .lq_ .ld_entries[i] := ld_entry]
+#check [murϕ| ruleset j : cores_t do endruleset]
 #check [murϕ|
+ruleset j : cores_t do
 rule "await_translation TO await_fwd_check"
 Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
 ==>
@@ -546,7 +603,7 @@ next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
 Sta := next_state
 end
-
+endruleset
 
 ]
 end Murϕ
