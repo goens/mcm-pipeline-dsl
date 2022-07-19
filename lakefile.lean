@@ -18,5 +18,6 @@ lean_lib PipelineDsl {
 
 @[defaultTarget]
 lean_exe pipelinedsl {
+  supportInterpreter := true
   root := `Main
 }

@@ -230,7 +230,7 @@ instance : ToString controller_info := ⟨
     "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++
     "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
     "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
-    "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
+    -- "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 

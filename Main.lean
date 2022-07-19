@@ -19,6 +19,7 @@ def main (args : List String): IO Unit := do
   initSearchPath (← Lean.findSysroot) ["build/lib"]
   let env ← importModules [{ module := `PipelineDsl.Parser }] {}
   let parsed := parse fileStr env
+  println! s!""
   let res_str := match parsed.1 with
     | some msg => "syntax error:\n" ++ msg
     | none => s!"parse ok! parsed: \n---\n{parsed.2}\n---\n"
@@ -30,30 +31,30 @@ def main (args : List String): IO Unit := do
   println! "---- test murhpi ----"
   println! testprog.toString
 
-  -- -- transform tests...
-  -- println! s!"===== Transform Testing ====="
+  -- transform tests...
+  println! s!"===== Transform Testing ====="
 
-  -- println! s!"=== tsfm0 ==="
-  -- let tsfm0_controllers := ast0002_get_controllers parsed.2
-  -- println! s!"controller entries: \n{tsfm0_controllers}"
+  println! s!"=== tsfm0 ==="
+  let tsfm0_controllers := ast0002_get_controllers parsed.2
+  println! s!"controller entries: \n{tsfm0_controllers}"
 
-  -- println! s!"=== tsfm1 ==="
-  -- let tsfm1_last_assn_stmt := ast0004 (ast0002_get_controllers parsed.2)
-  -- println! s!"controller inits: \n{tsfm1_last_assn_stmt}"
+  println! s!"=== tsfm1 ==="
+  let tsfm1_last_assn_stmt := ast0004 (ast0002_get_controllers parsed.2)
+  println! s!"controller inits: \n{tsfm1_last_assn_stmt}"
 
-  -- println! s!"=== tsfm2 ==="
-  -- let tsfm2_entries := ast0010_get_entries parsed.2
-  -- println! s!"controller entries: \n{tsfm2_entries}"
+  println! s!"=== tsfm2 ==="
+  let tsfm2_entries := ast0010_get_entries parsed.2
+  println! s!"controller entries: \n{tsfm2_entries}"
 
-  -- println! s!"=== tsfm3 ==="
-  -- let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
-  -- println! s!"controller entries: \n{tsfm3_last_assn_stmt}"
+  println! s!"=== tsfm3 ==="
+  let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
+  println! s!"controller entries: \n{tsfm3_last_assn_stmt}"
 
-  -- println! s!"=== tsfm4 ==="
-  -- let tsfm4 := ast0019_controller_info parsed.2
-  -- println! s!"controller entries: \n{tsfm4}"
+  println! s!"=== tsfm4 ==="
+  let tsfm4 := ast0019_controller_info parsed.2
+  println! s!"controller entries: \n{tsfm4}"
 
-  -- println! s!"===== Transform Testing Concluding ====="
+  println! s!"===== Transform Testing Concluding ====="
 
   return ()
 
