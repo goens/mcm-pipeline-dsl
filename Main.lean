@@ -34,6 +34,10 @@ def main (args : List String): IO Unit := do
   -- transform tests...
   println! s!"===== Transform Testing ====="
 
+  println! s!"The AST:"
+  let ast00 := parsed.2
+  println! s!"{ast00}"
+
   println! s!"=== tsfm0 ==="
   let tsfm0_controllers := ast0002_get_controllers parsed.2
   println! s!"controller entries: \n{tsfm0_controllers}"
@@ -50,9 +54,15 @@ def main (args : List String): IO Unit := do
   let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
   println! s!"controller entries: \n{tsfm3_last_assn_stmt}"
 
-  println! s!"=== tsfm4 ==="
-  let tsfm4 := ast0019_controller_info parsed.2
-  println! s!"controller entries: \n{tsfm4}"
+  -- Controller descriptions in one struct
+  println! s!"=== all ctrlers ==="
+  let ctrlers := ast0019_controller_info parsed.2
+  println! s!"controller entries: \n{ctrlers}"
+
+  -- Get basic Murphi Records
+  println! s!"=== murphi records for each ctrler ==="
+  let murphi_records := ctrlers.map ast0048_generate_controller_murphi_record
+  println! s!"ctrler records: \n{murphi_records}"
 
   println! s!"===== Transform Testing Concluding ====="
 

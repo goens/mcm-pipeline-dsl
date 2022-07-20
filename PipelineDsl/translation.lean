@@ -115,7 +115,7 @@ def ast0008_qname (qname : QualifiedName) :=
 
 def ast0018_term_var (term : Term) :=
   match term with
-  | Term.var var => var
+  | Term.var iden => iden 
   | _ => default
 
 def ast0017_expr_to_ident (expr : Expr) :=
