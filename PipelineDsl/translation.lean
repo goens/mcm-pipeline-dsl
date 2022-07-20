@@ -1041,19 +1041,20 @@ def ast0019_controller_info (ast : AST) :=
 
 open Murϕ in
 structure ctrler_decl_entry_decl_const_decl where
-ctrler_decl : TypeExpr -- TypeExpr.record, ID/String TypeExpr.record
+-- Decl.type ctrl.name (TypeExpr.record, ID/String TypeExpr.record)
+ctrler_decl : Decl
 entry_decl : Decl -- Decl.type, ID/String TypeExpr.record
 const_decl_lst : List Decl -- Decl.const, ID/String Expr.integerConst
-range_enum_decl : Decl -- 
+range_enum_decl : List Decl -- 
 
 open Murϕ in
 instance : ToString ctrler_decl_entry_decl_const_decl := ⟨
   λ i =>
     "=== Controller, Entry, Const, and Entry Range Decls ===\n" ++
-    "MURPHI CONTROLLER DECL: " ++ toString i.ctrler_decl ++ "\n" ++
-    "MURPHI ENTRY DECL: " ++ toString i.entry_decl ++ "\n" ++
-    "MURPHI CONST DECL LST: " ++ toString i.const_decl_lst ++ "\n" ++
-    "MURPHI ENUM DECL: " ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
+    "MURPHI CONTROLLER DECL:\n" ++ toString i.ctrler_decl ++ "\n\n" ++
+    "MURPHI ENTRY DECL:\n" ++ toString i.entry_decl ++ "\n\n" ++
+    "MURPHI CONST DECL LST:\n" ++ toString i.const_decl_lst ++ "\n\n" ++
+    "MURPHI ENUM DECL:\n" ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
   ⟩ 
 
 open /-Murphi-/Murϕ in
@@ -1128,17 +1129,38 @@ def ast0048_generate_controller_murphi_record
     | _ => default
   let num_entries_range_enum := Nat.sub num_entries 1
 
-  let ctrler_num_entries_const_name := (String.join [ctrl.name, "_num_entries_const"])
+  -- ========== Ctrler Num Entries =============
+  let ctrler_num_entries_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_CONST"])
   let ctrler_num_entries_const :=
     Decl.const 
     ctrler_num_entries_const_name
     (Expr.integerConst num_entries)
 
-  let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_num_entries_enum_const"])
+  let ctrler_num_entries_name_designator :=
+    Designator.mk ctrler_num_entries_const_name []
+
+  let ctrler_entries_count :=
+    TypeExpr.integerSubrange
+    (Expr.integerConst 0)
+    (Expr.designator ctrler_num_entries_name_designator)
+  let ctrler_entries_count_decl_name :=
+    (String.join [ctrl.name, "_ENTRIES_ENUM"])
+  -- NOTE: Another decl to return
+  let ctrler_entries_count_decl :=
+    Decl.type (
+      ctrler_entries_count_decl_name
+    )
+    ctrler_entries_count
+
+  -- ========== Ctrler Entries Enum =============
+  let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_ENUM_CONST"])
   let ctrler_num_entries_range_enum_const :=
     Decl.const 
     ctrler_num_entries_range_enum_const_name
     (Expr.integerConst num_entries_range_enum)
+
+  let ctrler_entries_enum_name_designator :=
+    Designator.mk ctrler_num_entries_range_enum_const_name []
 
   -- Build Decl for the range of values the entry can take
   -- We should also build a constant to reference this
@@ -1146,9 +1168,10 @@ def ast0048_generate_controller_murphi_record
   let ctrler_entries_range :=
     TypeExpr.integerSubrange
     (Expr.integerConst 0)
-    (Expr.integerConst num_entries_range_enum)
+    (Expr.designator ctrler_entries_enum_name_designator)
   let ctrler_entries_range_decl_name :=
-    (String.join [ctrl.name, "_entries_enum"])
+    (String.join [ctrl.name, "_ENTRIES_ENUM"])
+  -- NOTE: Another decl to return
   let ctrler_entries_range_decl :=
     Decl.type (
       ctrler_entries_range_decl_name
@@ -1156,33 +1179,56 @@ def ast0048_generate_controller_murphi_record
     ctrler_entries_range
 
   -- Now we can build a Decl for the controller record
-  let murphi_ctrler_record_name := String.join [ctrl.name, "_entries"]
-  let murphi_ctrler_record := TypeExpr.record [
-    -- The array of entries, which is also a record
-    Decl.type (
-      -- Name of this array of entries
-      murphi_ctrler_record_name
-      )
-      (
-        -- and the array entries and number of entries
-        TypeExpr.array
-        (
+  let murphi_ctrler_record_name := String.join [ctrl.name, "_ENTRIES"]
+  let murphi_ctrler_record :=
+    Decl.type (ctrl.name) (
+      TypeExpr.record [
+        -- The array of entries, which is also a record
+        Decl.type (
+          -- Name of this array of entries
+          murphi_ctrler_record_name
+          )
+          (
+            -- and the array entries and number of entries
+            TypeExpr.array
+            (
+              TypeExpr.previouslyDefined
+              ctrler_entries_range_decl_name
+            )
+            (
+              TypeExpr.previouslyDefined
+              murphi_entry_record_decl_name
+            )
+          ),
+        -- Head, tail, and num_entries counter
+        Decl.var ["head"] (
           TypeExpr.previouslyDefined
           ctrler_entries_range_decl_name
-        )
-        (
+          ),
+        Decl.var ["tail"] (
           TypeExpr.previouslyDefined
-          murphi_entry_record_decl_name
-        )
-      )
-    -- TODO NOTE: Should probably include an
-    -- "out msg buffer" or "Out msg wire"
-  ]
+          ctrler_entries_range_decl_name
+          ),
+        Decl.var ["num_entries"] (
+          TypeExpr.previouslyDefined
+          ctrler_entries_count_decl_name
+          )
+        -- TODO NOTE: Should probably include an
+        -- "out msg buffer" or "Out msg wire"
+      ]
+    )
 
   -- We must also send back the supporting Decl's
   -- for translation/code generation
-  let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl :=
-    {ctrler_decl := murphi_ctrler_record, entry_decl := murphi_entry_record_decl, const_decl_lst := [ctrler_num_entries_range_enum_const, ctrler_num_entries_const], range_enum_decl := ctrler_entries_range_decl}
+  let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl := {
+    ctrler_decl := murphi_ctrler_record,
+    entry_decl := murphi_entry_record_decl,
+    const_decl_lst := [
+      ctrler_num_entries_range_enum_const,
+      ctrler_num_entries_const
+      ],
+    range_enum_decl := [ctrler_entries_range_decl, ctrler_entries_count_decl]
+    }
   ctrler_entry_const_decls
 
 --- ==== AST tests =====
