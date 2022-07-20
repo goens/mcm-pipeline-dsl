@@ -1179,7 +1179,7 @@ def ast0048_generate_controller_murphi_record
     ctrler_entries_range
 
   -- Now we can build a Decl for the controller record
-  let murphi_ctrler_record_name := String.join [ctrl.name, "_ENTRIES"]
+  let murphi_ctrler_record_name := String.join [ctrl.name, "_entries"]
   let murphi_ctrler_record :=
     Decl.type (ctrl.name) (
       TypeExpr.record [
