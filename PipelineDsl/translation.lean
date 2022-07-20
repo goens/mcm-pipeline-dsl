@@ -231,7 +231,7 @@ instance : ToString controller_info := ⟨
     "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++
     "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
     "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
-    -- "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
+    "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 
@@ -1039,6 +1039,23 @@ def ast0019_controller_info (ast : AST) :=
   -- > like search younger than, etc.
   -- > Should be something that's expected?
 
+open Murϕ in
+structure ctrler_decl_entry_decl_const_decl where
+ctrler_decl : TypeExpr -- TypeExpr.record, ID/String TypeExpr.record
+entry_decl : Decl -- Decl.type, ID/String TypeExpr.record
+const_decl_lst : List Decl -- Decl.const, ID/String Expr.integerConst
+range_enum_decl : Decl -- 
+
+open Murϕ in
+instance : ToString ctrler_decl_entry_decl_const_decl := ⟨
+  λ i =>
+    "=== Controller, Entry, Const, and Entry Range Decls ===\n" ++
+    "MURPHI CONTROLLER DECL: " ++ toString i.ctrler_decl ++ "\n" ++
+    "MURPHI ENTRY DECL: " ++ toString i.entry_decl ++ "\n" ++
+    "MURPHI CONST DECL LST: " ++ toString i.const_decl_lst ++ "\n" ++
+    "MURPHI ENUM DECL: " ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
+  ⟩ 
+
 open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
 ( ctrl : controller_info )
@@ -1056,11 +1073,18 @@ def ast0048_generate_controller_murphi_record
     λ dsl_typed_ident => 
     match dsl_typed_ident with
     | TypedIdentifier.mk tiden ident =>
-      Decl.var [tiden] (TypeExpr.previouslyDefined ident)
+      Decl.var [ident] (TypeExpr.previouslyDefined tiden)
   )
   -- This is a record of what an entry looks like
   let murphi_entry_record := TypeExpr.record murphi_decls_lst
   -- make the controller record with a given num of entries
+  let murphi_entry_record_decl_name := (String.join [ctrl.name, "_entry_values"])
+  -- NOTE: key item to return for code gen
+  let murphi_entry_record_decl :=
+    Decl.type
+      murphi_entry_record_decl_name
+      murphi_entry_record
+  -- Get the num of entries in a controller
   let num_entries :=
     match ctrl.controller_descript with
     | Description.controller ident stmt =>
@@ -1102,20 +1126,64 @@ def ast0048_generate_controller_murphi_record
       | _ => default
     -- another bad case
     | _ => default
+  let num_entries_range_enum := Nat.sub num_entries 1
+
+  let ctrler_num_entries_const_name := (String.join [ctrl.name, "_num_entries_const"])
+  let ctrler_num_entries_const :=
+    Decl.const 
+    ctrler_num_entries_const_name
+    (Expr.integerConst num_entries)
+
+  let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_num_entries_enum_const"])
+  let ctrler_num_entries_range_enum_const :=
+    Decl.const 
+    ctrler_num_entries_range_enum_const_name
+    (Expr.integerConst num_entries_range_enum)
+
+  -- Build Decl for the range of values the entry can take
+  -- We should also build a constant to reference this
+  -- controller's upper bound on num of entries
+  let ctrler_entries_range :=
+    TypeExpr.integerSubrange
+    (Expr.integerConst 0)
+    (Expr.integerConst num_entries_range_enum)
+  let ctrler_entries_range_decl_name :=
+    (String.join [ctrl.name, "_entries_enum"])
+  let ctrler_entries_range_decl :=
+    Decl.type (
+      ctrler_entries_range_decl_name
+    )
+    ctrler_entries_range
+
+  -- Now we can build a Decl for the controller record
+  let murphi_ctrler_record_name := String.join [ctrl.name, "_entries"]
   let murphi_ctrler_record := TypeExpr.record [
     -- The array of entries, which is also a record
     Decl.type (
       -- Name of this array of entries
-      String.intercalate ctrl.name  ["_entries"]
+      murphi_ctrler_record_name
       )
       (
         -- and the array entries and number of entries
         TypeExpr.array
-        murphi_entry_record
-        (TypeExpr.integerSubrange (Expr.integerConst 0) (Expr.integerConst num_entries))
+        (
+          TypeExpr.previouslyDefined
+          ctrler_entries_range_decl_name
+        )
+        (
+          TypeExpr.previouslyDefined
+          murphi_entry_record_decl_name
+        )
       )
+    -- TODO NOTE: Should probably include an
+    -- "out msg buffer" or "Out msg wire"
   ]
-  murphi_ctrler_record
+
+  -- We must also send back the supporting Decl's
+  -- for translation/code generation
+  let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl :=
+    {ctrler_decl := murphi_ctrler_record, entry_decl := murphi_entry_record_decl, const_decl_lst := [ctrler_num_entries_range_enum_const, ctrler_num_entries_const], range_enum_decl := ctrler_entries_range_decl}
+  ctrler_entry_const_decls
 
 --- ==== AST tests =====
 

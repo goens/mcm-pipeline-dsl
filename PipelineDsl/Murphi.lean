@@ -218,7 +218,7 @@ private partial def typeExprToString : TypeExpr → String
   | .previouslyDefined id => s!"{id}"
   | .integerSubrange startexp endexp => exprToString startexp ++ " .. " ++ exprToString endexp
   | .enum ids => "enum {" ++ (", ".intercalate ids) ++ "}"
-  | .record decls => "record" ++ (", ".intercalate $ decls.map declToString) ++ "end"
+  | .record decls => "record\n" ++ (", ".intercalate $ decls.map declToString) ++ "\nend"
   | .array ty₁ ty₂ => "array [" ++ typeExprToString ty₁ ++ "] of " ++ typeExprToString ty₂
 
 private partial def declToString : Decl → String
