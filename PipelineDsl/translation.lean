@@ -1,4 +1,5 @@
 import PipelineDsl
+import PipelineDsl.Murphi
 
 -- start at the top of the AST
 -- (1) Collect the state_queues or "controllers"
@@ -1038,6 +1039,7 @@ def ast0019_controller_info (ast : AST) :=
   -- > like search younger than, etc.
   -- > Should be something that's expected?
 
+open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
 ( ctrl : controller_info )
 :=
@@ -1046,7 +1048,74 @@ def ast0048_generate_controller_murphi_record
   -- read the transition names
   -- build allowable states murphi enum
   -- Also add state for searching
-  0
+  let murphi_decls_lst :=
+  -- NOTE: Lean likes it when the parentheses
+  -- starts immediately on the same line as map
+  -- nightly-2022-07-13
+  ctrl.state_vars.map (
+    λ dsl_typed_ident => 
+    match dsl_typed_ident with
+    | TypedIdentifier.mk tiden ident =>
+      Decl.var [tiden] (TypeExpr.previouslyDefined ident)
+  )
+  -- This is a record of what an entry looks like
+  let murphi_entry_record := TypeExpr.record murphi_decls_lst
+  -- make the controller record with a given num of entries
+  let num_entries :=
+    match ctrl.controller_descript with
+    | Description.controller ident stmt =>
+      match stmt with
+      | Statement.block lst_stmt =>
+        let num_entries_stmt :=
+        lst_stmt.filter (
+          λ stmt => match stmt with
+          | Statement.value_declaration typed_iden expr =>
+            match typed_iden with
+            | TypedIdentifier.mk tiden iden =>
+              if iden == "num_entries"
+                then true
+                else false
+          | _ => false
+        )
+        let num_entries_value_decl :=
+          match num_entries_stmt with
+          | [one] => one
+          -- Shouldn't have more than one, or an empty list?
+          | _ => dbg_trace "FAIL! No entries number for controller"
+          default
+        let num_entries' :=
+          match num_entries_value_decl with
+          | Statement.value_declaration typed_iden expr =>
+            match expr with
+            | Expr.some_term term =>
+              match term with
+              | Term.const cnst =>
+                match cnst with
+                | Const.num_lit num => num
+                | _ => dbg_trace "FAIL!"
+                  default
+              | _ => default
+            | _ => default
+          | _ => default
+        num_entries'
+      -- another bad case
+      | _ => default
+    -- another bad case
+    | _ => default
+  let murphi_ctrler_record := TypeExpr.record [
+    -- The array of entries, which is also a record
+    Decl.type (
+      -- Name of this array of entries
+      String.intercalate ctrl.name  ["_entries"]
+      )
+      (
+        -- and the array entries and number of entries
+        TypeExpr.array
+        murphi_entry_record
+        (TypeExpr.integerSubrange (Expr.integerConst 0) (Expr.integerConst num_entries))
+      )
+  ]
+  murphi_ctrler_record
 
 --- ==== AST tests =====
 
