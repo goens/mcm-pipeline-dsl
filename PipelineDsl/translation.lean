@@ -1144,7 +1144,7 @@ def ast0048_generate_controller_murphi_record
     (Expr.integerConst 0)
     (Expr.designator ctrler_num_entries_name_designator)
   let ctrler_entries_count_decl_name :=
-    (String.join [ctrl.name, "_ENTRIES_ENUM"])
+    (String.join [ctrl.name, "_COUNT_ENUM"])
   -- NOTE: Another decl to return
   let ctrler_entries_count_decl :=
     Decl.type (
