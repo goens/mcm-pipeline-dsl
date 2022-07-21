@@ -224,7 +224,7 @@ private partial def typeExprToString : TypeExpr → String
 private partial def declToString : Decl → String
   | .const id expr => s!"{id} : " ++ exprToString expr
   | .type  id typeexpr => s!"{id} : " ++ typeExprToString typeexpr
-  | .var  ids typeexpr => (",".intercalate ids) ++ ": " ++ typeExprToString typeexpr
+  | .var  ids typeexpr => (",".intercalate ids) ++ " : " ++ typeExprToString typeexpr
 
 
 private partial def exprToString : Expr → String

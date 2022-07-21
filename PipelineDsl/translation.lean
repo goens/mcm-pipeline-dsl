@@ -1051,10 +1051,10 @@ open Murϕ in
 instance : ToString ctrler_decl_entry_decl_const_decl := ⟨
   λ i =>
     "=== Controller, Entry, Const, and Entry Range Decls ===\n" ++
-    "MURPHI CONTROLLER DECL:\n" ++ toString i.ctrler_decl ++ "\n\n" ++
-    "MURPHI ENTRY DECL:\n" ++ toString i.entry_decl ++ "\n\n" ++
-    "MURPHI CONST DECL LST:\n" ++ toString i.const_decl_lst ++ "\n\n" ++
-    "MURPHI ENUM DECL:\n" ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
+    "<<<MURPHI CONTROLLER DECL>>>\n" ++ toString i.ctrler_decl ++ "\n\n" ++
+    "<<<MURPHI ENTRY DECL>>>\n" ++ toString i.entry_decl ++ "\n\n" ++
+    "<<<MURPHI CONST DECL LST>>>\n" ++ toString i.const_decl_lst ++ "\n\n" ++
+    "<<<MURPHI ENUM DECL>>>\n" ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
   ⟩ 
 
 open /-Murphi-/Murϕ in
@@ -1181,13 +1181,13 @@ def ast0048_generate_controller_murphi_record
   -- Now we can build a Decl for the controller record
   let murphi_ctrler_record_name := String.join [ctrl.name, "_entries"]
   let murphi_ctrler_record :=
-    Decl.type (ctrl.name) (
+    Decl.var [ctrl.name] (
       TypeExpr.record [
         -- The array of entries, which is also a record
-        Decl.type (
+        Decl.var [
           -- Name of this array of entries
           murphi_ctrler_record_name
-          )
+          ]
           (
             -- and the array entries and number of entries
             TypeExpr.array

@@ -5,7 +5,9 @@ import PipelineDsl.translation
 import PipelineDsl.MurphiTests
 open Lean Pipeline
 
-def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
+-- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
+-- NOTE: This is the "rewrite" DSL filename
+def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-henn-patt/o3/lsq-phys-reg-dsl-rewrite-flattened-simple.file"
 
 def main (args : List String): IO Unit := do
   let filename := match args.get? 0 with
