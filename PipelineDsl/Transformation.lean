@@ -1,4 +1,4 @@
-import PipelineDsl
+import PipelineDsl.Translation
 
 -- Basic in order load to load execution
 
@@ -32,6 +32,88 @@ points for a load is first identified
 -- to this load being executed.
 -- probably something like, if it's a
 -- buffer, then the current entry id or sth
+
+open Pipeline
+
+def find_load_begin_perform_info
+(ctrler_lst : List controller_info)
+:=
+  let filtered_by_load_controllers
+  :=
+    ctrler_lst.filter (
+      -- [1] check by entry types?
+      -- [2] check for sending a mem req 
+      -- in a subsequent 'let statement
+      λ ctrler =>
+        match ctrler.controller_descript with
+        | Description.controller ident stmt =>
+          match stmt with
+          | Statement.block lst_stmts =>
+            -- [1] check the statements
+            -- Find the statement assigning to
+            -- entry_types
+            -- Check if it matches the String
+            -- "load"
+            let lst_stmt_with_load :=
+            lst_stmts.filter (
+              λ stmt' =>
+                match stmt' with
+                | Statement.variable_assignment qual_name expr =>
+                  let the_var_name :=
+                    match qual_name with
+                    | QualifiedName.mk lst_idents' =>
+                      match lst_idents' with
+                      | [a_name] => a_name
+                      | _ => default
+                  if the_var_name == "entry_types"
+                    then
+                      -- check if expr contains "load"
+                      -- Expr is either a list or just
+                      -- "load"
+                      match expr with
+                      | Expr.some_term term =>
+                        match term with
+                        | Term.var term_ident =>
+                          if term_ident == "load"
+                            then true
+                            else false
+                        | _ => false
+                      | Expr.list lst_expr =>
+                        let load_lst :=
+                        lst_expr.filter (
+                          λ expr' =>
+                            match expr' with
+                            | Expr.some_term term' =>
+                              match term' with
+                              | Term.var term_ident' =>
+                                if term_ident' == "load"
+                                  then true
+                                  else false
+                              | _ => false
+                            | _ => false
+                        )
+                        let found_load :=
+                        match load_lst with
+                        | [one] => true
+                        | _ => false
+                        found_load
+                      | _ => false
+
+                    else
+                      false
+                | _ => false
+            )
+            -- [2] Check if there's a
+            -- memory access in the
+            -- transitions of this
+            -- controller
+
+            -- Now check if [1] and [2]
+            -- are both true!
+            -- If so, then we can
+            -- return true for this filter
+    )
+  0
 
 /-
 (2)
