@@ -1054,7 +1054,8 @@ instance : ToString ctrler_decl_entry_decl_const_decl := ⟨
     "<<<MURPHI CONTROLLER DECL>>>\n" ++ toString i.ctrler_decl ++ "\n\n" ++
     "<<<MURPHI ENTRY DECL>>>\n" ++ toString i.entry_decl ++ "\n\n" ++
     "<<<MURPHI CONST DECL LST>>>\n" ++ toString i.const_decl_lst ++ "\n\n" ++
-    "<<<MURPHI ENUM DECL>>>\n" ++ toString i.range_enum_decl ++ "\n=== End Controler Defn Decls ===\n\n"
+    "<<<MURPHI ENUM DECL>>>\n" ++ toString i.range_enum_decl ++
+    "\n=== End Controller Defn Decls ===\n\n"
   ⟩ 
 
 open /-Murphi-/Murϕ in
