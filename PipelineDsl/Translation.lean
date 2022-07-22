@@ -1214,8 +1214,7 @@ def ast0048_generate_controller_murphi_record
           TypeExpr.previouslyDefined
           ctrler_entries_count_decl_name
           )
-        -- TODO NOTE: Should probably include an
-        -- "out msg buffer" or "Out msg wire"
+        -- NOTE: Don't do msg buffers!
       ]
     )
 

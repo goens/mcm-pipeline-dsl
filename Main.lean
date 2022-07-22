@@ -1,7 +1,8 @@
 import PipelineDsl
 import Lean
 import PipelineDsl.Preprocess
-import PipelineDsl.translation
+import PipelineDsl.Translation
+import PipelineDsl.Transformation
 import PipelineDsl.MurphiTests
 open Lean Pipeline
 
@@ -65,6 +66,11 @@ def main (args : List String): IO Unit := do
   println! s!"=== murphi records for each ctrler ==="
   let murphi_records := ctrlers.map ast0048_generate_controller_murphi_record
   println! s!"ctrler records: \n{murphi_records}"
+
+  println! s!"=== ctrlers with both loads & memory access ==="
+  let ctrlers_that_do_load_and_mem_access :=
+    find_load_begin_perform_info ctrlers
+  println! s!"ctrlers with both loads and mem access:\n{ctrlers_that_do_load_and_mem_access}"
 
   println! s!"===== Transform Testing Concluding ====="
 
