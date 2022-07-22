@@ -241,6 +241,52 @@ in the LQ is the next oldest load...
 -- if we're just reading state.
 
 /-
+Thoughts after writing code for
+item (1):
+
+How do we really search for the controller
+which contains the load ahead?
+
+Can we examine where do we find 
+load with seq_num < curr seq_num?
+
+Or is it enough that we know this
+LQ holds speculaitvley executing
+loads and thus gives us enough
+information?
+
+This makes sense?
+if the one structure holds loads
+in FIFO, this is ok.
+
+I suppose the main thing is still
+to find the next load ahead.
+
+i.e. Consider what happens for a
+speculative load
+-> Where is the load ahead
+
+search for structures which
+hold speculative in-flight loads!
+
+determine what the set of sequence
+numbers the loads can have are!
+
+Given a FIFO, and that insertion is
+in Program Order (PO), we know the next
+load is basically the next entry
+(how to show insertion order is in
+PO???)
+
+this is how we know to check the next entry!
+
+=> And then handle the edge case,
+of the head load, since the head load
+is "correct"
+
+-/
+
+/-
 (3)
 Once we know where the "current" load and
 next oldest load are,
