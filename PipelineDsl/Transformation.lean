@@ -287,6 +287,48 @@ is "correct"
 -/
 
 /-
+SUMARY:
+There are different cases.
+one case is that all loads are speculatively executed 
+in one structure,
+
+But in general, any in-flight speculative load
+that can begin to perform, would have a "guard" added
+(or API call in our case)
+
+And we check where the next speculatively executing load
+is!
+-> this can be somewhat involved
+-> also consider the case where someone
+defines a pipeline where we need to
+add "scheduling" restrictions to the IQ,
+so loads aren't scheduled out of order!
+
+-> Main things to consider:
+-> search for all speculatively executing load
+controllers
+-> check which one has the next speculatively executing load
+--> is there some logic to follow to identify which
+load will be the next oldest one?
+--> considering the FIFO nature? If yes, then
+check older entries
+--> If no, must check by something that indicates
+age, like seq_num or sth (better check the 4th LSQ for this)
+--> Other question is, whether or not the LSQ contains
+ONLY LOADS or other insts as well.
+--> So should carry some flags or vars to help distinguish
+between these cases
+--> (or just read it out from the AST every time....)
+
+--> If it only contains loads, then we do not need to
+search this Structure
+--> If it contains other insts, then we must "query"
+  or search the structure.
+  perhaps in constant time (with HW)
+
+-/
+
+/-
 (3)
 Once we know where the "current" load and
 next oldest load are,
