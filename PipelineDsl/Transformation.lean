@@ -345,27 +345,323 @@ Whether they're all scheduled in one buffer,
 or if they're scheduled by another structure, (like an IQ)
 and the executing structure has no control over the scheduling
 
+* key consideration
 i.e. whether or not schedule and "perform/execute"
   is coupled or not
 -/
 
+--======= Fns to get Controller Ordering info =====
+
+def filter_lst_of_stmts_for_ordering_asn
+(lst_stmts : List Statement)
+:=
+  List.filter (
+    λ stmt => 
+      match stmt with
+      | Statement.variable_assignment qual_name expr =>
+        match qual_name with
+        | QualifiedName.mk lst_idents' =>
+          if (lst_idents'.contains "element_ordering")
+            then true
+            else false
+      | _ => false
+        
+  )
+  lst_stmts
+
+def get_assn_stmt_var
+(stmt : Statement)
+:= 
+  match stmt with
+  | Statement.variable_assignment qual_name expr =>
+    match expr with
+    | Expr.some_term term =>
+      match term with
+      | Term.var ident =>
+        ident
+      | _ => dbg_trace "error??"
+      default
+    | _ => dbg_trace "error??"
+      default
+  | _ => dbg_trace "error??"
+    default
+
+def get_ordering_from_ctrler_descript
+(ctrler_descript : Description)
+:= 
+  match ctrler_descript with
+  | Description.controller ident stmt =>
+    match stmt with
+    | Statement.block lst_stmts =>
+      let ordering_stmt_lst := (
+        filter_lst_of_stmts_for_ordering_asn
+        lst_stmts
+      )
+      -- should only be 1 stmt for ordering
+      let ordering_stmt :=
+        match ordering_stmt_lst with
+        | [one_stmt] => one_stmt
+        | _ => dbg_trace "error??"
+          default
+      -- as an Identifier
+      let ordering_type :=
+        get_assn_stmt_var ordering_stmt
+
+      ordering_type
+    | _ => dbg_trace "error??"
+      default
+  | _ => dbg_trace "error??"
+    default
+
+def get_ctrler_elem_ordering
+(ctrler : controller_info)
+:=
+  let ctrler_description := ctrler.controller_descript
+  let ctrler_ordering :=
+    get_ordering_from_ctrler_descript (
+      ctrler_description
+    )
+  ctrler_ordering
+      
+--========= Disambiguating between Ctrler Types ======
+
+def filter_lst_of_stmts_for_entry_type_or_types
+(lst_stmts : List Statement)
+:=
+  List.filter (
+    λ stmt => 
+      match stmt with
+      | Statement.variable_assignment qual_name expr =>
+        match qual_name with
+        | QualifiedName.mk lst_idents' =>
+          if (lst_idents'.contains "entry_types")
+            then true
+            else false
+      | _ => false
+        
+  )
+  lst_stmts
+
+-- gotta use partial :(
+partial def match_expr_or_expr_lst_get_ident
+(expr : Expr)
+:=
+  match expr with
+  | Expr.some_term term =>
+    match term with
+    | Term.var ident =>
+      [ident]
+    | _ => dbg_trace "error??"
+    default
+  | Expr.list lst_exprs =>
+    let list_of_list_of_idents :=
+      lst_exprs.map (
+        match_expr_or_expr_lst_get_ident
+      )
+    let list_of_idents :=
+      list_of_list_of_idents.join
+    list_of_idents
+  | _ => dbg_trace "error??"
+    default
+
+-- Get ident or ident list out of a
+-- var assign statement
+def get_expr_or_expr_list
+(stmt : Statement)
+:= 
+  match stmt with
+  | Statement.variable_assignment qual_name expr =>
+    match_expr_or_expr_lst_get_ident expr
+  | _ => dbg_trace "error??"
+    default
+
+
+def get_ctrler_entry_types
+(ctrler : controller_info)
+-- Should be fine without needing to
+-- generalize and take fn args
+-- (filter_lst_stmts_by : List Statement → List Statement)
+-- (get_expr : Statement → Expr)
+:= 
+  let ctrler_entries :=
+  match ctrler.controller_descript with
+  | Description.controller ident stmt =>
+    match stmt with
+    | Statement.block lst_stmts =>
+      let ordering_stmt_lst := (
+        filter_lst_of_stmts_for_entry_type_or_types
+        -- filter_lst_stmts_by
+        lst_stmts
+      )
+      -- should only be 1 stmt for ordering
+      let ordering_stmt :=
+        match ordering_stmt_lst with
+        | [one_stmt] => one_stmt
+        | _ => dbg_trace "error??"
+          default
+      -- as an Identifier
+      let ordering_type :=
+        get_expr_or_expr_list ordering_stmt
+        -- get_expr ordering_stmt
+
+      ordering_type
+    | _ => dbg_trace "error??"
+      default
+  | _ => dbg_trace "error??"
+    default
+
+  ctrler_entries
+
+
+--========== Get info about the controller =======
+
+def handle_load_perform_controller
+(ctrler : controller_info)
+:=
+  -- handle load, disambiguate between
+  -- different "LSQ" patterns
+
+  let ctrler_ordering :=
+    get_ctrler_elem_ordering ctrler
+
+
+  -- is FIFO? (should be one identifier/string)
+  -- (can't be multiple!? I think? well, technically yes)
+  -- (but this describes insertion order!!!)
+  let is_fifo :=
+    ctrler_ordering == "FIFO"
+
+  if is_fifo
+    then
+      let entry_types :=
+        get_ctrler_entry_types ctrler
+
+      let is_entry_only_load :=
+        and
+        (entry_types.contains "load")
+        (entry_types.length == 1)
+        
+      -- this is kinda assumed...
+      let is_entry_load_speculation_unordered
+        :=
+        true
+
+      -- does load performing ctrler
+      -- only contain loads?
+      if is_entry_only load
+        then
+          -- case similar to henn/patt LSQ
+
+          -- find the exec point in the
+          -- ctrler transition, and
+          -- add the API there to check
+          -- the next elem
+        else
+          -- case similar to the load-replay
+          -- LSQ
+          -- find the exec point in the
+          -- ctrler transition, and
+          -- add the API there to search
+          -- for the next load in the queue!!
+      0
+    else
+      -- let is_single_entry :=
+      -- let is_exec_unit :=
+      0
+
+
+  0
+
+-- Can further disambiguate between
+-- a "multiple load handler" (buffer/queue)
+-- or just an "executing unit" (some load unit)
+-- def handle_one_performing_load_ctrler
+-- ()
+
+-- TODO: Rename this to
+-- "handle_one_executing_load_ctrler"
+-- or just write a separate function?
 def examine_load_perform_controllers
 ( lst_ctrlers : List controller_info)
 :=
   -- there's only one load performing controller
+  -- This conforms to the 3 LSQs we know of
+  -- so far
+  -- Technically after load-replay we add
+  -- another load-perform site though... heh
   let only_one_load_performing_ctrler
-  := lst_ctrlers.length == 1
+    := lst_ctrlers.length == 1
 
   -- This is some buffer
-  let ctrler_has_multiple_entries
-  := match lst_ctrlers with
-  | [a_ctrler] =>
-    match a_ctrler.controller_descript with
-    | Description.controller ident stmt =>
-      -- check if the stmt (block)
-      -- has an num_entries of > 1 or
-      -- buffer is a FIFO
+  let ctrler_ordering
+    :=
+      lst_ctrlers.map get_ctrler_elem_ordering
 
+  -- *** Thoughts
+  -- Idea as of Monday July 25, 2022
+  -- We should narrow down on the specific
+  -- generic case.
+  -- i.e. if the LSQ is either:
+  -- (1) a FIFO ordered buffer,
+  --   which lets loads perform speculatively
+  --   (a) Either all entries are loads,
+  --       thus we "know" where the next load is
+  --   (b) Entries are mixed, must "search"
+  --       for next oldest load
+  -- (2) a single Load Execution Functional Unit
+  --     This single unit 
+  -- (3) NOT a FIFO ordered buffer structure
+  --     This is a future case for the 4th LSQ
+
+  -- So, should I separate these into cases in
+  -- if statements?
+  -- *** Thoughts
+  
+  -- Should also verify what is the
+  -- "execution/perform order"?
+  -- Not necessary? Thanks to the litmus tests?
+  -- Maybe?
+
+  -- But we know that the load entries
+  -- are getting executed speculatively
+
+  -- We know the entry state machines
+  -- perform loads
+
+  -- But we don't know if the entry state
+  -- machines
+  -- can exec in any order
+  -- (But we can uh.. assume this for now..)
+  -- (thanks to the litmus test.. (not really))
+  -- (call this a "limitation")
+  let ctrler_ordering_is_fifo :=
+    ctrler_ordering.filter (
+      λ ident =>
+        if ident == "FIFO" 
+          then true
+          else false
+    )
+    
+    -- match lst_ctrlers with
+    --   | [a_ctrler] => (
+    --       -- check if the stmt (block)
+    --       -- has an num_entries of > 1 or
+    --       -- buffer is a FIFO
+    --       get_ctrler_elem_ordering a_ctrler
+    --     )
+    --   | [] => dbg_trace "error??"
+    --     default
+    --   | h::t =>
+    --   dbg_trace "TODO: Handle case of multiple Load Executors"
+    --   default
+    --   -- Future TODO: Get their ordering,
+    --   -- AND which whether or not one is at commit!!
+    --   -- It's okay if they're speculative or asych
+    --   -- w.r.t eachother i assume?
+    --   -- lst_ctrlers.map get_ctrler_elem_ordering
+
+  -- Dummy return value so lean will typecheck!
+  0
 /-
 (3)
 Once we know where the "current" load and
