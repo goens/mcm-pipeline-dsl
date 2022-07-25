@@ -673,11 +673,34 @@ partial def insert_stmt_into_stmts_list
     then
       List.cons stmt_to_insert (h::t)
     else
-      List.cons h (
-        insert_stmt_into_stmts_list
-        stmt_to_insert
-        t
-        )
+      -- Add a check here, similar to case above
+      -- Check if head is a nested stmt to check
+      let is_nested :=
+        is_a_nested_stmt h
+
+      if is_nested
+      then
+        -- get to the lst of stmts
+        -- and recurisvely call this fn
+        -- and fill in the stmt's lst_of_stmts
+        -- with the returned list
+        let searched_and_replaced_nested_stmt :=
+          (
+            find_stmts_lst_to_call_insert_recursively
+            h
+          )
+        List.cons searched_and_replaced_nested_stmt (
+          insert_stmt_into_stmts_list
+          stmt_to_insert
+          t
+          )
+      else
+        List.cons h (
+          insert_stmt_into_stmts_list
+          stmt_to_insert
+          t
+          )
+
   | [] => []
 
 def return_transition_with_stmt_before_mem_access
