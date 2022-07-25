@@ -706,8 +706,10 @@ partial def insert_stmt_into_stmts_list
 def return_transition_with_stmt_before_mem_access
 -- a transition
 (trans : Description)
+(stmt_to_insert : Statement)
 :=
   -- check if this transition has a mem access stmt
+  -- Get the transition's stmt block to pass to the fn
   let bool_lst :=
     true_if_stmts_have_mem_access trans
   
@@ -720,6 +722,10 @@ def return_transition_with_stmt_before_mem_access
   else
     -- start the replacement
     -- 
+    -- TODO: Access the transition's
+    -- stmt block & it's statement list
+    -- and pass it to this function
+    insert_stmt_into_stmts_list
 
 --======== ANALYZE and TRANSFORM =======
 -- Get info about the controller
