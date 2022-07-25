@@ -326,7 +326,45 @@ search this Structure
   or search the structure.
   perhaps in constant time (with HW)
 
+Key point:
+This would work since we have some idea of the execution
+flow.
+Load insts will execute speculatively only in the queue.
+
+Other cases to consider are ones where there's an exec
+unit! rather than a queue.
+The loads are scheduled to the exec unit, so
+loads either need to be scheduled in-order for exec,
+or use some other mechanism to enforce in order ld ld
+
+i.e. in the algorithm we likely need to pass around
+info about the structures,
+Particularily if they speculatively execute all loads,
+and how they're scheduled
+Whether they're all scheduled in one buffer,
+or if they're scheduled by another structure, (like an IQ)
+and the executing structure has no control over the scheduling
+
+i.e. whether or not schedule and "perform/execute"
+  is coupled or not
 -/
+
+def examine_load_perform_controllers
+( lst_ctrlers : List controller_info)
+:=
+  -- there's only one load performing controller
+  let only_one_load_performing_ctrler
+  := lst_ctrlers.length == 1
+
+  -- This is some buffer
+  let ctrler_has_multiple_entries
+  := match lst_ctrlers with
+  | [a_ctrler] =>
+    match a_ctrler.controller_descript with
+    | Description.controller ident stmt =>
+      -- check if the stmt (block)
+      -- has an num_entries of > 1 or
+      -- buffer is a FIFO
 
 /-
 (3)
