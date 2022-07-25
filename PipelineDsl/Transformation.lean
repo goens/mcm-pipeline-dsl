@@ -512,8 +512,194 @@ def get_ctrler_entry_types
 
   ctrler_entries
 
+--======= helpers for analyze and transform =====
+-- find mem access transition and update
+-- with a stmt, otherwise return the
+-- original transition
+def is_stmt_mem_access_stmt
+(stmt : Statement)
+:=
+  match stmt with
+  | Statement.stray_expr expr' => 
+    match expr' with
+    | Expr.some_term term' =>
+      match term' with
+      | Term.function_call qual_name lst_expr =>
+        match qual_name with
+        | QualifiedName.mk lst_idents' =>
+          if (lst_idents'.contains "memory_interface")
+            then true
+            else false
+      | _ => false
+    | _ => false
+  | _ => false
 
---========== Get info about the controller =======
+def is_a_nested_stmt
+(stmt : Statement)
+:=
+  match stmt with
+  | Statement.listen_handle stmt lst =>
+    true
+    -- List.join
+    -- (
+    --   [true_if_stmts_have_mem_access stmt]
+    --   ++
+    --   (
+    --     lst.map
+    --     (
+    --       λ handl =>
+    --       match handl with
+    --       | HandleBlock.mk qname iden_list stmt1 =>
+    --         true_if_stmts_have_mem_access stmt1
+    --     )
+    --   )
+    -- )
+  | Statement.conditional_stmt cond =>
+    true
+    -- match cond with
+    -- | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_mem_access)
+    -- | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_mem_access stmt1
+  | Statement.block lst_stmt =>
+    true
+    -- List.join (lst_stmt.map true_if_stmts_have_mem_access)
+  | Statement.await none lst_stmt1 =>
+    true
+    -- List.join (lst_stmt1.map true_if_stmts_have_mem_access)
+  | Statement.when qname list_idens stmt =>
+    true
+    -- true_if_stmts_have_mem_access stmt
+  | _ => false
+
+
+partial def find_stmts_lst_to_call_insert_recursively
+(stmt : Statement) : Statement
+:=
+  match stmt with
+  | Statement.block lst_stmts =>
+    Statement.block (insert_stmt_into_stmts_list lst_stmts)
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 =>
+      Statement.conditional_stmt
+      (
+        Conditional.if_else_statement
+        expr1
+        (find_stmts_lst_to_call_insert_recursively stmt1)
+        (find_stmts_lst_to_call_insert_recursively stmt2)
+      )
+    | Conditional.if_statement expr1 stmt1 =>
+      Statement.conditional_stmt
+      (
+        Conditional.if_statement
+        expr1
+        (find_stmts_lst_to_call_insert_recursively stmt1)
+      )
+  | Statement.await term lst_stmt1 =>
+    Statement.await
+    term
+    (insert_stmt_into_stmts_list lst_stmt1)
+  | Statement.await none lst_stmt1 =>
+    Statement.await
+    none
+    (insert_stmt_into_stmts_list lst_stmt1)
+  | Statement.when qname list_idens stmt =>
+    Statement.when
+    qname
+    list_idens
+    (find_stmts_lst_to_call_insert_recursively stmt)
+  | Statement.listen_handle stmt lst =>
+    Statement.listen_handle
+    (find_stmts_lst_to_call_insert_recursively stmt)
+    (
+      lst.map
+      (
+        λ handl =>
+        match handl with
+        | HandleBlock.mk qname iden_list stmt1 =>
+          HandleBlock.mk
+          qname
+          iden_list
+          (find_stmts_lst_to_call_insert_recursively stmt1)
+      )
+    )
+  | _ =>
+    dbg_trace "SHOULDN'T GET HERE!"
+    stmt
+
+partial def insert_stmt_into_stmts_list
+(stmt_to_insert : Statement)
+(lst_stmts : List Statement)
+: List Statement
+:=
+  match lst_stmts with
+  | [one_stmt] => 
+    let is_mem_access :=
+      is_stmt_mem_access_stmt one_stmt
+    
+    if is_mem_access
+    then
+      List.cons stmt_to_insert [one_stmt]
+    else
+      -- Else, check if this is a nested
+      -- statement
+      -- if it is, recursively call into it
+      let is_nested :=
+        is_a_nested_stmt one_stmt
+
+      if is_nested
+      then
+        -- get to the lst of stmts
+        -- and recurisvely call this fn
+        -- and fill in the stmt's lst_of_stmts
+        -- with the returned list
+        let searched_and_replaced_nested_stmt :=
+          (
+            find_stmts_lst_to_call_insert_recursively
+            one_stmt
+          )
+        [searched_and_replaced_nested_stmt]
+      else
+        [one_stmt]
+  -- AZ TODO CHECKPOINT:
+  -- The case above with 1 list entry has been
+  -- "completed"
+    -- and not tested
+  -- Work on the h::t case now.. (tuesday)
+  | h::t =>
+    let is_head_mem_access
+      := is_stmt_mem_access_stmt h
+    
+    if is_head_mem_access
+    then
+      List.cons stmt_to_insert (h::t)
+    else
+      List.cons h (
+        insert_stmt_into_stmts_list
+        stmt_to_insert
+        t
+        )
+  | [] => []
+
+def return_transition_with_stmt_before_mem_access
+-- a transition
+(trans : Description)
+:=
+  -- check if this transition has a mem access stmt
+  let bool_lst :=
+    true_if_stmts_have_mem_access trans
+  
+  let trans_has_mem_access
+    := bool_lst.contains true
+
+  if !trans_has_mem_access
+  then 
+    trans
+  else
+    -- start the replacement
+    -- 
+
+--======== ANALYZE and TRANSFORM =======
+-- Get info about the controller
 
 def handle_load_perform_controller
 (ctrler : controller_info)
@@ -542,6 +728,12 @@ def handle_load_perform_controller
         (entry_types.length == 1)
         
       -- this is kinda assumed...
+      -- (assumed from litmus tests..)
+      -- FUTURE TODO:
+      -- but there's gotta be some way
+      -- to check for this?
+      -- perhaps by checking the transitions
+      -- and what the awaits are on?
       let is_entry_load_speculation_unordered
         :=
         true
@@ -564,6 +756,59 @@ def handle_load_perform_controller
           -- If it isn't, just return the transitions
           -- If it is, then add a stmt to do
           --    the check with the API()
+
+          -- try to create the statement we'll add
+          -- to the transition here?
+          -- what should the statement(s) look like?
+          -- We agree that this adds a stalling
+          -- mechanism, like await/when
+          -- uh oh.
+          -- if it needs to wait until the next
+          -- load reaches a received mem msg state,
+          -- then we need that buffer to hold on to
+          -- this msg some how
+          -- This may conflict with squashes as well!
+          -- So should we try to implement it as a
+          -- 1. "send msg and wait for response"
+          -- or 2. just a direct state check?
+          -- For uarch a direct state check 2. would be
+          -- more efficient and simpler
+          -- This means there are some direct
+          -- structure calls which can take multiple
+          -- cycles while they're working or 'stalled'?
+          -- But between 1. and 2. we already translate
+          -- like 2. with await stmts
+
+          -- store_queue.search
+          -- (entry.phys_addr == phys_addr && key < seq_num)
+
+          -- await entry.next().performed() { ... }
+
+          -- well, the statement and the inserting the stmt
+          -- are orthogonal things.
+          -- perhaps the statement will come to me later
+
+          -- for now (temporary):
+          let stalling_stmt :=
+            Statement.await (
+              (
+                -- Msg Fn this await uses
+                Term.function_call (
+                  QualifiedName.mk
+                  ["entry", "next"]
+                )
+                []
+              )
+              (
+                -- List of statements
+                -- in this await block
+                []
+              )
+            )
+
+          let transitions := ctrler.transition_list
+          let guarded_trans
+            := update_mem_access_transition transitions
         else
           -- case similar to the load-replay
           -- LSQ
