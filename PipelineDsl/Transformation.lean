@@ -548,7 +548,7 @@ def handle_load_perform_controller
 
       -- does load performing ctrler
       -- only contain loads?
-      if is_entry_only load
+      if is_entry_only_load
         then
           -- case similar to henn/patt LSQ
 
@@ -556,6 +556,14 @@ def handle_load_perform_controller
           -- ctrler transition, and
           -- add the API there to check
           -- the next elem
+
+          -- Approach: use "map" with a
+          -- fn on transitions
+          -- fn that checks if a mem_access
+          -- is there
+          -- If it isn't, just return the transitions
+          -- If it is, then add a stmt to do
+          --    the check with the API()
         else
           -- case similar to the load-replay
           -- LSQ
