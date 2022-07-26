@@ -395,9 +395,9 @@ def get_val_decl_stmt_var
     | _ => dbg_trace "Error: unexpected Expr"
       default
   | _ => dbg_trace "Error: unexpected Stmt"
-    dbg_trace "BEGIN Stmt:\n"
-    dbg_trace stmt
-    dbg_trace "END Stmt:\n"
+    -- dbg_trace "BEGIN Stmt:\n"
+    -- dbg_trace stmt
+    -- dbg_trace "END Stmt:\n"
     default
 
 def get_ordering_from_ctrler_descript
@@ -416,10 +416,10 @@ def get_ordering_from_ctrler_descript
         match ordering_stmt_lst with
         | [one_stmt] => one_stmt
         | _ => dbg_trace "Error: unexpected List size?"
-          dbg_trace "List:\n"
-          dbg_trace ordering_stmt_lst
-          dbg_trace "List_stmts:\n"
-          dbg_trace lst_stmts
+          -- dbg_trace "List:\n"
+          -- dbg_trace ordering_stmt_lst
+          -- dbg_trace "List_stmts:\n"
+          -- dbg_trace lst_stmts
           default
       -- as an Identifier
       let ordering_type :=
@@ -558,34 +558,14 @@ def is_a_nested_stmt
   match stmt with
   | Statement.listen_handle stmt lst =>
     true
-    -- List.join
-    -- (
-    --   [true_if_stmts_have_mem_access stmt]
-    --   ++
-    --   (
-    --     lst.map
-    --     (
-    --       λ handl =>
-    --       match handl with
-    --       | HandleBlock.mk qname iden_list stmt1 =>
-    --         true_if_stmts_have_mem_access stmt1
-    --     )
-    --   )
-    -- )
   | Statement.conditional_stmt cond =>
     true
-    -- match cond with
-    -- | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_mem_access)
-    -- | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_mem_access stmt1
   | Statement.block lst_stmt =>
     true
-    -- List.join (lst_stmt.map true_if_stmts_have_mem_access)
   | Statement.await none lst_stmt1 =>
     true
-    -- List.join (lst_stmt1.map true_if_stmts_have_mem_access)
   | Statement.when qname list_idens stmt =>
     true
-    -- true_if_stmts_have_mem_access stmt
   | _ => false
 
 
@@ -682,11 +662,6 @@ partial def insert_stmt_into_stmts_list
         [searched_and_replaced_nested_stmt]
       else
         [one_stmt]
-  -- AZ TODO CHECKPOINT:
-  -- The case above with 1 list entry has been
-  -- "completed"
-    -- and not tested
-  -- Work on the h::t case now.. (tuesday)
   | h::t =>
     let is_head_mem_access
       := is_stmt_mem_access_stmt h
