@@ -358,32 +358,46 @@ def filter_lst_of_stmts_for_ordering_asn
   List.filter (
     λ stmt => 
       match stmt with
-      | Statement.variable_assignment qual_name expr =>
-        match qual_name with
-        | QualifiedName.mk lst_idents' =>
-          if (lst_idents'.contains "element_ordering")
-            then true
-            else false
+      -- | Statement.variable_assignment qual_name expr =>
+      --   match qual_name with
+      --   | QualifiedName.mk lst_idents' =>
+      --     if (lst_idents'.contains "element_ordering")
+      --       then true
+      --       else false
+      | Statement.value_declaration typed_ident expr =>
+        match typed_ident with
+        | TypedIdentifier.mk tident ident =>
+          if (
+            or
+            (tident == "element_ordering")
+            (ident == "ordering")
+          )
+          then true
+          else false
       | _ => false
         
   )
   lst_stmts
 
-def get_assn_stmt_var
+def get_val_decl_stmt_var
 (stmt : Statement)
 := 
   match stmt with
-  | Statement.variable_assignment qual_name expr =>
+  | Statement.value_declaration typed_ident expr =>
+  -- | Statement.variable_assignment qual_name expr =>
     match expr with
     | Expr.some_term term =>
       match term with
       | Term.var ident =>
         ident
-      | _ => dbg_trace "error??"
+      | _ => dbg_trace "Error: unexpected Term"
       default
-    | _ => dbg_trace "error??"
+    | _ => dbg_trace "Error: unexpected Expr"
       default
-  | _ => dbg_trace "error??"
+  | _ => dbg_trace "Error: unexpected Stmt"
+    dbg_trace "BEGIN Stmt:\n"
+    dbg_trace stmt
+    dbg_trace "END Stmt:\n"
     default
 
 def get_ordering_from_ctrler_descript
@@ -401,16 +415,20 @@ def get_ordering_from_ctrler_descript
       let ordering_stmt :=
         match ordering_stmt_lst with
         | [one_stmt] => one_stmt
-        | _ => dbg_trace "error??"
+        | _ => dbg_trace "Error: unexpected List size?"
+          dbg_trace "List:\n"
+          dbg_trace ordering_stmt_lst
+          dbg_trace "List_stmts:\n"
+          dbg_trace lst_stmts
           default
       -- as an Identifier
       let ordering_type :=
-        get_assn_stmt_var ordering_stmt
+        get_val_decl_stmt_var ordering_stmt
 
       ordering_type
-    | _ => dbg_trace "error??"
+    | _ => dbg_trace "Error: unexpected stmt in order search"
       default
-  | _ => dbg_trace "error??"
+  | _ => dbg_trace "Error: unexpected ctrler in order search"
     default
 
 def get_ctrler_elem_ordering
@@ -451,7 +469,7 @@ partial def match_expr_or_expr_lst_get_ident
     match term with
     | Term.var ident =>
       [ident]
-    | _ => dbg_trace "error??"
+    | _ => dbg_trace "Error: unexpected Term in ident search"
     default
   | Expr.list lst_exprs =>
     let list_of_list_of_idents :=
@@ -461,7 +479,7 @@ partial def match_expr_or_expr_lst_get_ident
     let list_of_idents :=
       list_of_list_of_idents.join
     list_of_idents
-  | _ => dbg_trace "error??"
+  | _ => dbg_trace "Error: unexpected Expr in ident search"
     default
 
 -- Get ident or ident list out of a
@@ -472,7 +490,7 @@ def get_expr_or_expr_list
   match stmt with
   | Statement.variable_assignment qual_name expr =>
     match_expr_or_expr_lst_get_ident expr
-  | _ => dbg_trace "error??"
+  | _ => dbg_trace "Error: unexpected stmt in expr search"
     default
 
 
@@ -497,7 +515,7 @@ def get_ctrler_entry_types
       let ordering_stmt :=
         match ordering_stmt_lst with
         | [one_stmt] => one_stmt
-        | _ => dbg_trace "error??"
+        | _ => dbg_trace "Error: unexpected stmt in ctrler entry types search"
           default
       -- as an Identifier
       let ordering_type :=
@@ -505,9 +523,9 @@ def get_ctrler_entry_types
         -- get_expr ordering_stmt
 
       ordering_type
-    | _ => dbg_trace "error??"
+    | _ => dbg_trace "Error: unexpected stmt in ctrler entry type search"
       default
-  | _ => dbg_trace "error??"
+  | _ => dbg_trace "Error: unexpected descript in ctrler entry type search"
     default
 
   ctrler_entries
@@ -631,6 +649,9 @@ partial def insert_stmt_into_stmts_list
 (lst_stmts : List Statement)
 : List Statement
 :=
+  dbg_trace "=== stmts list: =====\n"
+  dbg_trace lst_stmts
+
   match lst_stmts with
   | [one_stmt] => 
     let is_mem_access :=
@@ -1001,7 +1022,7 @@ def examine_load_perform_controllers
     --       -- buffer is a FIFO
     --       get_ctrler_elem_ordering a_ctrler
     --     )
-    --   | [] => dbg_trace "error??"
+    --   | [] => dbg_trace "Error: unexpected "
     --     default
     --   | h::t =>
     --   dbg_trace "TODO: Handle case of multiple Load Executors"
