@@ -571,12 +571,16 @@ def is_a_nested_stmt
   | _ => false
 
 
+-- BEGIN A MUTUALLY RECURISVE SET OF FUNCTIONS
+mutual
+
 partial def find_stmts_lst_to_call_insert_recursively
+(stmt_to_insert : Statement)
 (stmt : Statement) : Statement
 :=
   match stmt with
   | Statement.block lst_stmts =>
-    Statement.block (insert_stmt_into_stmts_list lst_stmts)
+    Statement.block (insert_stmt_into_stmts_list stmt_to_insert lst_stmts)
   | Statement.conditional_stmt cond =>
     match cond with
     | Conditional.if_else_statement expr1 stmt1 stmt2 =>
@@ -584,32 +588,28 @@ partial def find_stmts_lst_to_call_insert_recursively
       (
         Conditional.if_else_statement
         expr1
-        (find_stmts_lst_to_call_insert_recursively stmt1)
-        (find_stmts_lst_to_call_insert_recursively stmt2)
+        (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt1)
+        (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt2)
       )
     | Conditional.if_statement expr1 stmt1 =>
       Statement.conditional_stmt
       (
         Conditional.if_statement
         expr1
-        (find_stmts_lst_to_call_insert_recursively stmt1)
+        (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt1)
       )
   | Statement.await term lst_stmt1 =>
     Statement.await
     term
-    (insert_stmt_into_stmts_list lst_stmt1)
-  | Statement.await none lst_stmt1 =>
-    Statement.await
-    none
-    (insert_stmt_into_stmts_list lst_stmt1)
+    (insert_stmt_into_stmts_list stmt_to_insert lst_stmt1)
   | Statement.when qname list_idens stmt =>
     Statement.when
     qname
     list_idens
-    (find_stmts_lst_to_call_insert_recursively stmt)
+    (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt)
   | Statement.listen_handle stmt lst =>
     Statement.listen_handle
-    (find_stmts_lst_to_call_insert_recursively stmt)
+    (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt)
     (
       lst.map
       (
@@ -619,7 +619,7 @@ partial def find_stmts_lst_to_call_insert_recursively
           HandleBlock.mk
           qname
           iden_list
-          (find_stmts_lst_to_call_insert_recursively stmt1)
+          (find_stmts_lst_to_call_insert_recursively stmt_to_insert stmt1)
       )
     )
   | _ =>
@@ -655,6 +655,7 @@ partial def insert_stmt_into_stmts_list
         let searched_and_replaced_nested_stmt :=
           (
             find_stmts_lst_to_call_insert_recursively
+            stmt_to_insert
             one_stmt
           )
         [searched_and_replaced_nested_stmt]
@@ -687,6 +688,7 @@ partial def insert_stmt_into_stmts_list
         let searched_and_replaced_nested_stmt :=
           (
             find_stmts_lst_to_call_insert_recursively
+            stmt_to_insert
             h
           )
         List.cons searched_and_replaced_nested_stmt (
@@ -703,15 +705,44 @@ partial def insert_stmt_into_stmts_list
 
   | [] => []
 
+-- END A MUTUALLY RECURSIVE SET OF FUNCTIONS
+end
+
 def return_transition_with_stmt_before_mem_access
 -- a transition
-(trans : Description)
-(stmt_to_insert : Statement)
+-- (trans : Description)
+-- (stmt_to_insert : Statement)
+(trans_and_stmt_to_insert : Description × Statement)
 :=
+  let trans : Description := trans_and_stmt_to_insert.1
+  let stmt_to_insert : Statement := trans_and_stmt_to_insert.2
+  -- BEGIN setup.. get transition stmt block
+  let ident_and_blk : Identifier × Statement
+  :=
+    match trans with
+    | Description.transition ident stmt =>
+      (ident, stmt)
+    | _ => dbg_trace "ERROR!"
+      default
+
+  let trans_ident := ident_and_blk.1
+  let blk_stmt := ident_and_blk.2
+
+  -- Also get the stmt block's lst of stmts
+  let blk_stmt_lst : List Statement
+  :=
+    match blk_stmt with
+    | Statement.block lst_stmts =>
+      lst_stmts
+    | _ => dbg_trace "ERROR!"
+      default
+  
+  -- BEGIN code to search for the memory
+  -- access and insert the stmt before it
+
   -- check if this transition has a mem access stmt
-  -- Get the transition's stmt block to pass to the fn
   let bool_lst :=
-    true_if_stmts_have_mem_access trans
+    true_if_stmts_have_mem_access blk_stmt
   
   let trans_has_mem_access
     := bool_lst.contains true
@@ -721,11 +752,30 @@ def return_transition_with_stmt_before_mem_access
     trans
   else
     -- start the replacement
-    -- 
-    -- TODO: Access the transition's
-    -- stmt block & it's statement list
-    -- and pass it to this function
-    insert_stmt_into_stmts_list
+    Description.transition
+    (trans_ident)
+    (
+      Statement.block
+      (
+        insert_stmt_into_stmts_list
+        stmt_to_insert
+        blk_stmt_lst
+      )
+    )
+
+--======= Helper =======
+def return_ctrler_with_updated_trans_list
+(ctrler : controller_info)
+(trans_lst : List Description) -- (Description.transition)
+: controller_info
+:= {
+  name                := ctrler.name,
+  controller_descript := ctrler.controller_descript,
+  entry_descript      := ctrler.entry_descript,
+  init_trans          := ctrler.init_trans,
+  state_vars          := ctrler.state_vars,
+  transition_list     := trans_lst
+}
 
 --======== ANALYZE and TRANSFORM =======
 -- Get info about the controller
@@ -747,112 +797,132 @@ def handle_load_perform_controller
     ctrler_ordering == "FIFO"
 
   if is_fifo
+  then
+    let entry_types :=
+      get_ctrler_entry_types ctrler
+
+    let is_entry_only_load :=
+      and
+      (entry_types.contains "load")
+      (entry_types.length == 1)
+      
+    -- this is kinda assumed...
+    -- (assumed from litmus tests..)
+    -- FUTURE TODO:
+    -- but there's gotta be some way
+    -- to check for this?
+    -- perhaps by checking the transitions
+    -- and what the awaits are on?
+    let is_entry_load_speculation_unordered
+      :=
+      true
+
+    -- does load performing ctrler
+    -- only contain loads?
+    if is_entry_only_load
     then
-      let entry_types :=
-        get_ctrler_entry_types ctrler
+      -- case similar to henn/patt LSQ
 
-      let is_entry_only_load :=
-        and
-        (entry_types.contains "load")
-        (entry_types.length == 1)
-        
-      -- this is kinda assumed...
-      -- (assumed from litmus tests..)
-      -- FUTURE TODO:
-      -- but there's gotta be some way
-      -- to check for this?
-      -- perhaps by checking the transitions
-      -- and what the awaits are on?
-      let is_entry_load_speculation_unordered
-        :=
-        true
+      -- find the exec point in the
+      -- ctrler transition, and
+      -- add the API there to check
+      -- the next elem
 
-      -- does load performing ctrler
-      -- only contain loads?
-      if is_entry_only_load
-        then
-          -- case similar to henn/patt LSQ
+      -- Approach: use "map" with a
+      -- fn on transitions
+      -- fn that checks if a mem_access
+      -- is there
+      -- If it isn't, just return the transitions
+      -- If it is, then add a stmt to do
+      --    the check with the API()
 
-          -- find the exec point in the
-          -- ctrler transition, and
-          -- add the API there to check
-          -- the next elem
+      -- try to create the statement we'll add
+      -- to the transition here?
+      -- what should the statement(s) look like?
+      -- We agree that this adds a stalling
+      -- mechanism, like await/when
+      -- uh oh.
+      -- if it needs to wait until the next
+      -- load reaches a received mem msg state,
+      -- then we need that buffer to hold on to
+      -- this msg some how
+      -- This may conflict with squashes as well!
+      -- So should we try to implement it as a
+      -- 1. "send msg and wait for response"
+      -- or 2. just a direct state check?
+      -- For uarch a direct state check 2. would be
+      -- more efficient and simpler
+      -- This means there are some direct
+      -- structure calls which can take multiple
+      -- cycles while they're working or 'stalled'?
+      -- But between 1. and 2. we already translate
+      -- like 2. with await stmts
 
-          -- Approach: use "map" with a
-          -- fn on transitions
-          -- fn that checks if a mem_access
-          -- is there
-          -- If it isn't, just return the transitions
-          -- If it is, then add a stmt to do
-          --    the check with the API()
+      -- store_queue.search
+      -- (entry.phys_addr == phys_addr && key < seq_num)
 
-          -- try to create the statement we'll add
-          -- to the transition here?
-          -- what should the statement(s) look like?
-          -- We agree that this adds a stalling
-          -- mechanism, like await/when
-          -- uh oh.
-          -- if it needs to wait until the next
-          -- load reaches a received mem msg state,
-          -- then we need that buffer to hold on to
-          -- this msg some how
-          -- This may conflict with squashes as well!
-          -- So should we try to implement it as a
-          -- 1. "send msg and wait for response"
-          -- or 2. just a direct state check?
-          -- For uarch a direct state check 2. would be
-          -- more efficient and simpler
-          -- This means there are some direct
-          -- structure calls which can take multiple
-          -- cycles while they're working or 'stalled'?
-          -- But between 1. and 2. we already translate
-          -- like 2. with await stmts
+      -- await entry.next().performed() { ... }
 
-          -- store_queue.search
-          -- (entry.phys_addr == phys_addr && key < seq_num)
+      -- well, the statement and the inserting the stmt
+      -- are orthogonal things.
+      -- perhaps the statement will come to me later
 
-          -- await entry.next().performed() { ... }
-
-          -- well, the statement and the inserting the stmt
-          -- are orthogonal things.
-          -- perhaps the statement will come to me later
-
-          -- for now (temporary):
-          let stalling_stmt :=
-            Statement.await (
-              (
-                -- Msg Fn this await uses
-                Term.function_call (
-                  QualifiedName.mk
-                  ["entry", "next"]
-                )
-                []
-              )
-              (
-                -- List of statements
-                -- in this await block
-                []
-              )
+      -- for now (temporary):
+      let stalling_stmt : Statement :=
+        Statement.await 
+          (
+            -- Msg Fn this await uses
+            Term.function_call (
+              QualifiedName.mk
+              ["entry", "next"]
             )
+            []
+          )
+          (
+            -- List of statements
+            -- in this await block
+            []
+          )
 
-          let transitions := ctrler.transition_list
-          let guarded_trans
-            := update_mem_access_transition transitions
-        else
-          -- case similar to the load-replay
-          -- LSQ
-          -- find the exec point in the
-          -- ctrler transition, and
-          -- add the API there to search
-          -- for the next load in the queue!!
-      0
+      let transitions := ctrler.transition_list
+
+      let num_transitions := transitions.length
+      let replicated_stmt_lst :=
+        List.replicate
+        num_transitions
+        stalling_stmt
+
+      let trans_and_stmt :=
+        List.zip
+        transitions
+        replicated_stmt_lst
+      
+      let guarded_trans
+      :=
+        trans_and_stmt.map
+        return_transition_with_stmt_before_mem_access 
+
+      let updated_ctrler :=
+        return_ctrler_with_updated_trans_list
+        ctrler
+        guarded_trans
+
+      updated_ctrler
     else
-      -- let is_single_entry :=
-      -- let is_exec_unit :=
-      0
-
-
-  0
+      -- case similar to the load-replay
+      -- LSQ
+      -- find the exec point in the
+      -- ctrler transition, and
+      -- add the API there to search
+      -- for the next load in the queue!!
+      --PLACEHOLDER!
+      ctrler
+      
+  else
+    -- let is_single_entry :=
+    -- let is_exec_unit :=
+    --PLACEHOLDER!
+    ctrler
 
 -- Can further disambiguate between
 -- a "multiple load handler" (buffer/queue)
