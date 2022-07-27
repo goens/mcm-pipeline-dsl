@@ -72,6 +72,25 @@ def main (args : List String): IO Unit := do
     find_load_begin_perform_info ctrlers
   println! s!"ctrlers with both loads and mem access:\n{ctrlers_that_do_load_and_mem_access}"
 
+  let should_be_one_ctrler :=
+    match ctrlers_that_do_load_and_mem_access with
+    | [one_ctrler] => one_ctrler
+    | _ => ast0021_empty_controller
+
+  println! s!"=== stall-inserted ctrler ==="
+  let tsfmed_ctrler :=
+    handle_load_perform_controller should_be_one_ctrler
+  println! s!"ctrlers with both loads and mem access:\n{tsfmed_ctrler}"
+
+  let num_transitions := tsfmed_ctrler.transition_list.length
+  let ctrler_list := List.replicate num_transitions tsfmed_ctrler
+
+  let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
+
+  let dummy :=
+    joined_transition_and_ctrlers.map dsl_trans_descript_to_murphi_rule
+  println! s!"Dummy:\n{dummy}"
+
   println! s!"===== Transform Testing Concluding ====="
 
   return ()

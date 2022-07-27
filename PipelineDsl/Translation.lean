@@ -1231,20 +1231,406 @@ def ast0048_generate_controller_murphi_record
     }
   ctrler_entry_const_decls
 
+--- ====== DSL AST objects to Murphi AST objs ======
+-- Now that the fns for getting AST controller objs have
+-- been found, we just need to convert our DSL
+-- AST objs to Murphi AST objs
+
+/-
+General idea is:
+This is a recursive process
+We will likely call a translate function on
+some "top level" AST objs (like Description)
+
+In doing so, this function recurisvely calls
+other functions in the AST
+-/
+open Murϕ
+
+
+--======== TODO: Create State Enums for each structure ===========
+
+--=========== Helper Funcs for DSL to Murphi Translation =============
+def get_transition_name
+(trans : Description) -- Description.transition
+:=
+  match trans with
+  | Description.transition ident stmt =>
+    ident
+  | _ => dbg_trace "Didn't pass in a transition?"
+    default
+
+def get_transition_stmt
+(trans : Description) -- Description.transition
+:=
+  match trans with
+  | Description.transition ident stmt =>
+    stmt
+  | _ => dbg_trace "Didn't pass in a transition?"
+    default
+
+-- Go copy in relevant code from the DFS
+def get_dest_transition_names
+(trans : Description) -- Description.transition
+:=
+  let trans_stmt := get_transition_stmt trans
+  let lst_of_trans_dest_idents :=
+    get_stmts_with_transitions trans_stmt
+  let joined_names :=
+    String.intercalate " || " lst_of_trans_dest_idents
+  joined_names
+
+partial def check_if_transition_stmt_blk_has_an_await
+(stmt : Pipeline.Statement)
+: List Bool
+:=
+  match stmt with
+  -- | Statement.transition ident => [ident]
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [check_if_transition_stmt_blk_has_an_await stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            check_if_transition_stmt_blk_has_an_await stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map check_if_transition_stmt_blk_has_an_await)
+    | Conditional.if_statement expr1 stmt1 => check_if_transition_stmt_blk_has_an_await stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map check_if_transition_stmt_blk_has_an_await)
+  | Statement.await none lst_stmt1 =>
+  -- List.join (lst_stmt1.map get_stmts_with_transitions)
+    [true]
+  | Statement.when qname list_idens stmt => check_if_transition_stmt_blk_has_an_await stmt
+  -- | Statement.listen_handle  => 
+  | _ => []
+
+-- probably can reuse some code to do this check
+def does_transition_have_await
+(trans : Description) -- Description.transition
+:=
+  let trans_stmt_blk := get_transition_stmt trans
+  let list_bool :=
+  check_if_transition_stmt_blk_has_an_await trans_stmt_blk
+  let found_await := list_bool.contains true
+
+  found_await
+
+--======== For checking if a transition inserts =======
+-- if it does should synth a guard on dest buffer too!
+
+partial def get_insert_function_calls
+(stmt : Pipeline.Statement)
+:=
+          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          -- dbg_trace stmt
+          -- dbg_trace "==END GET-TRANSITIONS ==\n"
+
+  match stmt with
+  -- | Statement.transition ident => [ident]
+  | Statement.stray_expr expr =>
+    match expr with
+    | Expr.some_term term =>
+      match term with
+      | Term.function_call qual_name lst_expr =>
+        match qual_name with
+        | QualifiedName.mk lst_ident =>
+          -- check if this is an insert func
+          -- dbg_trace "===== BEGIN List of Func Identifiers ====\n"
+          -- dbg_trace lst_ident
+          -- dbg_trace "===== END List of Func Identifiers ====\n"
+
+          if (lst_ident.contains "insert")
+          then
+            [lst_ident]
+          else
+            []
+      | _ => -- ignore, term isn't a func call
+        []
+    | _ => -- isn't going to be a func call
+      []
+  | Statement.labelled_statement label stmt =>
+    get_insert_function_calls stmt
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [get_insert_function_calls stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            get_insert_function_calls stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_insert_function_calls)
+    | Conditional.if_statement expr1 stmt1 => get_insert_function_calls stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_insert_function_calls)
+  | Statement.await term lst_stmt1 => List.join (lst_stmt1.map get_insert_function_calls)
+  | Statement.when qname list_idens stmt => get_insert_function_calls stmt
+  -- | Statement.listen_handle  => 
+  | _ => []
+
+--=========== DSL AST to Murphi AST =============
+def dsl_trans_descript_to_murphi_rule
+(ctrler_and_trans : controller_info × Description)
+-- (ctrler : controller_info)
+-- (trans : Description) -- Description.transition
+
+-- all other controllers, if we need to gen
+-- something like "insert" code
+
+-- (lst_ctrlers : List controller_info)
+:=
+  let ctrler := ctrler_and_trans.1
+  let trans := ctrler_and_trans.2
+  -- ======= String Name Setup =======
+  /-
+  First we can create the required Murphi Rules
+  Decide if we need a Ruleset for
+  1. cores
+  2. entries
+
+  1. Core are required anyways
+  2. Entries are required for per entry transitions.
+  All entry transitions should require them
+
+  Only Controller transitions do not require entry
+  transitions, since they are just for the
+  controller/unit
+  -/
+  -- Need a name for the ruleset elem idx
+  let ruleset_core_elem_idx := "i"
+
+  -- Need to get the core number enum type
+  let cores_t :=
+    TypeExpr.previouslyDefined "cores_t"
+
+  let current_state_name := 
+    get_transition_name trans
+
+  let dest_state_name := 
+    get_dest_transition_names trans
+
+  let await_state_name :=
+    does_transition_have_await trans
+
+  let rule_name :=
+    if await_state_name
+    then
+      String.join ["AWAIT ",ctrler.name, " ", current_state_name]
+    else
+      String.join [ctrler.name, " ", current_state_name, " ===> ", dest_state_name]
+
+  -- ======= Transition Analysis ========
+  
+  /-
+  Things we need for a transition!
+  1. Expr : the rule guard.
+  2. Decls : What variables do we need in Murphi?
+  3. Operational Code : The DSL code as Murphi code
+  -/
+
+  /- How to get 1. (rule guard) -/
+  /-
+  1. Conditions to put in the rule guard for a transition
+  
+  a. The for an entry, it is in a certain state
+  (This transition name)
+
+  b. If this structure does something like "insert" into
+  another structure, the dest structure must have
+  available entries
+
+  These should be the only two things required
+  in a Murphi model which doesn't do msg passing
+  -/
+
+  /-
+  1. Ensure we're on this state if we exec
+  this transition
+  -/
+  let core_idx_designator :=
+  Murϕ.Expr.designator (
+    Designator.mk ruleset_core_elem_idx []
+  )
+
+  let ctrler_id := ctrler.name
+
+  let entries := "entries"
+
+  let ruleset_entry_elem_idx := "j"
+  let entry_idx_designator :=
+  Murϕ.Expr.designator (
+    Designator.mk ruleset_entry_elem_idx []
+  )
+
+  let state := "state"
+
+  let current_structure_entry_state :=
+    Murϕ.Expr.designator (
+      Designator.mk (
+        -- Example in comments
+        -- core_
+        "core_"
+      )
+      [
+        -- Example in comments
+        -- core_[i]
+        Sum.inr core_idx_designator,
+        -- core_[i].LQ
+        Sum.inl ctrler_id,
+        -- core_[i].LQ.entries
+        Sum.inl entries,
+        -- core_[i].LQ.entries[j]
+        Sum.inr entry_idx_designator,
+        -- core_[i].LQ.entries[j].state
+        Sum.inl state
+      ]
+    )
+  
+  let current_state_expr :=
+  Murϕ.Expr.designator (
+    Designator.mk
+    current_state_name
+    []
+  )
+
+  let entry_is_at_state_expr :=
+  Murϕ.Expr.binop (
+    "="
+  ) current_structure_entry_state current_state_expr
+
+  /-
+  2. Do a check on the transition, if we insert into
+  another structure
+  (ex. SQ -> SB after commit signal)
+  -/
+
+  -- should be similar to other searches,
+  -- but this time instead of for transitions,
+  -- for insert function calls
+  let trans_stmt_blk :=
+    get_transition_stmt trans
+
+  -- List order is backwards! (func, then object)
+  let insert_func_call := List.join (
+    get_insert_function_calls trans_stmt_blk
+  )
+
+  let insert_func := insert_func_call.take 1
+  let dest_ctrler_lst := insert_func_call.take 1
+  let dest_ctrler := match dest_ctrler_lst with
+  | [dest_name] => dest_name
+  | _ => dbg_trace "How are there other entries?"
+    default
+
+  let num_entries := "num_entries"
+
+  -- now build up the conditional
+  let dest_structure_entry_count :=
+    Murϕ.Expr.designator (
+      Designator.mk (
+        -- Example in comments
+        -- core_
+        "core_"
+      )
+      [
+        -- Example in comments
+        -- core_[i]
+        Sum.inr core_idx_designator,
+        -- core_[i].LQ
+        Sum.inl dest_ctrler,
+        -- core_[i].LQ.entries
+        Sum.inl num_entries
+      ]
+    )
+
+  let current_state_expr :=
+  Murϕ.Expr.designator (
+    Designator.mk
+    (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
+    []
+  )
+  let num_entries_of_dest_not_full :=
+  Murϕ.Expr.binop (
+    "<"
+  ) dest_structure_entry_count current_state_expr
+
+  --========== This is the guard condition =============
+  let guard_cond :=
+    if insert_func_call.length != 0
+    then
+      Murϕ.Expr.binop (
+        "&"
+      ) entry_is_at_state_expr num_entries_of_dest_not_full
+      
+    else
+      entry_is_at_state_expr
+
+  -- dbg_trace "=== What did we find from the insert func? ===\n"
+  -- dbg_trace insert_func_call
+  -- dbg_trace "== END ==\n"
+
+  -- ======= After the analysis ======
+  let murphi_core_ruleset :=
+    Rule.ruleset -- List of quantifier, List of rule
+    -- List of Quantifier (our TypeExpr of cores)
+    [
+      (
+        Quantifier.simple
+        -- ID
+        (ruleset_core_elem_idx)
+        -- TypeExpr
+        (cores_t)
+      )
+    ]
+    [
+      (
+        Rule.simplerule
+        -- Option String
+        ---- Good investment:
+        ---- Should build a good name
+        ---- btn the state transitions
+        ---- Await states get AWAIT appended
+        rule_name
+        -- Option Expr
+        guard_cond
+        -- List Decl
+        -- List Statement
+      )
+    ]
+    -- List of Rule
+
+  0
+
 --- ==== AST tests =====
 
 def ex0000 : Identifier := "hullo"
 def ex0002 : Term := Term.var ex0000
-def ex0003 : Expr := Expr.some_term ex0002
+def ex0003 : Pipeline.Expr := Expr.some_term ex0002
 
 -- === Statement
-def ex0004 : Statement := Statement.stray_expr ex0003
+def ex0004 : Pipeline.Statement := Statement.stray_expr ex0003
 
 -- === Conditional
 def ex0005 : Conditional := Conditional.if_else_statement ex0003 ex0004 ex0004
 
 -- === await
-def ex0006 : Statement := Statement.await none [ex0004]
+def ex0006 : Pipeline.Statement := Statement.await none [ex0004]
 
 -- === descriptions
 def ex0007 : Description := Description.controller "example_structure" ex0006
