@@ -1384,9 +1384,395 @@ partial def get_insert_function_calls
   -- | Statement.listen_handle  => 
   | _ => []
 
+--========= Convert AST Stmts to Murphi Stmts =========
+
+def list_ident_to_murphi_ID
+(lst_ident : List Identifier)
+: (List (ID ⊕ Murϕ.Expr) )
+:= 
+  match lst_ident with
+  | [one_ident] => [Sum.inl one_ident]
+  | h::t =>
+    List.cons (Sum.inl h) (list_ident_to_murphi_ID t)
+  | [] => []
+
+def list_ident_to_murphi_designator
+( lst_ident : List Identifier )
+:=
+  match lst_ident with
+  | [one_ident] => Murϕ.Designator.mk one_ident []
+  | h::t => Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
+  | [] => dbg_trace "ERROR: Empty identifier list???"
+    Murϕ.Designator.mk "" []
+
+--===== Helper func, DSL Term to Murphi Term. =====
+mutual -- BEGIN mutually recursive func region --
+def ast_term_to_murphi_expr
+( term : Pipeline.Term )
+:=
+  match term with
+  | Term.negation term' =>
+    ast_term_to_murphi_expr term'
+  | Term.logical_negation term' =>
+    ast_term_to_murphi_expr term'
+  | Term.binary_negation term' =>
+    ast_term_to_murphi_expr term'
+  | Term.var ident =>
+    -- See below NOTE!
+    -- designator.
+    Murϕ.Expr.designator (
+      Murϕ.Designator.mk ident []
+    )
+  | Term.qualified_var qualified_name =>
+    match qualified_name with
+    | QualifiedName.mk lst_ident =>
+    -- AZ NOTE: This will be work when
+    -- doing the Decl generation.
+    -- Would need to check for the base
+    -- ID to give it a Decl
+    -- designator.
+      let murphi_designator :=
+        list_ident_to_murphi_designator lst_ident
+      let murphi_expr :=
+        Murϕ.Expr.designator (
+          murphi_designator
+        )
+      murphi_expr
+      -- NOTE: Not sure if the rest will
+      -- also return Designators as well?
+  | Term.function_call qualified_name lst_expr =>
+    dbg_trace "WARNING: we didn't really use DSL Funcs,
+    and I'm not bothering with a good translation"
+    
+    -- AZ NOTE: a function call not from a stray expr
+    -- means that this is not a structure calling
+    -- That means this can assume it won't be a 
+        -- insert func
+    -- This also means that I need to implement
+    -- another version of this function
+    -- (DSL term to Murphi expr),
+    -- for translating starting from statements
+    -- rather than an expr
+
+    -- I suppose the main issue here, is how to
+    -- determine that this function call is from a
+    -- stmt, and not some nested expr
+    -- And the answer is, the top level function that
+    -- processes stmts needs to do the
+    -- matching to check for this case
+
+    -- So for now it's ok to continue, and assume
+    -- this is not a direct msg passing call..
+
+    let murphi_func_id :=
+      match qualified_name with
+      | QualifiedName.mk lst_idents =>
+        String.join lst_idents
+    let murphi_expr := Murϕ.Expr.call
+      murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
+    murphi_expr
+    
+  | Term.const const' => -- const is a keyword..
+    match const' with
+    | Const.num_lit num =>
+      -- build an int lit in murphi
+      Murϕ.Expr.integerConst num
+    | Const.str_lit str =>
+      dbg_trace "String literal in DSL found!"
+      dbg_trace "Strings don't do anything in Murphi?"
+      dbg_trace "WARNING: somehow encountered a string"
+      dbg_trace "I'm just going to translate it into int 0"
+      -- TODO For Later:
+      -- Detect this case somehow ahead of time and ignore
+      -- this....
+      Murϕ.Expr.integerConst 0
+  
+
+--===== Helper func, DSL Expr to Murphi Expr. =====
+def ast_expr_to_murphi_expr
+( expr : Pipeline.Expr )
+:=
+  -- match expr to some DSL expr
+  match expr with
+  | Pipeline.Expr.add term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_add_expr :=
+      Murϕ.Expr.binop "+" murphi_term1 murphi_term2
+
+    murphi_add_expr
+  -- Put this in the catch-all _ case,
+  -- since this is really more of a description
+  -- thing...
+  -- | Pipeline.Expr.list lst_expr =>
+  --   Murϕ.Expr.integerConst 0
+
+  | Pipeline.Expr.some_term term =>
+    ast_term_to_murphi_expr term
+
+  | Pipeline.Expr.not_equal term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_not_equal_expr :=
+      Murϕ.Expr.binop "!=" murphi_term1 murphi_term2
+
+    murphi_not_equal_expr
+
+  | Pipeline.Expr.equal term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_equal_expr :=
+      Murϕ.Expr.binop "=" murphi_term1 murphi_term2
+
+    murphi_equal_expr
+
+  | Pipeline.Expr.geq term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_greater_equal_expr :=
+      Murϕ.Expr.binop ">=" murphi_term1 murphi_term2
+
+    murphi_greater_equal_expr
+
+  | Pipeline.Expr.leq term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_less_equal_expr :=
+      Murϕ.Expr.binop "<=" murphi_term1 murphi_term2
+
+    murphi_less_equal_expr
+
+  | Pipeline.Expr.less_than term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_less_expr :=
+      Murϕ.Expr.binop "<" murphi_term1 murphi_term2
+
+    murphi_less_expr
+
+  | Pipeline.Expr.greater_than term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_greater_expr :=
+      Murϕ.Expr.binop ">" murphi_term1 murphi_term2
+
+    murphi_greater_expr
+  
+  -- Going to ignore bit wise operations..
+  -- They don't seem to have them in Murphi
+  -- and I don't think we'll use them at the moment..
+  -- | Pipeline.Expr.rightshift _ _
+  -- | Pipeline.Expr.leftshift _ _
+  -- | Pipeline.Expr.binxor _ _
+  -- | Pipeline.Expr.binor _ _
+  -- | Pipeline.Expr.binand _ _
+
+  | Pipeline.Expr.div term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_div_expr :=
+      Murϕ.Expr.binop "/" murphi_term1 murphi_term2
+
+    murphi_div_expr
+
+  | Pipeline.Expr.mul term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_mul_expr :=
+      Murϕ.Expr.binop "*" murphi_term1 murphi_term2
+
+    murphi_mul_expr
+
+  | Pipeline.Expr.sub term1 term2 =>
+    let murphi_term1 := 
+      ast_term_to_murphi_expr term1
+    let murphi_term2 := 
+      ast_term_to_murphi_expr term2
+    
+    let murphi_sub_expr :=
+      Murϕ.Expr.binop "-" murphi_term1 murphi_term2
+
+    murphi_sub_expr
+
+  | _ => dbg_trace "These things don't map to"
+    dbg_trace "Murphi directly...."
+    dbg_trace "So, we leave this for later..."
+    dbg_trace "Since we don't even use these now..?"
+    Murϕ.Expr.integerConst 0
+
+
+
+end -- END mutually recursive func region --
+
+-- AZ TODO: Implement these 2 functions!!!
+def ast_stmt_to_murphi_stmts
+(stmt_and_ctrlers_lst :
+Pipeline.Statement × (List controller_info))
+-- ( stmt : Pipeline.Statement )
+-- ( ctrlers_lst : List controller_info )
+:=
+  let stmt := stmt_and_ctrlers_lst.1
+  let ctrlers_lst := stmt_and_ctrlers_lst.2
+
+  match stmt with
+  | Statement.labelled_statement label stmt =>
+    ast_stmt_to_murphi_stmts (stmt, ctrlers_lst)
+  | Statement.variable_declaration typed_ident =>
+    -- AZ NOTE: must ignore declarations,
+    -- since they go in the decl list,
+    -- and not the stmt list
+    []
+  | Statement.value_declaration typed_ident expr =>
+    -- AZ NOTE: I think we will need to pass in
+    -- the list of all ctrlers
+    -- For this so that I can get other ctrler's info
+
+    -- But for this, we need to make a Murϕ stmt &
+    -- also produce a Decl for this
+-- inductive Designator
+-- | mk : ID → List (ID ⊕ Expr) → Designator
+    let assned_var's_name :=
+    match typed_ident with
+    | TypedIdentifier.mk tiden ident =>
+      ident
+
+    let designator :=
+    Designator.mk assned_var's_name []
+
+    -- Which murphi expr AST is the right match up? 
+    -- Must match DSL Expr to Murphi Expr.
+    -- Perhaps I should make a func for this :)
+    let murphi_expr :=
+      ast_expr_to_murphi_expr expr
+    
+    let murphi_assignment_stmt :=
+    Murϕ.Statement.assignment designator murphi_expr
+
+    [murphi_assignment_stmt]
+
+  | Statement.return_stmt expr =>
+    let murphi_expr :=
+      ast_expr_to_murphi_expr expr
+
+    let murphi_return_stmt :=
+    Murϕ.Statement.returnstmt murphi_expr
+
+    [murphi_return_stmt]
+
+  | Statement.block lst_stmts =>
+    let num_stmts := lst_stmts.length
+    let num_stmts_of_ctrlers_lst :=
+      List.replicate num_stmts ctrlers_lst
+    let zipped_stmts_and_ctrlers :=
+      lst_stmts.zip num_stmts_of_ctrlers_lst
+    
+    let murphi_stmts_lst_lst :=
+    zipped_stmts_and_ctrlers.map ast_stmt_to_murphi_stmts
+
+    let murphi_stmts_lst :=
+    List.join murphi_stmts_lst_lst
+
+    murphi_stmts_lst
+
+  /-
+  The stray expr case is special..
+  we need to make sure we correctly translate
+  this "insert" operation
+  -/
+
+  -- | Statement.stray_expr _
+
+  /-
+  This is also a special one...
+  This must set the current entry's state
+  to the right given identifier state
+  -/
+  -- | Statement.transition (String.mk _)
+
+  /-
+  "When" is also a special case...
+  "When" is used when another structure
+  executes it's action on another structure,
+  and needs to execute the result as well
+  -/
+  -- | Statement.when _ _ _
+
+  /-
+  "Await" with sending a request is a special case
+  In this case, we execute an action based on the
+  function,
+  and the perform one of the results
+  -- But I shall reserve this for the case
+  -/
+  -- | Statement.await (some _) _
+
+  /-
+  "Await" without sending a request
+  is also a special case...
+  This means this state is an awaiting state
+  if a state is an awaiting state
+  then 
+  -/
+  -- | Statement.await none _
+
+  /-
+  Listen & Handle...
+  Do we really need this at the moment?
+  I can't imagine it at the moment...
+  -/
+  -- | Statement.listen_handle _ _
+
+  /-
+  Conditional 
+  Should be 1 for 1 between the DSL and Murphi
+  -/
+  -- | Statement.conditional_stmt _
+
+  /-
+  Variable assignment
+  This should be 1 to 1 between the DSL and Murphi
+  * Caveat: I'm leaving the annoying part of having to
+  provide the initial state assignment to Declared Vars
+  done by the Decl generation part
+  -/
+  -- | Statement.variable_assignment _ _
+
+  0
+
+
+--========= Convert Murphi Stmts to Decls =========
+-- def murphi_stmts_to_murphi_decls
+
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
-(ctrler_and_trans : controller_info × Description)
+(ctrler_and_trans : (List controller_info) × Description)
 -- (ctrler : controller_info)
 -- (trans : Description) -- Description.transition
 
@@ -1584,6 +1970,65 @@ def dsl_trans_descript_to_murphi_rule
   -- dbg_trace "=== What did we find from the insert func? ===\n"
   -- dbg_trace insert_func_call
   -- dbg_trace "== END ==\n"
+
+  /-
+  3. Operational Code, DSL to Murphi
+  
+  Some statements are simple enough to translate
+  -- state var access/assignment ==> Record access/assgn
+  -- conditional if stmts ==> Murphi conditional
+  etc...
+
+  Add basic translations of note here if needed
+
+  Some, not so much
+  Our function calls, labelled statements, await/when
+  will be more work to translate
+  -- direct HW synch func call ==> (insert) just exec the
+      when statement in the dest structure when exec'ing
+      the transition we're on
+  -- await/when ==> Same thing as the direct function call
+      There's no await with insert, but this should be ok
+      for now.
+      This is primarily to handle multiple possible
+      responses, in the event we want to react to different
+      responses.
+      This is helpful for API() calls.
+  -- Labelled statements ==> same as whatever the stmt is
+
+  Add difficult translations of note here if needed
+  -/
+
+  /-
+  This step is probably better done recusively,
+  since we interact with the AST (tree!)
+
+  Write a function to translate either
+  a list of stmts or stmts (don't know if this
+  must be done in order or can be mapped in parallel)
+  Probably better to execute in order for now..?
+
+  Using match we will eventually cover all cases :)
+
+  -- After this, we can use another function to
+  -- check the Murphi code and generate any required
+  -- decls
+  -/
+
+  -- Implementing this in-order sequentially
+  -- makes sense if there's dependencies, and monad-like
+  -- behaviour
+  -- Map is ok if things are independent.
+  -- I'll go with taking in a stmt and using map for
+  -- sub-stmts.
+  --
+  let lst_murphi_stmt :=
+  -- AZ TODO: Implement the AST Stmts => Murphi Stmts fn
+    ast_stmt_to_murphi_stmts trans_stmt_blk
+
+  let lst_murphi_decls :=
+  -- AZ TODO: Implement the Murphi stmts -> Decls fn
+    murphi_stmts_to_murphi_decls lst_murphi_stmt
 
   -- ======= After the analysis ======
   let murphi_core_ruleset :=

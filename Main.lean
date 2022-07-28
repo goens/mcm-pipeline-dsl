@@ -83,7 +83,9 @@ def main (args : List String): IO Unit := do
   println! s!"ctrlers with both loads and mem access:\n{tsfmed_ctrler}"
 
   let num_transitions := tsfmed_ctrler.transition_list.length
-  let ctrler_list := List.replicate num_transitions tsfmed_ctrler
+  -- let num_transitions := ctrlers.length
+  -- let ctrler_list := List.replicate num_transitions ctrlers
+  let ctrler_list := List.replicate num_transitions ctrlers
 
   let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
 
