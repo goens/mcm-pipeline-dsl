@@ -145,7 +145,7 @@ private partial def qualifiedNameToString : QualifiedName → String
   | .mk l => match l with
     | [] => ""
     | n::[] => toString n
-    | n::ns => (toString n) ++ "." ++ (qualifiedNameToString (QualifiedName.mk ns))
+    | n::ns => (qualifiedNameToString (QualifiedName.mk ns)) ++ "." ++ (toString n)
 
 private partial def exprToString : Expr → String
   | .add x y => (termToString x) ++ " + " ++ (termToString y)

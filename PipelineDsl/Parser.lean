@@ -152,7 +152,7 @@ partial def mkUnuaryop : Syntax → Except String Term
 partial def mkQualifiedName : Syntax → Except String QualifiedName
   | `(qualified_name| $x:ident $[. $xs:ident ]* ) => do
     let xStr : String := x.getId.toString
-    let xsList <- xs.foldlM (init := [xStr]) fun xs x => return (x.getId.toString :: xs)
+    let xsList <- xs.foldlM (init := [xStr]) fun xs x => return (xs ++ [x.getId.toString])
     return QualifiedName.mk xsList
   | _ => throw "error parsing qualified name"
 
