@@ -45,12 +45,14 @@ inductive TypeExpr
   | enum : List ID → TypeExpr
   | record : List Decl → TypeExpr -- Note: this is more premissive than the grammar, should be ok though
   | array : TypeExpr → TypeExpr → TypeExpr
+  deriving Inhabited
 
 /-
 <formal> ::=	[var] <ID> { , <ID> } : <typeExpr>
 -/
 inductive Formal
   | mk : Bool → List ID → TypeExpr → Formal
+  deriving Inhabited
 
 /-
 <procdecl> ::=	<procedure>
@@ -66,6 +68,7 @@ inductive Formal
 inductive ProcDecl
   | procedure : ID → List Formal → List Decl → List Statement → ProcDecl
   | function : ID → List Formal → TypeExpr → List Decl → List Statement → ProcDecl
+  deriving Inhabited
 
 /-
 <expr> :=  \( expr \)
@@ -110,10 +113,12 @@ inductive Expr
   | binop : BinOp → Expr → Expr → Expr
   | negation : Expr → Expr
   | conditional : Expr → Expr → Expr → Expr
+  deriving Inhabited
 
 -- <designator> :=	<ID> { . <ID> | \[ <expr> \] }
 inductive Designator
 | mk : ID → List (ID ⊕ Expr) → Designator
+deriving Inhabited
 
 /-
 <quantifier> ::= <ID> : <typeExpr>
@@ -123,6 +128,7 @@ inductive Designator
 inductive Quantifier
   | simple : ID → TypeExpr → Quantifier
   | assign : ID → Expr → Expr → Option Expr → Quantifier
+  deriving Inhabited
 
 /-
 <stmts> ::= <stmt> {; [<stmt>] }
@@ -173,10 +179,12 @@ inductive Statement
   | putstmtexp : Expr → Statement
   | putstmtstr : String → Statement
   | returnstmt : Option Expr → Statement
+  deriving Inhabited
 
 -- <alias> ::= <ID> : <expr>
 inductive Alias
   | mk : ID → Expr → Alias
+  deriving Inhabited
 
 /-
 <rules> ::= <rule> {; <rule> } [;]
@@ -205,6 +213,7 @@ inductive Rule
   | invariant : Option String → Expr → Rule
   | ruleset : List Quantifier → List Rule → Rule
   | aliasrule : List Alias → List Rule → Rule
+  deriving Inhabited
 
 end -- mutual
 
