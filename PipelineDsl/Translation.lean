@@ -1633,6 +1633,65 @@ partial def ast_expr_to_murphi_expr
 
 
 
+-- This is for mapping a statement-level stray_expr
+-- to a murphi expr
+-- (likely a structure func call)
+partial def ast_stmt_stray_expr_to_murphi_expr
+(expr : Pipeline.Expr)
+:
+Murϕ.Expr
+:=
+  -- If it isn't a term -> func call, with
+  -- 2 qualified param names, then we can just call 
+  -- the ast_expr_to_murphi_expr actually!
+  match expr with
+  | Pipeline.Expr.some_term term =>
+    match term with
+    | Pipeline.Term.function_call qual_name lst_expr =>
+      -- This means we found a structure func call!!
+      let qual_name_len   := qual_name.length
+
+      let len_1_qual_name := qual_name_len == 1
+      let len_2_qual_name := qual_name_len == 2
+      let len_more_than_2_qual_name : Bool
+                          := qual_name_len > 2
+
+      -- if equal to 2, then put handle the mapping
+      if len_2_qual_name
+      then
+        -- read the name, check what the
+        -- 1. Dest structure is
+        -- 2. the function call API
+        let dest_struct := qual_name.take 1
+        let func_name := qual_name.take 1
+
+        -- Now understand which function is this?
+        if func_name == "insert"
+        then
+          -- structure insert sth
+        else
+        if func_name == "send_memory_request"
+        then
+          -- reg file write?
+        else
+        if func_name == "write"
+        then
+        else
+          -- ideally, would throw an error?
+          -- but just going to return a default
+          --
+      else
+      if len_1_qual_name
+      then
+      else
+        -- len more than 2 qual name...
+        -- we don't have that at the moment?
+        -- should throw error
+        -- just return default
+       
+
+    -- Murϕ.Expr.integerConst 0
+  | _ => ast_expr_to_murphi_expr expr
 
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
@@ -1712,7 +1771,13 @@ Pipeline.Statement × (List controller_info))
   This also applies to the memory interface call
   -/
 
-  -- | Statement.stray_expr _
+  | Statement.stray_expr expr =>
+  -- AZ NOTE!
+  -- We don't want to call the
+  -- ast_expr_to_murphi_expr here, since we
+  -- want to disambiguate between the
+  -- top level statement expr which is a func call
+  -- and lower level exprs which is something else
 
   /-
   This is also a special one...
@@ -1734,6 +1799,16 @@ Pipeline.Statement × (List controller_info))
   which rely on await+when responses from
   other structures in order to continue
   -/
+  -- if this is not an await state
+  -- translate into a state transition
+  -- if it's an await state do nothing
+
+  -- How to check if this is an await state?
+  -- The top level func that calls this one
+  -- can determine this,
+  -- and simply pass it to this function as an input..
+  -- or this func could figure it out with
+  -- some deduction based on the inputs?
   -- | Statement.transition (String.mk _)
 
   /-
@@ -1754,6 +1829,10 @@ Pipeline.Statement × (List controller_info))
   If this transition is an await transition with
   a structure function call argument, then
   we just translate everything together
+
+  Revision, based on the await-API()-when case:
+  We can still use this case recursively.
+  and handle generating the corresponding code here.
   -/
   -- | Statement.when _ _ _
 
@@ -1765,7 +1844,23 @@ Pipeline.Statement × (List controller_info))
   -- This will recursively call this func to get to
   -- the "when" case
   -/
-  -- | Statement.await (some _) _
+
+  -- AZ NOTE: The function call part of this
+  -- is similar to the stray_expr structure func call
+
+  -- This should match the term similar to the
+  -- stray_expr, and add code based on
+  -- the API function the term contains
+
+  -- The added code should then check the lst_stmts for
+  -- given outcomes, if there are multiple "when" stmts
+  -- basically
+
+  -- If there are multiple whens, then the code
+  -- has some kind of result that needs to be checked
+  -- and the corresponding "when" block must be
+  -- executed
+  -- | Statement.await term lst_stmts =>
 
   /-
   "Await" without sending a request
@@ -1777,7 +1872,10 @@ Pipeline.Statement × (List controller_info))
   -- This will NOT recursively call this func to get to
   -- the "when" case
   -/
-  -- | Statement.await none _
+  | Statement.await none lst_stmts =>
+    -- nothing to do here, we're awaiting on
+    -- another structure to do something
+    []
 
   /-
   Listen & Handle...
@@ -1787,7 +1885,21 @@ Pipeline.Statement × (List controller_info))
   Either way, first just recursively call this
   for the Listen block's stmts!
   -/
-  -- | Statement.listen_handle _ _
+  | Statement.listen_handle stmt handle_blk =>
+    let murphi_stmt :=
+    ast_stmt_to_murphi_stmts (stmt, ctrlers_lst)
+
+    -- note, ignoring the handle block for now
+
+    -- AZ FUTURE TODO:
+    -- AZ NOTE: handle_block should be "simple"
+    -- to translate later..
+    -- It should just be a state check from when
+    -- another structure attempts to manipulate
+    -- an entry, it must check if this entry is on
+    -- this state, for if it has any
+    -- "handle block actions" it needs to do
+    murphi_stmt
 
   /-
   Conditional 
@@ -1795,7 +1907,33 @@ Pipeline.Statement × (List controller_info))
   -/
   | Statement.conditional_stmt conditional =>
     match conditional with
-    |
+    | Conditional.if_else_statement expr stmt1 stmt2 =>
+      -- map to Murphi
+      -- This mapping is kind of simple
+      -- Perhaps recursively checking the stmts
+      -- would help map to a flatter Murphi structure
+      let murphi_expr := ast_expr_to_murphi_expr expr
+
+      let murphi_stmt1 :=
+      ast_stmt_to_murphi_stmts (stmt1, ctrlers_lst)
+
+      let murphi_stmt2 :=
+      ast_stmt_to_murphi_stmts (stmt2, ctrlers_lst)
+
+      let murphi_if_stmt :=
+      Murϕ.Statement.ifstmt murphi_expr murphi_stmt1 none murphi_stmt2
+
+      [murphi_if_stmt]
+    | Conditional.if_statement expr stmt =>
+      let murphi_expr := ast_expr_to_murphi_expr expr
+
+      let murphi_stmt :=
+      ast_stmt_to_murphi_stmts (stmt, ctrlers_lst)
+
+      let murphi_if_stmt :=
+      Murϕ.Statement.ifstmt murphi_expr murphi_stmt none []
+
+      [murphi_if_stmt]
 
   /-
   Variable assignment
@@ -1982,8 +2120,11 @@ def dsl_trans_descript_to_murphi_rule
     get_insert_function_calls trans_stmt_blk
   )
 
-  let insert_func := insert_func_call.take 1
+  -- I've flipped the access order around,
+  -- assuming Andrés's fix works
   let dest_ctrler_lst := insert_func_call.take 1
+  let insert_func := insert_func_call.take 1
+
   let dest_ctrler := match dest_ctrler_lst with
   | [dest_name] => dest_name
   | _ => dbg_trace "How are there other entries?"
