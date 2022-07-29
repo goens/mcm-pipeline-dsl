@@ -1400,6 +1400,7 @@ partial def list_ident_to_murphi_ID
 
 partial def list_ident_to_murphi_designator
 ( lst_ident : List Identifier )
+: Designator
 :=
   match lst_ident with
   | [one_ident] => Murϕ.Designator.mk one_ident []
@@ -1707,6 +1708,8 @@ Pipeline.Statement × (List controller_info))
   The stray expr case is special..
   we need to make sure we correctly translate
   this "insert" operation
+
+  This also applies to the memory interface call
   -/
 
   -- | Statement.stray_expr _
@@ -1715,6 +1718,21 @@ Pipeline.Statement × (List controller_info))
   This is also a special one...
   This must set the current entry's state
   to the right given identifier state
+
+  AZ TODO:
+  Must also get the current transition's info,
+  to know if this is an awaiting transition.
+
+  If it is, the asynchronous action by the
+  other structure should make this transition
+  to this next state instead...
+
+  AZ NOTE:
+  [IMPORTANT]
+  This would mean it would be helpful to
+  keep a list of structures and transitions
+  which rely on await+when responses from
+  other structures in order to continue
   -/
   -- | Statement.transition (String.mk _)
 
@@ -1723,6 +1741,19 @@ Pipeline.Statement × (List controller_info))
   "When" is used when another structure
   executes it's action on another structure,
   and needs to execute the result as well
+
+  this goes along with the await case,
+  which will recursively call to this case
+
+  Actually:
+  If this transition is an await transition:
+  An await state is moved forwards by another
+  structure's transition in Murphi, so this will
+  be implemented there?
+
+  If this transition is an await transition with
+  a structure function call argument, then
+  we just translate everything together
   -/
   -- | Statement.when _ _ _
 
@@ -1731,7 +1762,8 @@ Pipeline.Statement × (List controller_info))
   In this case, we execute an action based on the
   function,
   and the perform one of the results
-  -- But I shall reserve this for the case
+  -- This will recursively call this func to get to
+  -- the "when" case
   -/
   -- | Statement.await (some _) _
 
@@ -1741,6 +1773,9 @@ Pipeline.Statement × (List controller_info))
   This means this state is an awaiting state
   if a state is an awaiting state
   then 
+
+  -- This will NOT recursively call this func to get to
+  -- the "when" case
   -/
   -- | Statement.await none _
 
@@ -1748,6 +1783,9 @@ Pipeline.Statement × (List controller_info))
   Listen & Handle...
   Do we really need this at the moment?
   I can't imagine it at the moment...
+
+  Either way, first just recursively call this
+  for the Listen block's stmts!
   -/
   -- | Statement.listen_handle _ _
 
@@ -1755,7 +1793,9 @@ Pipeline.Statement × (List controller_info))
   Conditional 
   Should be 1 for 1 between the DSL and Murphi
   -/
-  -- | Statement.conditional_stmt _
+  | Statement.conditional_stmt conditional =>
+    match conditional with
+    |
 
   /-
   Variable assignment
@@ -1763,8 +1803,30 @@ Pipeline.Statement × (List controller_info))
   * Caveat: I'm leaving the annoying part of having to
   provide the initial state assignment to Declared Vars
   done by the Decl generation part
+
+  No wait, there is the case of
+  if something is a struct, then we need to
+  check the qualified name to see if the
+  dest var is a part of a struct
+
+  Then note that for the Decl generation,
+  we must take the left most ID (or just the ID
+  in the designator basically) and generate stmt
+  to init this
   -/
-  -- | Statement.variable_assignment _ _
+  | Statement.variable_assignment qual_name expr =>
+    let murphi_var_name_designator :=
+      match qual_name with
+      | QualifiedName.mk lst_idents =>
+        list_ident_to_murphi_designator lst_idents
+
+    let murphi_expr :=
+      ast_expr_to_murphi_expr expr
+
+    let murphi_assn_expr :=
+      Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
+    
+    [murphi_assn_expr]
 
   -- 0
 
