@@ -1386,7 +1386,9 @@ partial def get_insert_function_calls
 
 --========= Convert AST Stmts to Murphi Stmts =========
 
-def list_ident_to_murphi_ID
+mutual -- BEGIN mutually recursive func region --
+
+partial def list_ident_to_murphi_ID
 (lst_ident : List Identifier)
 : (List (ID ⊕ Murϕ.Expr) )
 := 
@@ -1396,7 +1398,7 @@ def list_ident_to_murphi_ID
     List.cons (Sum.inl h) (list_ident_to_murphi_ID t)
   | [] => []
 
-def list_ident_to_murphi_designator
+partial def list_ident_to_murphi_designator
 ( lst_ident : List Identifier )
 :=
   match lst_ident with
@@ -1406,15 +1408,16 @@ def list_ident_to_murphi_designator
     Murϕ.Designator.mk "" []
 
 --===== Helper func, DSL Term to Murphi Term. =====
-mutual -- BEGIN mutually recursive func region --
-def ast_term_to_murphi_expr
+
+partial def ast_term_to_murphi_expr
 ( term : Pipeline.Term )
 :=
   match term with
   | Term.negation term' =>
-    ast_term_to_murphi_expr term'
+    Murϕ.Expr.negation (ast_term_to_murphi_expr term')
   | Term.logical_negation term' =>
-    ast_term_to_murphi_expr term'
+    Murϕ.Expr.negation (ast_term_to_murphi_expr term')
+    -- ast_term_to_murphi_expr term'
   | Term.binary_negation term' =>
     ast_term_to_murphi_expr term'
   | Term.var ident =>
@@ -1489,7 +1492,7 @@ def ast_term_to_murphi_expr
   
 
 --===== Helper func, DSL Expr to Murphi Expr. =====
-def ast_expr_to_murphi_expr
+partial def ast_expr_to_murphi_expr
 ( expr : Pipeline.Expr )
 :=
   -- match expr to some DSL expr
@@ -1629,10 +1632,9 @@ def ast_expr_to_murphi_expr
 
 
 
-end -- END mutually recursive func region --
 
 -- AZ TODO: Implement these 2 functions!!!
-def ast_stmt_to_murphi_stmts
+partial def ast_stmt_to_murphi_stmts
 (stmt_and_ctrlers_lst :
 Pipeline.Statement × (List controller_info))
 -- ( stmt : Pipeline.Statement )
@@ -1764,9 +1766,10 @@ Pipeline.Statement × (List controller_info))
   -/
   -- | Statement.variable_assignment _ _
 
-  0
+  -- 0
 
 
+end -- END mutually recursive func region --
 --========= Convert Murphi Stmts to Decls =========
 -- def murphi_stmts_to_murphi_decls
 
