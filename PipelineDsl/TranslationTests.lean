@@ -43,26 +43,41 @@ endruleset;
 endruleset
 ]
 
-def testFun : Description → Rule
-  | .transition name stmt =>
-    [murϕ|
-    ruleset j : cores_t do
-    ruleset i : LD_ENTRY do
-    rule £name
-    Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
-    ==>
-    -- decls
-    var next_state : STATE;
-    var ld_entry : LD_ENTRY_VALUES;
-    begin
-    next_state := Sta;
-    ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-    ld_entry.phys_addr := ld_entry.virt_addr;
-    ld_entry.ld_state := await_fwd_check;
-    next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-    Sta := next_state
-    end;
-    endruleset;
-    endruleset
-    ]
-  | _ => [murϕ| rule "unimplemented" true ==> begin Sta := Sta end]
+#check Description.transition
+
+--def mkSingleRule (desc : Description) (stmt)
+
+def mkTransition (desc : Description) (controllerId : Identifier) : Rule :=
+match desc with
+  | .transition srcname body =>
+  match body with
+    | .transition _ => mkTransitionAux $ Pipeline.Statement.block body
+    | .block _ => mkTransitionAux body
+    | _ => [murϕ| rule "unimplemented" true ==> begin Sta := Sta end] -- Should maybe wrap this into an Except
+  where mkTransixionAux blockStmt :=
+    match blockStmt with
+    | .block stmts =>
+      let stmtsMurϕ := stmts.map mkStatment
+      [murϕ| rule £]
+    | _ => unreachable! --catchall above
+
+where
+  let rulename := name ++ " to "
+  [murϕ|
+  rule £name
+  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
+  ==>
+  -- decls
+  var next_state : STATE;
+  var ld_entry : LD_ENTRY_VALUES;
+  begin
+  next_state := Sta;
+  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
+  ld_entry.phys_addr := ld_entry.virt_addr;
+  ld_entry.ld_state := await_fwd_check;
+  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
+  Sta := next_state
+  end
+  ]
+  | _ => [murϕ| rule "unimplemented" true ==> begin Sta := Sta end] -- Should maybe wrap this into an Except
+#eval testFun awaitTransitionTest

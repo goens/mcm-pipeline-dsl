@@ -1410,7 +1410,7 @@ partial def list_ident_to_murphi_designator
 --===== Helper func, DSL Term to Murphi Term. =====
 
 partial def ast_term_to_murphi_expr
-( term : Pipeline.Term )
+( term : Pipeline.Term ) : Murϕ.Expr
 :=
   match term with
   | Term.negation term' =>

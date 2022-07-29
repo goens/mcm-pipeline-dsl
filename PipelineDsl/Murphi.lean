@@ -313,7 +313,7 @@ private partial def ruleToString : Rule → String
     let expS := match opExp with
       | none => ""
       | some exp => exprToString exp ++ " ==>\n"
-    s!"rule {nameS}{expS}{declsS}\n begin {stmtsS} end"
+      s!"rule \"{nameS}\" \n {expS} \n {declsS}\n begin {stmtsS} end"
   | .startstate opName decls stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
     let declsS := String.intercalate ";\n" $ decls.map declToString
@@ -329,7 +329,7 @@ private partial def ruleToString : Rule → String
   | .ruleset quants rules =>
     let quantsS := "; ".intercalate (quants.map quantifierToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
-    s!"ruleset {quantsS} do {rulesS} end"
+    s!"ruleset {quantsS} do \n {rulesS} end"
   | .aliasrule aliases rules =>
     let aliasesS := "; ".intercalate (aliases.map aliasToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
@@ -456,18 +456,6 @@ syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
 syntax decl decl decl : program
 
 
-syntax "[murϕ|" formal "]" : term
-syntax "[murϕ|" proc_decl "]" : term
-syntax "[murϕ|" designator "]" : term
-syntax "[murϕ|" quantifier "]" : term
-syntax "[murϕ|" statement "]" : term
-syntax "[murϕ|" mur_alias "]" : term
-syntax "[murϕ|" mur_rule "]" : term
-syntax "[murϕ|" expr "]" : term
-syntax "[murϕ|" type_expr "]" : term
-syntax "[murϕ|" decl "]" : term
-syntax "[murϕ|" program "]" : term
-
 @[macro paramident1]
 def expandParamIdent : Macro
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
@@ -567,6 +555,19 @@ macro_rules
 
 macro_rules
   | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
+
+syntax "[murϕ|" formal "]" : term
+syntax "[murϕ|" proc_decl "]" : term
+syntax "[murϕ|" designator "]" : term
+syntax "[murϕ|" quantifier "]" : term
+syntax "[murϕ|" statement "]" : term
+syntax "[murϕ|" mur_alias "]" : term
+syntax "[murϕ|" mur_rule "]" : term
+syntax "[murϕ|" expr "]" : term
+syntax "[murϕ|" type_expr "]" : term
+syntax "[murϕ|" decl "]" : term
+syntax "[murϕ|" program "]" : term
+
 
 macro_rules
   | `([murϕ| $x:formal     ]) => `(formal| $x)
