@@ -84,7 +84,7 @@ def main (args : List String): IO Unit := do
 
   let num_transitions := tsfmed_ctrler.transition_list.length
   -- let num_transitions := ctrlers.length
-  -- let ctrler_list := List.replicate num_transitions ctrlers
+  let ctrler_list := List.replicate num_transitions ctrlers
   let ctrler_list := List.replicate num_transitions ctrlers
 
   let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
@@ -92,6 +92,12 @@ def main (args : List String): IO Unit := do
   let dummy :=
     joined_transition_and_ctrlers.map dsl_trans_descript_to_murphi_rule
   println! s!"Dummy:\n{dummy}"
+
+  -- AZ TODO:
+  -- add code to filter for certain controllers (LSQ ctrlers)
+  -- and just run translation / transformation on those controllers
+  -- But we still supply the list of all controllers for
+  -- the translation and transformation steps
 
   println! s!"===== Transform Testing Concluding ====="
 
