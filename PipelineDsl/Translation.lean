@@ -177,17 +177,17 @@ partial def assn_stmt_to_expr_translation_info
 )
 
 partial def assn_expr_to_term_translation_info
-(stmt_trans_info : pipeline_stmts_lst_ctrlers_ctrler_name)
+(expr_translation : expr_translation_info)
 (term : Pipeline.Term)
 :
 term_translation_info
 := (
   term_translation_info.mk
   term
-  stmt_trans_info.lst_ctrlers
-  stmt_trans_info.ctrler_name
-  stmt_trans_info.src_ctrler
-  stmt_trans_info.lst_src_args
+  expr_translation.lst_ctrlers
+  expr_translation.ctrler_name
+  expr_translation.src_ctrler
+  expr_translation.lst_src_args
 )
 --- =========== CUT FROM TRANSFORMATION ================
 def filter_lst_of_stmts_for_ordering_asn
@@ -1719,11 +1719,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 --===== Helper func, DSL Term to Murphi Term. =====
 
 partial def ast_term_to_murphi_expr
-( term : Pipeline.Term )
-(lst_ctrlers : List controller_info)
-(curr_ctrler_name : Identifier) -- "string"
+-- ( term : Pipeline.Term )
+-- (lst_ctrlers : List controller_info)
+-- (curr_ctrler_name : Identifier) -- "string"
+(term_trans_info : term_translation_info)
  : Murϕ.Expr
 :=
+  let term := term_trans_info.term
+  let lst_ctrlers := term_trans_info.lst_ctrlers
+  let curr_ctrler_name := term_trans_info.curr_ctrler_name
+  -- for when statements
+  let src_ctrler := term_trans_info.src_ctrler
+  let lst_src_args := term_trans_info.lst_src_args
+
   match term with
   | Term.negation term' =>
     Murϕ.Expr.negation (ast_term_to_murphi_expr term')
@@ -1744,13 +1752,61 @@ partial def ast_term_to_murphi_expr
     -- Murϕ.Expr.designator (
     --   Murϕ.Designator.mk ident []
     -- )
-    let murphi_expr_designator := (
-      list_ident_to_murphi_designator_ctrler_var_check
-      [ident]
-      lst_ctrlers
-      curr_ctrler_name
-    )
-    murphi_expr_designator
+    let is_src_ctrler_none : Bool :=
+      src_ctrler == none
+
+    if !is_src_ctrler_none
+    then
+      -- if not then we need to consider
+      -- the src controller
+
+      -- first, try to match the term to
+      -- the var list, if it contains it,
+      -- then we need to check if it's from
+      -- the src ctrler's state vars
+
+      let indent_in_args : Bool :=
+        (Option.get! lst_src_args).contains ident
+      
+      if indent_in_args
+      then
+        -- Then we check if it's one of the
+        -- src ctrler's state vars.
+
+        -- if yes, we gen with the src
+        -- ctrler's args
+        let murphi_designator : Designator :=
+        list_ident_to_murphi_designator_ctrler_var_check (
+          [ident]
+        ) (lst_ctrlers) (src_ctrler)
+
+        let murphi_expr_designator : Murϕ.Expr := 
+        Murϕ.Expr.designator murphi_designator
+
+        murphi_expr_designator
+      else
+        -- default case, can just copy here..
+
+        -- if it is from the state vars, then
+        -- we use that ctrler gen designator
+        -- function..
+        let murphi_expr_designator := (
+          list_ident_to_murphi_designator_ctrler_var_check
+          [ident]
+          lst_ctrlers
+          -- Note that curr_ctrler is likely
+          -- the dest ctrler
+          curr_ctrler_name
+        )
+        murphi_expr_designator
+    else
+      let murphi_expr_designator := (
+        list_ident_to_murphi_designator_ctrler_var_check
+        [ident]
+        lst_ctrlers
+        curr_ctrler_name
+      )
+      murphi_expr_designator
   | Term.qualified_var qualified_name =>
     match qualified_name with
     | QualifiedName.mk lst_ident =>
@@ -1760,13 +1816,67 @@ partial def ast_term_to_murphi_expr
     -- ID to give it a Decl
     -- designator.
 
-    let murphi_expr_designator := (
-      list_ident_to_murphi_designator_ctrler_var_check
-      lst_ident
-      lst_ctrlers
-      curr_ctrler_name
-    )
-    murphi_expr_designator
+    let is_src_ctrler_none : Bool :=
+      src_ctrler == none
+
+    if !is_src_ctrler_none
+    then
+      let ident := lst_ident.take 1
+      -- if not then we need to consider
+      -- the src controller
+
+      -- first, try to match the term to
+      -- the var list, if it contains it,
+      -- then we need to check if it's from
+      -- the src ctrler's state vars
+
+    -- check if the first item in the list
+    -- belongs to the args list
+
+      let indent_in_args : Bool :=
+        (Option.get! lst_src_args).contains ident
+      
+      if indent_in_args
+      then
+        -- Then we check if it's one of the
+        -- src ctrler's state vars.
+
+        -- if yes, we gen with the src
+        -- ctrler's args
+        let murphi_designator : Designator :=
+        list_ident_to_murphi_designator_ctrler_var_check (
+          lst_ident
+        ) (lst_ctrlers) (src_ctrler)
+
+        let murphi_expr_designator : Murϕ.Expr := 
+        Murϕ.Expr.designator murphi_designator
+
+        murphi_expr_designator
+      else
+        -- default case, can just copy here..
+
+        -- if it is from the state vars, then
+        -- we use that ctrler gen designator
+        -- function..
+        let murphi_expr_designator := (
+          list_ident_to_murphi_designator_ctrler_var_check
+          lst_ident
+          lst_ctrlers
+          -- Note that curr_ctrler is likely
+          -- the dest ctrler
+          curr_ctrler_name
+        )
+        murphi_expr_designator
+    else
+
+
+      let murphi_expr_designator := (
+        list_ident_to_murphi_designator_ctrler_var_check
+        lst_ident
+        lst_ctrlers
+        curr_ctrler_name
+      )
+      murphi_expr_designator
 
       -- let murphi_designator :=
       --   list_ident_to_murphi_designator lst_ident
@@ -1843,6 +1953,8 @@ partial def ast_expr_to_murphi_expr
   | Pipeline.Expr.add term1 term2 =>
   -- create the term translation info,
   -- pass to ast_term_to_murphi_expr func
+    let term1_trans_info :=
+      assn_expr_to_term_translation_info expr_trans_info term1
     let murphi_term1 := 
       ast_term_to_murphi_expr term1
     let murphi_term2 := 
@@ -2178,8 +2290,8 @@ Murϕ.Expr
         -- read the name, check what the
         -- 1. Dest structure is
         -- 2. the function call API
-        let dest_ctrler_name := qual_name.take 1
-        let func_name := qual_name.take 1
+        let dest_ctrler_name := qual_name[0]
+        let func_name := qual_name[1]
 
         -- Now understand which function is this?
         if func_name == "insert"
