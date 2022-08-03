@@ -135,12 +135,18 @@ src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 
 structure expr_translation_info where
-expr : Pipeline.Expr
-lst_ctrlers : List controller_info
-ctrler_name : Identifier
--- when statement stuff
-src_ctrler : Option Identifier
-lst_src_args : Option (List Identifier)
+  lst_ctrlers : List controller_info
+  ctrler_name : Identifier
+  -- when statement stuff
+  src_ctrler : Option Identifier
+  lst_src_args : Option (List Identifier)
+  deriving Inhabited
+
+abbrev TranslatorM := StateT expr_translation_info Id
+
+def getMurphiExpr (murexp: TranslatorM Murϕ.Expr) : Murϕ.Expr := Id.run do
+  let expr <- murexp.run default |>.1
+  expr
 
 structure pipeline_stmts_lst_ctrlers_ctrler_name where
 stmt : Pipeline.Statement
@@ -166,15 +172,17 @@ partial def assn_stmt_to_stmt_translation_info
 partial def assn_stmt_to_expr_translation_info
 (translation_info : pipeline_stmts_lst_ctrlers_ctrler_name)
 (expr : Pipeline.Expr)
-: expr_translation_info
-:= (
-  expr_translation_info.mk
-  expr
-  translation_info.lst_ctrlers
-  translation_info.ctrler_name
-  translation_info.src_ctrler
-  translation_info.lst_src_args
-)
+: TranslatorM Pipeline.Expr
+:= do
+  let state := (
+    expr_translation_info.mk
+    translation_info.lst_ctrlers
+    translation_info.ctrler_name
+    translation_info.src_ctrler
+    translation_info.lst_src_args
+  )
+  modify (λ _ => state)
+  return expr
 
 partial def assn_expr_to_term_translation_info
 (stmt_trans_info : pipeline_stmts_lst_ctrlers_ctrler_name)
@@ -1829,14 +1837,14 @@ partial def ast_term_to_murphi_expr
 --===== Helper func, DSL Expr to Murphi Expr. =====
 partial def ast_expr_to_murphi_expr
 -- ( expr : Pipeline.Expr )
-(expr_trans_info : expr_translation_info)
-:=
-  let expr := expr_trans_info.expr
-  let lst_ctrlers := expr_trans_info.lst_ctrlers
-  let ctrler_name := expr_trans_info.ctrler_name
+(expr : Expr)
+: TranslatorM Murϕ.Expr
+:= do
+  let lst_ctrlers := (← get).lst_ctrlers
+  let ctrler_name := (← get).ctrler_name
 
-  let src_ctrler := expr_trans_info.src_ctrler
-  let lst_src_args := expr_trans_info.lst_src_args
+  let src_ctrler := (← get).src_ctrler
+  let lst_src_args := (← get).lst_src_args
 
   -- match expr to some DSL expr
   match expr with
@@ -1978,6 +1986,8 @@ partial def ast_expr_to_murphi_expr
     dbg_trace "Since we don't even use these now..?"
     Murϕ.Expr.integerConst 0
 
+--   default
+-- pure (← egg.run default).snd.rewrites
 
 -- ========= Helper Function ==========
 partial def recursive_await_when_search
@@ -2750,6 +2760,8 @@ partial def ast_stmt_to_murphi_stmts
 end -- END mutually recursive func region --
 --========= Convert Murphi Stmts to Decls =========
 -- def murphi_stmts_to_murphi_decls
+
+
 
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
