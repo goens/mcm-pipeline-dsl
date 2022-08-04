@@ -142,7 +142,7 @@ ctrler_name : Identifier
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 
-structure pipeline_stmts_lst_ctrlers_ctrler_name where
+structure stmt_translation_info where
 stmt : Pipeline.Statement
 lst_ctrlers : List controller_info
 ctrler_name : Identifier
@@ -151,11 +151,11 @@ src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 
 partial def assn_stmt_to_stmt_translation_info
-(translation_info : pipeline_stmts_lst_ctrlers_ctrler_name)
+(translation_info : stmt_translation_info)
 (stmt : Pipeline.Statement)
-: pipeline_stmts_lst_ctrlers_ctrler_name
+: stmt_translation_info
 := (
-  pipeline_stmts_lst_ctrlers_ctrler_name.mk
+  stmt_translation_info.mk
   stmt
   translation_info.lst_ctrlers
   translation_info.ctrler_name
@@ -164,7 +164,7 @@ partial def assn_stmt_to_stmt_translation_info
 )
 
 partial def assn_stmt_to_expr_translation_info
-(translation_info : pipeline_stmts_lst_ctrlers_ctrler_name)
+(translation_info : stmt_translation_info)
 (expr : Pipeline.Expr)
 : expr_translation_info
 := (
@@ -1603,7 +1603,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 ( lst_ident : List Identifier )
 ( lst_ctrlers : List controller_info )
 ( ctrler_name : Identifier )
--- (stmt_lst_ctrlers_ctrler_name : pipeline_stmts_lst_ctrlers_ctrler_name)
+-- (stmt_lst_ctrlers_ctrler_name : stmt_translation_info)
 : Designator
 :=
     -- get this controller from the
@@ -2041,15 +2041,6 @@ partial def ast_expr_to_murphi_expr
       Murϕ.Expr.binop ">" murphi_term1 murphi_term2
 
     murphi_greater_expr
-  
-  -- Going to ignore bit wise operations..
-  -- They don't seem to have them in Murphi
-  -- and I don't think we'll use them at the moment..
-  -- | Pipeline.Expr.rightshift _ _
-  -- | Pipeline.Expr.leftshift _ _
-  -- | Pipeline.Expr.binxor _ _
-  -- | Pipeline.Expr.binor _ _
-  -- | Pipeline.Expr.binand _ _
 
   | Pipeline.Expr.div term1 term2 =>
     let murphi_term1 := 
@@ -2090,6 +2081,14 @@ partial def ast_expr_to_murphi_expr
     dbg_trace "Since we don't even use these now..?"
     Murϕ.Expr.integerConst 0
 
+  -- Going to ignore bit wise operations..
+  -- They don't seem to have them in Murphi
+  -- and I don't think we'll use them at the moment..
+  -- | Pipeline.Expr.rightshift _ _
+  -- | Pipeline.Expr.leftshift _ _
+  -- | Pipeline.Expr.binxor _ _
+  -- | Pipeline.Expr.binor _ _
+  -- | Pipeline.Expr.binand _ _
 
 -- ========= Helper Function ==========
 partial def recursive_await_when_search
@@ -2263,7 +2262,7 @@ partial def ast_stmt_stray_expr_to_murphi_expr
 -- (src_ctrler : Option Identifier)
 -- (lst_src_args : Option List Identifier)
 :
-Murϕ.Expr
+List Murϕ.Statement
 :=
   -- If it isn't a term -> func call, with
   -- 2 qualified param names, then we can just call 
@@ -2468,8 +2467,8 @@ Murϕ.Expr
               dbg_trace "FAIL: qualified name, is not len 2!"
               false
             
-            let struct_name := qual_name.take 1
-            let when_func_name := qual_name.take 1
+            let struct_name := qual_name[0]
+            let when_func_name := qual_name[1]
             let struct_name_sanity := struct_name == curr_ctrler_name
             let when_func_name_sanity := when_func_name == func_name
 
@@ -2494,6 +2493,23 @@ Murϕ.Expr
               dbg_trace "translating insert func!"
               dbg_trace "FAIL: second identifier is not the 'insert' func"
               false
+
+
+            -- After any sanity messages, try to map the stmts
+            -- Create the required info object:
+            let trans_info : stmt_translation_info := {
+              -- info
+              stmt,
+              lst_ctrlers,
+              dest_ctrler_name,
+              struct_name,
+              lst_ident
+            }
+
+            let murphi_stmts : List Murϕ.Statement :=
+            ast_stmt_to_murphi_stmts trans_info
+
+            murphi_stmts
             -- map the stmt (stmt blk) to Murphi stmts,
             -- but also consider that it's assigned vars
             -- should be generated with the ctrler's designators
@@ -2509,6 +2525,7 @@ Murϕ.Expr
             -- can translate it and reference it's entry tail
             -- as needed
 
+          when_stmt_murphi_stmts
           -- AZ CHECKPOINT TODO:
           -- Take this when_stmt, and match it and get it's
           -- lines of code as murphi code,
@@ -2548,7 +2565,7 @@ Murϕ.Expr
 
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
-(stmt_lst_ctrlers_ctrler_name : pipeline_stmts_lst_ctrlers_ctrler_name)
+(stmt_lst_ctrlers_ctrler_name : stmt_translation_info)
 :
 (List Murϕ.Statement)
 :=
@@ -3013,7 +3030,7 @@ def dsl_trans_descript_to_murphi_rule
   -- I've flipped the access order around,
   -- assuming Andrés's fix works
   let dest_ctrler_lst := insert_func_call.take 1
-  let insert_func := insert_func_call.take 1
+  let insert_func := insert_func_call[1]!
 
   let dest_ctrler := match dest_ctrler_lst with
   | [dest_name] => dest_name
