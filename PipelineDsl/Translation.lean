@@ -114,6 +114,7 @@ structure controller_info where
   -- list of transitions this structure takes
   -- should be: Description.transition
   transition_list : List Description
+deriving Inhabited
 
 instance : ToString controller_info := ⟨
   λ i =>
@@ -126,6 +127,10 @@ instance : ToString controller_info := ⟨
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 
+inductive tail_or_entry
+| tail : tail_or_entry
+| entry : tail_or_entry
+
 structure term_translation_info where
 term : Pipeline.Term
 lst_ctrlers : List controller_info
@@ -133,6 +138,7 @@ ctrler_name : Identifier
 -- when statement stuff
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
+func : Option Identifier
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -141,6 +147,7 @@ ctrler_name : Identifier
 -- when statement stuff
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
+func : Option Identifier
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -149,6 +156,7 @@ ctrler_name : Identifier
 -- when statement stuff
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
+func : Option Identifier
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -161,6 +169,21 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.ctrler_name
   translation_info.src_ctrler
   translation_info.lst_src_args
+  translation_info.func
+)
+
+partial def assn_stmt_to_term_translation_info
+(translation_info : stmt_translation_info)
+(term : Pipeline.Term)
+: term_translation_info
+:= (
+  term_translation_info.mk
+  term
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -174,20 +197,55 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.ctrler_name
   translation_info.src_ctrler
   translation_info.lst_src_args
+  translation_info.func
 )
 
 partial def assn_expr_to_term_translation_info
-(expr_translation : expr_translation_info)
+(translation_info : expr_translation_info)
 (term : Pipeline.Term)
 :
 term_translation_info
 := (
   term_translation_info.mk
   term
-  expr_translation.lst_ctrlers
-  expr_translation.ctrler_name
-  expr_translation.src_ctrler
-  expr_translation.lst_src_args
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+
+)
+
+partial def assn_term_to_term_translation_info
+(translation_info : term_translation_info)
+(term : Pipeline.Term)
+:
+term_translation_info
+:= (
+  term_translation_info.mk
+  term
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+
+)
+
+partial def assn_term_to_expr_translation_info
+(translation_info : term_translation_info)
+(expr : Pipeline.Expr)
+:
+expr_translation_info
+:= (
+  expr_translation_info.mk
+  expr 
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+
 )
 --- =========== CUT FROM TRANSFORMATION ================
 def filter_lst_of_stmts_for_ordering_asn
@@ -1572,9 +1630,20 @@ partial def ident_matches_state_var_list
 
   ident_in_list
 
+partial def ident_matches_ident_list
+(lst_idents : List Identifier)
+(ident : Identifier)
+: Bool
+:=
+  -- does ident belong in state_vars list?
+  let ident_in_list :=
+  lst_idents.contains ident
+
+  ident_in_list
+
 partial def get_ctrler_matching_name
 (ctrler_name : Identifier)
-(lst_ctrler : List controller_info)
+(lst_ctrlers : List controller_info)
 := 
   let ctrler_lst_with_name :=
   lst_ctrlers.filter (
@@ -1603,19 +1672,20 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 ( lst_ident : List Identifier )
 ( lst_ctrlers : List controller_info )
 ( ctrler_name : Identifier )
--- (stmt_lst_ctrlers_ctrler_name : stmt_translation_info)
+-- (stmt_trans_info : stmt_translation_info)
+( tail_entry : tail_or_entry)
 : Designator
 :=
     -- get this controller from the
     -- controller name
   let this_ctrler : controller_info :=
-    get_ctrler_matching_name lst_ctrlers ctrler_name
+    get_ctrler_matching_name ctrler_name lst_ctrlers
 
   let designator : Murϕ.Designator :=
   match lst_ident with
   | [one_ident] =>
     let ident_matches_state_var :=
-    ident_matches_state_var_list lst_ident one_ident 
+    ident_matches_ident_list lst_ident one_ident 
 
     -- if ident_matches_state_var
     -- then we should check the designator
@@ -1628,10 +1698,10 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- check if this var comes from
       -- a fifo structure to index into
       let ctrler_ordering :=
-        get_ctrler_elem_ordering ctrler
+        get_ctrler_elem_ordering this_ctrler
 
       let is_fifo : Bool :=
-        ctrler_order == "FIFO"
+        ctrler_ordering == "FIFO"
       -- AZ CHECKPOINT TODO:
       -- finish this
 
@@ -1640,20 +1710,25 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         -- if fifo, then make it with 
         -- the <struct_name>.<entries>[<struct>.tail]
 
+        let idx : Identifier :=
+        match tail_entry with
+        | tail_or_entry.tail => "tail"
+        | tail_or_entry.entry => "i"
+
         let fifo_idx_expr:=
         Murϕ.Expr.designator (
         Murϕ.Designator.mk ctrler_name [
           -- entries
           -- Assume the buffer entries are
           -- referred to as 'i'
-          Sum.inl "i"
+          Sum.inl idx
         ])
 
         let murphi_designator :=
         Murϕ.Designator.mk ctrler_name [
           -- entries
           Sum.inl "entries",
-          Sum.inr fifo_tail_expr,
+          Sum.inr fifo_idx_expr,
           Sum.inl one_ident
         ]
         murphi_designator
@@ -1664,19 +1739,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       Murϕ.Designator.mk one_ident []
 
   | h::t =>
-    let ident_matches_state_var :=
-    ident_matches_state_var_list lst_ident h
+    let ident_matches_ident_list :=
+    ident_matches_ident_list lst_ident h
 
-    if ident_matches_state_var
+    if ident_matches_ident_list
     then
       -- If this matches then i should
       -- check if this var comes from
       -- a fifo structure to index into
       let ctrler_ordering :=
-        get_ctrler_elem_ordering ctrler
+        get_ctrler_elem_ordering this_ctrler
 
       let is_fifo : Bool :=
-        ctrler_order == "FIFO"
+        ctrler_ordering == "FIFO"
       -- AZ CHECKPOINT TODO:
       -- is there a case where I want to
       -- replace "i" with "<structure>.tail?"
@@ -1686,11 +1761,16 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         -- if fifo, then make it with 
         -- the <struct_name>.<entries>[<struct>.tail]
 
+        let idx : Identifier :=
+        match tail_entry with
+        | tail_or_entry.tail => "tail"
+        | tail_or_entry.entry => "i"
+
         let fifo_tail_expr:=
         Murϕ.Expr.designator (
         Murϕ.Designator.mk ctrler_name [
           -- entries
-          Sum.inl "i"
+          Sum.inl idx
         ])
 
         let sum_list : List (String ⊕ Murϕ.Expr)
@@ -1727,20 +1807,27 @@ partial def ast_term_to_murphi_expr
 :=
   let term := term_trans_info.term
   let lst_ctrlers := term_trans_info.lst_ctrlers
-  let curr_ctrler_name := term_trans_info.curr_ctrler_name
+  let curr_ctrler_name := term_trans_info.ctrler_name
   -- for when statements
   let src_ctrler := term_trans_info.src_ctrler
   let lst_src_args := term_trans_info.lst_src_args
 
   match term with
   | Term.negation term' =>
-    Murϕ.Expr.negation (ast_term_to_murphi_expr term')
+    let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
+    let translation :=
+    Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
+    translation
   | Term.logical_negation term' =>
-    Murϕ.Expr.negation (ast_term_to_murphi_expr term')
+    let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
+    let translation :=
+    Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
     -- ast_term_to_murphi_expr term'
+    translation
   | Term.binary_negation term' =>
+    let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
     let ret_val :=
-    ast_term_to_murphi_expr term'
+    ast_term_to_murphi_expr term'_trans_info
     ret_val
   -- AZ NOTE:
   -- It seems the ident case of Var
@@ -1778,7 +1865,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           [ident]
-        ) (lst_ctrlers) (src_ctrler)
+        ) (lst_ctrlers) (Option.get! src_ctrler) (tail_or_entry.entry)
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -1790,22 +1877,30 @@ partial def ast_term_to_murphi_expr
         -- if it is from the state vars, then
         -- we use that ctrler gen designator
         -- function..
-        let murphi_expr_designator := (
+        let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           [ident]
           lst_ctrlers
           -- Note that curr_ctrler is likely
           -- the dest ctrler
           curr_ctrler_name
+          tail_or_entry.entry
         )
+        let murphi_expr_designator :=
+        Murϕ.Expr.designator murphi_designator
+
         murphi_expr_designator
     else
-      let murphi_expr_designator := (
+      let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         [ident]
         lst_ctrlers
         curr_ctrler_name
+        tail_or_entry.entry
       )
+      let murphi_expr_designator :=
+      Murϕ.Expr.designator murphi_designator
+
       murphi_expr_designator
   | Term.qualified_var qualified_name =>
     match qualified_name with
@@ -1821,7 +1916,7 @@ partial def ast_term_to_murphi_expr
 
     if !is_src_ctrler_none
     then
-      let ident := lst_ident.take 1
+      let ident := lst_ident[0]!
       -- if not then we need to consider
       -- the src controller
 
@@ -1846,7 +1941,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           lst_ident
-        ) (lst_ctrlers) (src_ctrler)
+        ) (lst_ctrlers) (Option.get! src_ctrler) (tail_or_entry.entry)
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -1858,24 +1953,30 @@ partial def ast_term_to_murphi_expr
         -- if it is from the state vars, then
         -- we use that ctrler gen designator
         -- function..
-        let murphi_expr_designator := (
+        let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           lst_ident
           lst_ctrlers
           -- Note that curr_ctrler is likely
           -- the dest ctrler
           curr_ctrler_name
+          tail_or_entry.entry
         )
+        let murphi_expr_designator :=
+        Murϕ.Expr.designator murphi_designator
         murphi_expr_designator
     else
 
 
-      let murphi_expr_designator := (
+      let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         lst_ident
         lst_ctrlers
         curr_ctrler_name
+        tail_or_entry.entry
       )
+      let murphi_expr_designator :=
+      Murϕ.Expr.designator murphi_designator
       murphi_expr_designator
 
       -- let murphi_designator :=
@@ -1916,8 +2017,16 @@ partial def ast_term_to_murphi_expr
       match qualified_name with
       | QualifiedName.mk lst_idents =>
         String.join lst_idents
+
+    let lst_expr_trans_info :=
+      lst_expr.map (
+        λ expr =>
+          assn_term_to_expr_translation_info term_trans_info expr
+      )
+
     let murphi_expr := Murϕ.Expr.call
-      murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
+      murphi_func_id (lst_expr_trans_info.map ast_expr_to_murphi_expr)
+      -- murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
     murphi_expr
     
   | Term.const const' => -- const is a keyword..
@@ -1937,6 +2046,26 @@ partial def ast_term_to_murphi_expr
   
 
 --===== Helper func, DSL Expr to Murphi Expr. =====
+partial def ast_binop_to_murphi_binop_expr
+(term1 : Pipeline.Term)
+(term2 : Pipeline.Term)
+(op : Identifier)
+(expr_trans_info : expr_translation_info)
+: Murϕ.Expr
+:=
+  let term1_trans_info :=
+    assn_expr_to_term_translation_info expr_trans_info term1
+  let murphi_term1 := 
+    ast_term_to_murphi_expr term1_trans_info
+  let term2_trans_info :=
+    assn_expr_to_term_translation_info expr_trans_info term2
+  let murphi_term2 := 
+    ast_term_to_murphi_expr term2_trans_info
+  let murphi_expr :=
+    Murϕ.Expr.binop op murphi_term1 murphi_term2
+  murphi_expr
+  
+
 partial def ast_expr_to_murphi_expr
 -- ( expr : Pipeline.Expr )
 (expr_trans_info : expr_translation_info)
@@ -1951,18 +2080,8 @@ partial def ast_expr_to_murphi_expr
   -- match expr to some DSL expr
   match expr with
   | Pipeline.Expr.add term1 term2 =>
-  -- create the term translation info,
-  -- pass to ast_term_to_murphi_expr func
-    let term1_trans_info :=
-      assn_expr_to_term_translation_info expr_trans_info term1
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_add_expr :=
-      Murϕ.Expr.binop "+" murphi_term1 murphi_term2
-
+      ast_binop_to_murphi_binop_expr term1 term2 "+" expr_trans_info
     murphi_add_expr
   -- Put this in the catch-all _ case,
   -- since this is really more of a description
@@ -1971,107 +2090,64 @@ partial def ast_expr_to_murphi_expr
   --   Murϕ.Expr.integerConst 0
 
   | Pipeline.Expr.some_term term =>
+    let term_trans_info :=
+      assn_expr_to_term_translation_info expr_trans_info term
     let ret_val :=
-    ast_term_to_murphi_expr term
+    ast_term_to_murphi_expr term_trans_info
 
     ret_val
 
   | Pipeline.Expr.not_equal term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_not_equal_expr :=
-      Murϕ.Expr.binop "!=" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "!=" expr_trans_info
 
     murphi_not_equal_expr
 
   | Pipeline.Expr.equal term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_equal_expr :=
-      Murϕ.Expr.binop "=" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "=" expr_trans_info
 
     murphi_equal_expr
 
   | Pipeline.Expr.geq term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_greater_equal_expr :=
-      Murϕ.Expr.binop ">=" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 ">=" expr_trans_info
 
     murphi_greater_equal_expr
 
   | Pipeline.Expr.leq term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_less_equal_expr :=
-      Murϕ.Expr.binop "<=" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "<=" expr_trans_info
 
     murphi_less_equal_expr
 
   | Pipeline.Expr.less_than term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_less_expr :=
-      Murϕ.Expr.binop "<" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "<" expr_trans_info
 
     murphi_less_expr
 
   | Pipeline.Expr.greater_than term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_greater_expr :=
-      Murϕ.Expr.binop ">" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 ">" expr_trans_info
 
     murphi_greater_expr
 
   | Pipeline.Expr.div term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_div_expr :=
-      Murϕ.Expr.binop "/" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "/" expr_trans_info
 
     murphi_div_expr
 
   | Pipeline.Expr.mul term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_mul_expr :=
-      Murϕ.Expr.binop "*" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "*" expr_trans_info
 
     murphi_mul_expr
 
   | Pipeline.Expr.sub term1 term2 =>
-    let murphi_term1 := 
-      ast_term_to_murphi_expr term1
-    let murphi_term2 := 
-      ast_term_to_murphi_expr term2
-    
     let murphi_sub_expr :=
-      Murϕ.Expr.binop "-" murphi_term1 murphi_term2
+      ast_binop_to_murphi_binop_expr term1 term2 "-" expr_trans_info
 
     murphi_sub_expr
 
@@ -2095,8 +2171,9 @@ partial def recursive_await_when_search
 (lst_stmts : List Pipeline.Statement)
 (func_name : Identifier)
 (curr_ctrler_name : Identifier)
-: List Pipeline.Statement
+: (List Pipeline.Statement)
 :=
+  let lst_of_lst_stmts :=
   lst_stmts.map (
     λ stmt =>
       match stmt with
@@ -2150,14 +2227,16 @@ partial def recursive_await_when_search
           ret_val
         | Conditional.if_statement expr stmt =>
           let ret_val :=
-          recursive_await_when_search stmt func_name curr_ctrler_name 
+          recursive_await_when_search [stmt] func_name curr_ctrler_name 
           ret_val
       | Statement.listen_handle stmt lst => 
         let ret_val :=
-        recursive_await_when_search stmt func_name curr_ctrler_name
+        recursive_await_when_search [stmt] func_name curr_ctrler_name
         ret_val
       | _ => []
   )
+  let lst_of_stmts := List.join lst_of_lst_stmts
+  lst_of_stmts
 
 partial def find_when_from_transition
 (trans_list : List Pipeline.Description)
@@ -2200,63 +2279,65 @@ partial def find_when_from_transition
 -- :=
 --   0
 
-partial def ast_stmt_to_murphi_stmts_for_a_fifo_buffer
-(stmt_and_ctrlers_lst :
-Pipeline.Statement × (List controller_info))
--- ( stmt : Pipeline.Statement )
--- ( ctrlers_lst : List controller_info )
--- dest_ctrler_name
-(dest_ctrler_name : Identifier)
-(entry_id : Murϕ.Designator)
--- FIFO assume we can build
--- <structure>.entries[<entry_num>].<state_var>
+---======= MAYBE I DON'T NEED THIS? ========
+-- partial def ast_stmt_to_murphi_stmts_for_a_fifo_buffer
+-- (stmt_and_ctrlers_lst :
+-- Pipeline.Statement × (List controller_info))
+-- -- ( stmt : Pipeline.Statement )
+-- -- ( ctrlers_lst : List controller_info )
+-- -- dest_ctrler_name
+-- (dest_ctrler_name : Identifier)
+-- (entry_id : Murϕ.Designator)
+-- -- FIFO assume we can build
+-- -- <structure>.entries[<entry_num>].<state_var>
 
--- : [Murϕ.Statement]
-:=
-  let stmt := stmt_and_ctrlers_lst.1
-  let ctrlers_lst := stmt_and_ctrlers_lst.2
+-- -- : [Murϕ.Statement]
+-- :=
+--   let stmt := stmt_and_ctrlers_lst.1
+--   let ctrlers_lst := stmt_and_ctrlers_lst.2
 
-  match stmt with
-  | Statement.labelled_statement label stmt => (
-    ast_stmt_to_murphi_stmts_for_a_fifo_buffer (
-      stmt, ctrlers_lst) dest_ctrler_name entry_id
-  )
-  | Statement.variable_declaration typed_ident =>
-    -- AZ NOTE: must ignore declarations,
-    -- since they go in the decl list,
-    -- and not the stmt list
-    []
-  | Statement.value_declaration typed_ident expr =>
-    let assned_var's_name :=
-    match typed_ident with
-    | TypedIdentifier.mk tiden ident =>
-      ident
+--   match stmt with
+--   | Statement.labelled_statement label stmt => (
+--     ast_stmt_to_murphi_stmts_for_a_fifo_buffer (
+--       stmt, ctrlers_lst) dest_ctrler_name entry_id
+--   )
+--   | Statement.variable_declaration typed_ident =>
+--     -- AZ NOTE: must ignore declarations,
+--     -- since they go in the decl list,
+--     -- and not the stmt list
+--     []
+--   | Statement.value_declaration typed_ident expr =>
+--     let assned_var's_name :=
+--     match typed_ident with
+--     | TypedIdentifier.mk tiden ident =>
+--       ident
 
-    let designator :=
-    Designator.mk dest_ctrler_name [
-      Sum.inl "entries",
-      Sum.inr (Murϕ.Expr.designator entry_id),
-      Sum.inl assned_var's_name
-    ]
+--     let designator :=
+--     Designator.mk dest_ctrler_name [
+--       Sum.inl "entries",
+--       Sum.inr (Murϕ.Expr.designator entry_id),
+--       Sum.inl assned_var's_name
+--     ]
 
-    -- Which murphi expr AST is the right match up? 
-    -- Must match DSL Expr to Murphi Expr.
-    -- Perhaps I should make a func for this :)
-    let murphi_expr :=
-    -- TODO: Implement this!!!!!
-      ast_expr_to_murphi_expr_for_a_fifo_buffer expr
+--     -- Which murphi expr AST is the right match up? 
+--     -- Must match DSL Expr to Murphi Expr.
+--     -- Perhaps I should make a func for this :)
+--     let murphi_expr :=
+--     -- TODO: Implement this!!!!!
+--       ast_expr_to_murphi_expr_for_a_fifo_buffer expr
     
-    let murphi_assignment_stmt :=
-    Murϕ.Statement.assignment designator murphi_expr
+--     let murphi_assignment_stmt :=
+--     Murϕ.Statement.assignment designator murphi_expr
 
-    [murphi_assignment_stmt]
-    0
+--     [murphi_assignment_stmt]
+--     0
 
 
 partial def ast_stmt_stray_expr_to_murphi_expr
-(expr : Pipeline.Expr)
-(lst_ctrlers : List controller_info)
-(curr_ctrler_name : Identifier) -- "string"
+(stmt_trans_info : stmt_translation_info)
+-- (expr : Pipeline.Expr)
+-- (lst_ctrlers : List controller_info)
+-- (curr_ctrler_name : Identifier) -- "string"
 
   -- When statement stuff
 -- (src_ctrler : Option Identifier)
@@ -2264,325 +2345,372 @@ partial def ast_stmt_stray_expr_to_murphi_expr
 :
 List Murϕ.Statement
 :=
+  let stmt := stmt_trans_info.stmt
+  let ctrlers_lst := stmt_trans_info.lst_ctrlers
+  let ctrler_name := stmt_trans_info.ctrler_name
+
+  -- when statement stuff (handling nested scopes?
+  -- or rather, clojures?)
+  let src_ctrler := stmt_trans_info.src_ctrler
+  let lst_src_args := stmt_trans_info.lst_src_args
+  let func_name : Identifier := stmt_trans_info.func.get!
   -- If it isn't a term -> func call, with
   -- 2 qualified param names, then we can just call 
   -- the ast_expr_to_murphi_expr actually!
-  match expr with
-  -- I Don't want to bother with nested scopes
-  -- where "insert" -> When -> "insert/API"
-  -- scopes need to be considered
-  -- Thus, flatten things
-  | Pipeline.Expr.some_term term =>
-    match term with
-    | Pipeline.Term.function_call qual_name lst_expr =>
-      -- This means we found a structure func call!!
-      let qual_name_len   := qual_name.length
+  match stmt with
+  | Statement.stray_expr expr =>
+    match expr with
+    -- I Don't want to bother with nested scopes
+    -- where "insert" -> When -> "insert/API"
+    -- scopes need to be considered
+    -- Thus, flatten things
+    | Pipeline.Expr.some_term term =>
+      match term with
+      | Pipeline.Term.function_call qual_name lst_expr =>
+        -- This means we found a structure func call!!
+        let qual_name_list :=
+          match qual_name with
+          | QualifiedName.mk lst_idents =>
+          lst_idents
+        let qual_name_len   := qual_name_list.length
 
-      let len_1_qual_name := qual_name_len == 1
-      let len_2_qual_name := qual_name_len == 2
-      let len_more_than_2_qual_name : Bool
-                          := qual_name_len > 2
+        let len_1_qual_name := qual_name_len == 1
+        let len_2_qual_name := qual_name_len == 2
+        let len_more_than_2_qual_name : Bool
+                            := qual_name_len > 2
 
-      -- if equal to 2, then put handle the mapping
-      if len_2_qual_name
-      then
-        -- read the name, check what the
-        -- 1. Dest structure is
-        -- 2. the function call API
-        let dest_ctrler_name := qual_name[0]
-        let func_name := qual_name[1]
-
-        -- Now understand which function is this?
-        if func_name == "insert"
+        -- if equal to 2, then put handle the mapping
+        if len_2_qual_name
         then
-          -- structure insert sth
-          -- Need some template/boilerplate code
-          -- Things we need for this template are:
-          /-
-          1. not the decls? since we're generating them
-          separately?
-          2. The check on the strucutre? (but this
-          has been done as a guard in earlier code)
-          (i think? check later)
-          3. The actual insert code.. could generate a
-          function, but this isn't necessary.
-          for now just generate the steps required..
+          -- read the name, check what the
+          -- 1. Dest structure is
+          -- 2. the function call API
+          let dest_ctrler_name := qual_name_list[0]
+          let func_name := qual_name_list[1]
 
-          i.e (for a FIFO)
-          (1) get the dest structure's tail,
-          (2)
-          and insert whatever element at it,
-          executing the destination block's "when"
-          stmt.
-          (3) update next_tail to
-          (tail + 1) % (<structure>_ENTRY_COUNT)
-          or whatever the constant was called.
-          And the num_entries to num_entries + 1.
+          -- Now understand which function is this?
+          if func_name == "insert"
+          then
+            -- structure insert sth
+            -- Need some template/boilerplate code
+            -- Things we need for this template are:
+            /-
+            1. not the decls? since we're generating them
+            separately?
+            2. The check on the strucutre? (but this
+            has been done as a guard in earlier code)
+            (i think? check later)
+            3. The actual insert code.. could generate a
+            function, but this isn't necessary.
+            for now just generate the steps required..
 
-          AZ NOTE: This changes depending on the
-          buffer type. i.e. FIFO is fifo insert,
-          hash is.. hash.
-          -/
+            i.e (for a FIFO)
+            (1) get the dest structure's tail,
+            (2)
+            and insert whatever element at it,
+            executing the destination block's "when"
+            stmt.
+            (3) update next_tail to
+            (tail + 1) % (<structure>_ENTRY_COUNT)
+            or whatever the constant was called.
+            And the num_entries to num_entries + 1.
 
-          /-
-          But the layout of this is:
-          (1) get <new_dest_struct>.tail
-          (2) do the "when" stmt code.
-          Check the stmts inside the when block.
-          ideally they'll have some stmts which
-          assign to their state vars
-          (example:)
-          var = sth // translate into
-          <new_dest_struct>.entries[tail].var = sth
+            AZ NOTE: This changes depending on the
+            buffer type. i.e. FIFO is fifo insert,
+            hash is.. hash.
+            -/
 
-          But we'll need to match the assignment
-          statement's destination variables to the
-          entry's state vars list.
-          If they belong, then we use the
-          <new_dest_struct>.entries[tail].var
-          murphi designator in the assignment.
-          Otherwise normal translation..
+            /-
+            But the layout of this is:
+            (1) get <new_dest_struct>.tail
+            (2) do the "when" stmt code.
+            Check the stmts inside the when block.
+            ideally they'll have some stmts which
+            assign to their state vars
+            (example:)
+            var = sth // translate into
+            <new_dest_struct>.entries[tail].var = sth
 
-          If the user declares variables, then
-          we must omit the type here, and
-          generate the decl in the decl generation
-          step.
+            But we'll need to match the assignment
+            statement's destination variables to the
+            entry's state vars list.
+            If they belong, then we use the
+            <new_dest_struct>.entries[tail].var
+            murphi designator in the assignment.
+            Otherwise normal translation..
 
-          Probably want a version of the translation
-          function to check all vars, even in the
-          exprs, if they belong to the state vars
-          
-          (3) I forgot what i was going to say.
+            If the user declares variables, then
+            we must omit the type here, and
+            generate the decl in the decl generation
+            step.
 
-          (4) Update the overall state, i.e. all
-          variables we've generated for state
-
-          How:
-          After updating any "state" variables,
-          or structure state vars, do
-          next_state.<designator>
-            := <new_dest_struc>.<designator>
-          -/
-
-          /- Starting with item (1) -/
-          -- match the struct name
-          -- put in helper func? to find the controller
-          -- use filter to identify it?
-
-          let dest_ctrler_tail_designator :=
-          -- Get a struct name
-          Murϕ.Designator.mk dest_ctrler_name [Sum.inl "tail"]
-
-          /- For item (2) -/
-          -- Take a look at the other structure's
-          -- when stmt code,
-          -- (a) to generate code for the insert process
-
-          -- I should also know what the name of the current
-          -- structure is, so I can access this current
-          -- entry's vars as well
-          -- (b) to refer to this structure's vars
-
-          -- also, the structure's arguments for the function
-          -- call as well, since the func args will likely
-          -- be used within the Dest structure's await-when
-          -- block as well.
-          -- (b) use this structure's vars where needed
-
-          -- (c) we must still remember to generate the
-          -- dest structure's accessing designators for (a)
-
-
-          let ctrler_lst_with_name :=
-          lst_ctrlers.filter (
-            λ ctrler =>
-              -- match if ctrler name
-              -- is the struct name
-              ctrler.name == dest_ctrler_name
-          )
-
-          let dest_ctrler :=
-          match ctrler_lst_with_name with
-          | [one_ctrler] => one_ctrler
-          | h::t =>
-            dbg_trace "Multiple ctrlers w/ the same name!?"
-            default
-          | [] => dbg_trace "dest ctrler not in ctrler list?"
-            dbg_trace "is it a default ctrler?"
-            dbg_trace "or a undefined ctrler?"
-            -- I should do a name check, like for:
-            -- memory_interface, or 
-            default
-
-          -- First search for the structure/ctrler
-          -- transitions.
-          -- find this await-when statement
-          -- waiting on this function
-          -- and translate those stmts
-          let when_stmt :=
-          find_when_from_transition dest_ctrler.transition_list "insert" curr_ctrler_name
-
-          let when_stmt_murphi_stmts :=
-          -- Qual name is likely still
-          -- in list order <structure>.function
-
-          -- Use the lst_ident to as a part of
-          -- any vars of the "calling" structure
-          -- (src structure, instead of dest_structure)
-
-          -- this sounds like I should write a 
-          -- separate ast_stmt_to_murphi_stmt func
-          -- Or have this func take optional args
-          -- like src ctrler, dest ctrler,
-          -- and src ctrler local var ident list
-
-          -- Okay, so then the variables that need to be
-          -- properly translated are:
-          -- (a) the stmts in the when block
-          -- need to be done with the dest ctrler in mind
-          
-          -- (b) any vars in the lst_idents
-          -- are from the src ctrler
-          -- do we know if there's a defn
-          -- for these vars?
-
-          -- I think we just need to
-          -- translate these vars specifically
-          -- with the src_ctrler in mind
-
-          -- I can double check the qual_name structure
-          -- matches the src ctrler
-          match when_stmt with
-          | Pipeline.Statement.when qual_name lst_ident stmt =>
-            let qual_name_len_2 := qual_name.length == 2
-
-            let sanity_check :=
-            if qual_name_len_2
-            then
-              dbg_trace "translating insert func!"
-              dbg_trace "PASS: qualified name, is len 2!"
-              true
-            else
-              dbg_trace "translating insert func!"
-              dbg_trace "FAIL: qualified name, is not len 2!"
-              false
+            Probably want a version of the translation
+            function to check all vars, even in the
+            exprs, if they belong to the state vars
             
-            let struct_name := qual_name[0]
-            let when_func_name := qual_name[1]
-            let struct_name_sanity := struct_name == curr_ctrler_name
-            let when_func_name_sanity := when_func_name == func_name
+            (3) I forgot what i was going to say.
 
-            let struct_sanity_check :=
-            if struct_name_sanity
-            then
-              dbg_trace "translating insert func!"
-              dbg_trace "PASS: first identifier is the curr_ctrler_name"
-              true
-            else
-              dbg_trace "translating insert func!"
-              dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
-              false
+            (4) Update the overall state, i.e. all
+            variables we've generated for state
 
-            let func_sanity_check :=
-            if when_func_name_sanity
-            then
-              dbg_trace "translating insert func!"
-              dbg_trace "PASS: second identifier is the 'insert' func"
-              true
-            else
-              dbg_trace "translating insert func!"
-              dbg_trace "FAIL: second identifier is not the 'insert' func"
-              false
+            How:
+            After updating any "state" variables,
+            or structure state vars, do
+            next_state.<designator>
+              := <new_dest_struc>.<designator>
+            -/
+
+            /- Starting with item (1) -/
+            -- match the struct name
+            -- put in helper func? to find the controller
+            -- use filter to identify it?
+
+            let dest_ctrler_tail_designator :=
+            -- Get a struct name
+            Murϕ.Designator.mk dest_ctrler_name [Sum.inl "tail"]
+
+            /- For item (2) -/
+            -- Take a look at the other structure's
+            -- when stmt code,
+            -- (a) to generate code for the insert process
+
+            -- I should also know what the name of the current
+            -- structure is, so I can access this current
+            -- entry's vars as well
+            -- (b) to refer to this structure's vars
+
+            -- also, the structure's arguments for the function
+            -- call as well, since the func args will likely
+            -- be used within the Dest structure's await-when
+            -- block as well.
+            -- (b) use this structure's vars where needed
+
+            -- (c) we must still remember to generate the
+            -- dest structure's accessing designators for (a)
 
 
-            -- After any sanity messages, try to map the stmts
-            -- Create the required info object:
-            let trans_info : stmt_translation_info := {
-              -- info
-              stmt,
-              lst_ctrlers,
-              dest_ctrler_name,
-              struct_name,
-              lst_ident
-            }
+            let ctrler_lst_with_name :=
+            lst_ctrlers.filter (
+              λ ctrler =>
+                -- match if ctrler name
+                -- is the struct name
+                ctrler.name == dest_ctrler_name
+            )
 
-            let murphi_stmts : List Murϕ.Statement :=
-            ast_stmt_to_murphi_stmts trans_info
+            let dest_ctrler :=
+            match ctrler_lst_with_name with
+            | [one_ctrler] => one_ctrler
+            | h::t =>
+              dbg_trace "Multiple ctrlers w/ the same name!?"
+              default
+            | [] => dbg_trace "dest ctrler not in ctrler list?"
+              dbg_trace "is it a default ctrler?"
+              dbg_trace "or a undefined ctrler?"
+              -- I should do a name check, like for:
+              -- memory_interface, or 
+              default
 
-            murphi_stmts
-            -- map the stmt (stmt blk) to Murphi stmts,
-            -- but also consider that it's assigned vars
-            -- should be generated with the ctrler's designators
+            -- First search for the structure/ctrler
+            -- transitions.
+            -- find this await-when statement
+            -- waiting on this function
+            -- and translate those stmts
+            let when_stmt :=
+            find_when_from_transition dest_ctrler.transition_list "insert" curr_ctrler_name
 
-            -- The Decl gen process shouldn't be affected, since
-            -- the desginators will start with the structure
-            -- as the decl to generate...
-            -- So i think this should be ok...
+            let when_stmt_murphi_stmts :=
+            -- Qual name is likely still
+            -- in list order <structure>.function
 
-            -- TODO: This should also be translated by a 
-            -- function which will explicitly take the
-            -- dest structure name as an input arg, so it
-            -- can translate it and reference it's entry tail
-            -- as needed
+            -- Use the lst_ident to as a part of
+            -- any vars of the "calling" structure
+            -- (src structure, instead of dest_structure)
 
-          when_stmt_murphi_stmts
-          -- AZ CHECKPOINT TODO:
-          -- Take this when_stmt, and match it and get it's
-          -- lines of code as murphi code,
-          -- but translate them differently this time...
-          -- (i.e. considering the designators of the different
-          -- structures)
+            -- this sounds like I should write a 
+            -- separate ast_stmt_to_murphi_stmt func
+            -- Or have this func take optional args
+            -- like src ctrler, dest ctrler,
+            -- and src ctrler local var ident list
+
+            -- Okay, so then the variables that need to be
+            -- properly translated are:
+            -- (a) the stmts in the when block
+            -- need to be done with the dest ctrler in mind
+            
+            -- (b) any vars in the lst_idents
+            -- are from the src ctrler
+            -- do we know if there's a defn
+            -- for these vars?
+
+            -- I think we just need to
+            -- translate these vars specifically
+            -- with the src_ctrler in mind
+
+            -- I can double check the qual_name structure
+            -- matches the src ctrler
+            match when_stmt with
+            | Pipeline.Statement.when qual_name lst_ident stmt =>
+              let qual_name_len_2 := qual_name.length == 2
+
+              let sanity_check :=
+              if qual_name_len_2
+              then
+                dbg_trace "translating insert func!"
+                dbg_trace "PASS: qualified name, is len 2!"
+                true
+              else
+                dbg_trace "translating insert func!"
+                dbg_trace "FAIL: qualified name, is not len 2!"
+                false
+              
+              let struct_name := qual_name[0]
+              let when_func_name := qual_name[1]
+              let struct_name_sanity := struct_name == curr_ctrler_name
+              let when_func_name_sanity := when_func_name == func_name
+
+              let struct_sanity_check :=
+              if struct_name_sanity
+              then
+                dbg_trace "translating insert func!"
+                dbg_trace "PASS: first identifier is the curr_ctrler_name"
+                true
+              else
+                dbg_trace "translating insert func!"
+                dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
+                false
+
+              let func_sanity_check :=
+              if when_func_name_sanity
+              then
+                dbg_trace "translating insert func!"
+                dbg_trace "PASS: second identifier is the 'insert' func"
+                true
+              else
+                dbg_trace "translating insert func!"
+                dbg_trace "FAIL: second identifier is not the 'insert' func"
+                false
+
+
+              -- After any sanity messages, try to map the stmts
+              -- Create the required info object:
+              let trans_info : stmt_translation_info := {
+                -- info
+                stmt,
+                lst_ctrlers,
+                dest_ctrler_name,
+                struct_name,
+                lst_ident,
+                func_name
+              }
+
+              let murphi_stmts : List Murϕ.Statement :=
+              ast_stmt_to_murphi_stmts trans_info
+
+              murphi_stmts
+              -- map the stmt (stmt blk) to Murphi stmts,
+              -- but also consider that it's assigned vars
+              -- should be generated with the ctrler's designators
+
+              -- The Decl gen process shouldn't be affected, since
+              -- the desginators will start with the structure
+              -- as the decl to generate...
+              -- So i think this should be ok...
+
+              -- TODO: This should also be translated by a 
+              -- function which will explicitly take the
+              -- dest structure name as an input arg, so it
+              -- can translate it and reference it's entry tail
+              -- as needed
+
+            when_stmt_murphi_stmts
+            -- AZ CHECKPOINT TODO:
+            -- Take this when_stmt, and match it and get it's
+            -- lines of code as murphi code,
+            -- but translate them differently this time...
+            -- (i.e. considering the designators of the different
+            -- structures)
+            
+            -- assume for now we have the matching controller;
+
+            -- match the list of state vars to
+            -- any vars in the stmts
+
+          else
+          if func_name == "send_memory_request"
+          then
+            -- reg file write?
+            []
+          else
+          if func_name == "write"
+          then
+          []
+          else
+            -- ideally, would throw an error?
+            -- but just going to return a default
+            --
+            []
+        else
+        if len_1_qual_name
+        then
+        []
+        else
+          -- len more than 2 qual name...
+          -- we don't have that at the moment?
+          -- should throw error
+          -- just return default
+          []
+         
+
+      | _ =>
+        -- just call the term translation
+        -- normally
+        []
+      -- Murϕ.Expr.integerConst 0
+    | _ =>
+    -- let expr_trans_info :=
+    -- assn_stmt_to_expr_translation_info stmt_trans_info expr
+    -- let ret_val :=
+    -- ast_expr_to_murphi_expr expr_trans_info
+
+    -- ret_val
+
+    -- let expr_trans_info :=
+    --   assn_stmt_to_expr_translation_info stmt_trans_info expr
+    -- let murphi_expr :=
+    --   ast_expr_to_murphi_expr expr_trans_info
+    -- let murphi_stmt :=
+    --   Murϕ.
+
+    -- AZ NOTE: I don't think there is anything this
+    -- would map to?
           
-          -- assume for now we have the matching controller;
-
-          -- match the list of state vars to
-          -- any vars in the stmts
-
-        else
-        if func_name == "send_memory_request"
-        then
-          -- reg file write?
-        else
-        if func_name == "write"
-        then
-        else
-          -- ideally, would throw an error?
-          -- but just going to return a default
-          --
-      else
-      if len_1_qual_name
-      then
-      else
-        -- len more than 2 qual name...
-        -- we don't have that at the moment?
-        -- should throw error
-        -- just return default
-       
-
-    -- Murϕ.Expr.integerConst 0
-  | _ => ast_expr_to_murphi_expr expr
+    []
+  | _ =>
+  dbg_trace "passed in sth that's not a stray_expr"
+  []
 
 
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
-(stmt_lst_ctrlers_ctrler_name : stmt_translation_info)
+(stmt_trans_info : stmt_translation_info)
 :
 (List Murϕ.Statement)
 :=
-  let stmt := stmt_lst_ctrlers_ctrler_name.stmt
-  let ctrlers_lst := stmt_lst_ctrlers_ctrler_name.lst_ctrlers
-  let ctrler_name := stmt_lst_ctrlers_ctrler_name.ctrler_name
+  let stmt := stmt_trans_info.stmt
+  let ctrlers_lst := stmt_trans_info.lst_ctrlers
+  let ctrler_name := stmt_trans_info.ctrler_name
 
   -- when statement stuff (handling nested scopes?
   -- or rather, clojures?)
-  let src_ctrler := stmt_lst_ctrlers_ctrler_name.src_ctrler
-  let lst_src_args := stmt_lst_ctrlers_ctrler_name.lst_src_args
+  let src_ctrler := stmt_trans_info.src_ctrler
+  let lst_src_args := stmt_trans_info.lst_src_args
+  let func_name : Identifier := stmt_trans_info.func.get!
 
   match stmt with
   | Statement.labelled_statement label stmt =>
-    let new_translation_info := assn_stmt_to_translation_info stmt stmt_lst_ctrlers_ctrler_name
+    let new_translation_info := assn_stmt_to_stmt_translation_info stmt_trans_info stmt
 
-    let stmt_lst : Murϕ.Statement := ast_stmt_to_murphi_stmts new_translation_info
+    let stmt_lst : List Murϕ.Statement := ast_stmt_to_murphi_stmts new_translation_info
 
     stmt_lst
   | Statement.variable_declaration typed_ident =>
@@ -2620,8 +2748,9 @@ partial def ast_stmt_to_murphi_stmts
     -- Which murphi expr AST is the right match up? 
     -- Must match DSL Expr to Murphi Expr.
     -- Perhaps I should make a func for this :)
+    let expr_trans_info := assn_stmt_to_expr_translation_info stmt_trans_info expr
     let murphi_expr :=
-      ast_expr_to_murphi_expr expr
+      ast_expr_to_murphi_expr expr_trans_info
     
     let murphi_assignment_stmt :=
     Murϕ.Statement.assignment designator murphi_expr
@@ -2761,6 +2890,16 @@ partial def ast_stmt_to_murphi_stmts
   -- This will NOT recursively call this func to get to
   -- the "when" case
   -/
+  -- let expr_trans_info : expr_translation_info :=
+  -- assn_stmt_to_expr_translation_info expr stmt_trans_info
+
+-- TODO: Thurs, 12:36, was here!
+
+  let lst_murphi_stmts : List Murϕ.Statement :=
+  ast_stmt_stray_expr_to_murphi_expr stmt_trans_info
+
+  lst_murphi_stmts
+
   | Statement.await none lst_stmts =>
     -- nothing to do here, we're awaiting on
     -- another structure to do something
@@ -2856,11 +2995,15 @@ partial def ast_stmt_to_murphi_stmts
   -- <designator>.entries[<entry>] thing
   -- though figuring out <entry> is difficult
   -/
+    let tail_entry : tail_or_entry :=
+    if func_name == "insert"
+    then tail_or_entry.tail
+    else tail_or_entry.entry
 
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
-        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name
+        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry
 
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
