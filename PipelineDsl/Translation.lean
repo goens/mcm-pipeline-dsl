@@ -2625,6 +2625,7 @@ List Murϕ.Statement
                 struct_name
                 lst_ident
                 (Option.some func_name)
+                (await_or_not_state.not_await)
               )
 
               let murphi_stmts : List Murϕ.Statement :=
@@ -3114,7 +3115,7 @@ partial def ast_stmt_to_murphi_stmts
       let state := "state"
 
       let current_structure_entry_state :=
-        Murϕ.Expr.designator (
+        -- Murϕ.Expr.designator (
           Designator.mk (
             -- Example in comments
             -- core_
@@ -3133,7 +3134,7 @@ partial def ast_stmt_to_murphi_stmts
             -- core_[i].LQ.entries[j].state
             Sum.inl state
           ]
-        )
+        -- )
 
       -- want to assign the state the ident
 
@@ -3141,12 +3142,16 @@ partial def ast_stmt_to_murphi_stmts
         Murϕ.Statement.assignment
         current_structure_entry_state
         (Murϕ.Expr.designator (
-          Murϕ.Designator ident
-        ))
+          Murϕ.Designator.mk ident []
+        ) )
 
       [murphi_state_assn]
       else
+      -- AZ TODO NOTE: Consider the case of a unit
+        -- If this isn't a FIFO / buffer structure
+        -- Then do we just assign the unit's state?
         []
+    murphi_stmt
 
 end -- END mutually recursive func region --
 --========= Convert Murphi Stmts to Decls =========
