@@ -136,6 +136,10 @@ inductive tail_or_entry
 | tail : tail_or_entry
 | entry : tail_or_entry
 
+inductive await_or_not_state
+| await : await_or_not_state
+| not_await : await_or_not_state
+
 structure term_translation_info where
 term : Pipeline.Term
 lst_ctrlers : List controller_info
@@ -144,6 +148,7 @@ ctrler_name : Identifier
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 func : Option Identifier
+is_await : await_or_not_state
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -153,6 +158,7 @@ ctrler_name : Identifier
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 func : Option Identifier
+is_await : await_or_not_state
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -162,6 +168,7 @@ ctrler_name : Identifier
 src_ctrler : Option Identifier
 lst_src_args : Option (List Identifier)
 func : Option Identifier
+is_await : await_or_not_state
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -175,6 +182,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -189,6 +197,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -203,6 +212,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
 )
 
 partial def assn_expr_to_term_translation_info
@@ -218,6 +228,8 @@ term_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
+
 
 )
 
@@ -234,6 +246,7 @@ term_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
 
 )
 
@@ -250,6 +263,7 @@ expr_translation_info
   translation_info.src_ctrler
   translation_info.lst_src_args
   translation_info.func
+  translation_info.is_await
 
 )
 --- =========== CUT FROM TRANSFORMATION ================
@@ -2718,6 +2732,7 @@ partial def ast_stmt_to_murphi_stmts
   let src_ctrler := stmt_trans_info.src_ctrler
   let lst_src_args := stmt_trans_info.lst_src_args
   let func_name : Identifier := stmt_trans_info.func.get!
+  let await_or_not := stmt_trans_info.is_await
 
   match stmt with
   | Statement.labelled_statement label stmt =>
@@ -3052,6 +3067,86 @@ partial def ast_stmt_to_murphi_stmts
 
   -- 0
 
+  | Statement.transition ident =>
+    -- for this, we check our state thing
+    -- see if this is an await state
+    -- if this is an await state, return []
+    -- else we translate this to a state update
+    -- to the identifier
+    let murphi_stmt :=
+    match await_or_not with
+    | await_or_not_state.await => 
+      -- return nothing
+      []
+    | await_or_not_state.not_await => 
+      -- translate ident into updating
+      -- this structure's entry state
+      -- ident
+      let this_ctrler : controller_info :=
+        get_ctrler_matching_name ctrler_name ctrlers_lst
+
+      let ctrler_ordering :=
+        get_ctrler_elem_ordering this_ctrler
+
+      let is_fifo : Bool :=
+        ctrler_ordering == "FIFO"
+
+      if is_fifo
+      then
+      -- we access the specific entry i for the rule
+
+      let ruleset_core_elem_idx := "i"
+      let core_idx_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk ruleset_core_elem_idx []
+      )
+
+      -- let ctrler_id := this_ctrler.name
+
+      let entries := "entries"
+
+      let ruleset_entry_elem_idx := "j"
+      let entry_idx_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk ruleset_entry_elem_idx []
+      )
+
+      let state := "state"
+
+      let current_structure_entry_state :=
+        Murϕ.Expr.designator (
+          Designator.mk (
+            -- Example in comments
+            -- core_
+            "core_"
+          )
+          [
+            -- Example in comments
+            -- core_[i]
+            Sum.inr core_idx_designator,
+            -- core_[i].LQ
+            Sum.inl ctrler_name,
+            -- core_[i].LQ.entries
+            Sum.inl entries,
+            -- core_[i].LQ.entries[j]
+            Sum.inr entry_idx_designator,
+            -- core_[i].LQ.entries[j].state
+            Sum.inl state
+          ]
+        )
+
+      -- want to assign the state the ident
+
+      let murphi_state_assn : Murϕ.Statement :=
+        Murϕ.Statement.assignment
+        current_structure_entry_state
+        (Murϕ.Expr.designator (
+          Murϕ.Designator ident
+        ))
+
+      [murphi_state_assn]
+      else
+        []
 
 end -- END mutually recursive func region --
 --========= Convert Murphi Stmts to Decls =========
@@ -3339,10 +3434,23 @@ def dsl_trans_descript_to_murphi_rule
   -- I'll go with taking in a stmt and using map for
   -- sub-stmts.
   --
+  let stmt_trans_info : stmt_translation_info := {
+    stmt := trans_stmt_blk,
+    lst_ctrlers := ctrler_lst,
+    ctrler_name := ctrler_name,
+    src_ctrler := none,
+    lst_src_args := none,
+    func := none,
+    is_await := if await_state_name
+    then await_or_not_state.await
+    else await_or_not_state.not_await
+  }
+    
+
   let lst_murphi_stmt :=
   -- AZ TODO: Implement the AST Stmts => Murphi Stmts fn
     -- AZ TODO: Use the struct!
-    ast_stmt_to_murphi_stmts trans_stmt_blk
+    ast_stmt_to_murphi_stmts stmt_trans_info
 
   let lst_murphi_decls :=
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
@@ -3374,6 +3482,7 @@ def dsl_trans_descript_to_murphi_rule
         guard_cond
         -- List Decl
         -- List Statement
+        lst_murphi_stmt
       )
     ]
     -- List of Rule
