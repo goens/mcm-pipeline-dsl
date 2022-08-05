@@ -127,6 +127,11 @@ instance : ToString controller_info := ⟨
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 
+structure dsl_trans_info where
+ctrler_name: Identifier
+ctrler_lst : List controller_info
+trans : Description -- Description.transition
+
 inductive tail_or_entry
 | tail : tail_or_entry
 | entry : tail_or_entry
@@ -2385,8 +2390,8 @@ List Murϕ.Statement
           -- read the name, check what the
           -- 1. Dest structure is
           -- 2. the function call API
-          let dest_ctrler_name := qual_name_list[0]
-          let func_name := qual_name_list[1]
+          let dest_ctrler_name := qual_name_list[0]!
+          let func_name := qual_name_list[1]!
 
           -- Now understand which function is this?
           if func_name == "insert"
@@ -2490,7 +2495,7 @@ List Murϕ.Statement
 
 
             let ctrler_lst_with_name :=
-            lst_ctrlers.filter (
+            ctrlers_lst.filter (
               λ ctrler =>
                 -- match if ctrler name
                 -- is the struct name
@@ -2516,7 +2521,7 @@ List Murϕ.Statement
             -- waiting on this function
             -- and translate those stmts
             let when_stmt :=
-            find_when_from_transition dest_ctrler.transition_list "insert" curr_ctrler_name
+            find_when_from_transition dest_ctrler.transition_list "insert" ctrler_name
 
             let when_stmt_murphi_stmts :=
             -- Qual name is likely still
@@ -2550,7 +2555,11 @@ List Murϕ.Statement
             -- matches the src ctrler
             match when_stmt with
             | Pipeline.Statement.when qual_name lst_ident stmt =>
-              let qual_name_len_2 := qual_name.length == 2
+              let qual_name_list :=
+              match qual_name with
+              | QualifiedName.mk lst_idents =>
+                lst_idents
+              let qual_name_len_2 := qual_name_list.length == 2
 
               let sanity_check :=
               if qual_name_len_2
@@ -2563,9 +2572,9 @@ List Murϕ.Statement
                 dbg_trace "FAIL: qualified name, is not len 2!"
                 false
               
-              let struct_name := qual_name[0]
-              let when_func_name := qual_name[1]
-              let struct_name_sanity := struct_name == curr_ctrler_name
+              let struct_name := qual_name_list[0]!
+              let when_func_name := qual_name_list[1]!
+              let struct_name_sanity := struct_name == ctrler_name
               let when_func_name_sanity := when_func_name == func_name
 
               let struct_sanity_check :=
@@ -2593,15 +2602,16 @@ List Murϕ.Statement
 
               -- After any sanity messages, try to map the stmts
               -- Create the required info object:
-              let trans_info : stmt_translation_info := {
+              let trans_info : stmt_translation_info := (
                 -- info
-                stmt,
-                lst_ctrlers,
-                dest_ctrler_name,
-                struct_name,
-                lst_ident,
-                func_name
-              }
+                stmt_translation_info.mk
+                stmt
+                ctrlers_lst
+                dest_ctrler_name
+                struct_name
+                lst_ident
+                (Option.some func_name)
+              )
 
               let murphi_stmts : List Murϕ.Statement :=
               ast_stmt_to_murphi_stmts trans_info
@@ -2621,6 +2631,9 @@ List Murϕ.Statement
               -- dest structure name as an input arg, so it
               -- can translate it and reference it's entry tail
               -- as needed
+
+            | _ => dbg_trace "shouldn't get another stmt type"
+              []
 
             when_stmt_murphi_stmts
             -- AZ CHECKPOINT TODO:
@@ -2758,8 +2771,10 @@ partial def ast_stmt_to_murphi_stmts
     [murphi_assignment_stmt]
 
   | Statement.return_stmt expr =>
+    let expr_trans_info :=
+      assn_stmt_to_expr_translation_info stmt_trans_info expr
     let murphi_expr :=
-      ast_expr_to_murphi_expr expr
+      ast_expr_to_murphi_expr expr_trans_info
 
     let murphi_return_stmt :=
     Murϕ.Statement.returnstmt murphi_expr
@@ -2767,14 +2782,19 @@ partial def ast_stmt_to_murphi_stmts
     [murphi_return_stmt]
 
   | Statement.block lst_stmts =>
-    let num_stmts := lst_stmts.length
-    let num_stmts_of_ctrlers_lst :=
-      List.replicate num_stmts ctrlers_lst
-    let zipped_stmts_and_ctrlers :=
-      lst_stmts.zip num_stmts_of_ctrlers_lst
+    -- let num_stmts := lst_stmts.length
+    -- let num_stmts_of_ctrlers_lst :=
+    --   List.replicate num_stmts ctrlers_lst
+    -- let zipped_stmts_and_ctrlers :=
+    --   lst_stmts.zip num_stmts_of_ctrlers_lst
+    let stmt_trans_info_lst :=
+      lst_stmts.map (
+        λ stmt =>
+          assn_stmt_to_stmt_translation_info stmt_trans_info stmt
+      )
     
     let murphi_stmts_lst_lst :=
-    zipped_stmts_and_ctrlers.map ast_stmt_to_murphi_stmts
+    stmt_trans_info_lst.map ast_stmt_to_murphi_stmts
 
     let murphi_stmts_lst :=
     List.join murphi_stmts_lst_lst
@@ -2914,8 +2934,10 @@ partial def ast_stmt_to_murphi_stmts
   for the Listen block's stmts!
   -/
   | Statement.listen_handle stmt handle_blk =>
+    let stmt_trans_info' :=
+      assn_stmt_to_stmt_translation_info stmt_trans_info stmt
     let murphi_stmt :=
-    ast_stmt_to_murphi_stmts (stmt, ctrlers_lst)
+    ast_stmt_to_murphi_stmts stmt_trans_info'
 
     -- note, ignoring the handle block for now
 
@@ -2940,23 +2962,33 @@ partial def ast_stmt_to_murphi_stmts
       -- This mapping is kind of simple
       -- Perhaps recursively checking the stmts
       -- would help map to a flatter Murphi structure
-      let murphi_expr := ast_expr_to_murphi_expr expr
+      let expr_trans_info := 
+        assn_stmt_to_expr_translation_info stmt_trans_info expr
+      let murphi_expr := ast_expr_to_murphi_expr expr_trans_info
 
+      let stmt_trans_info1 := 
+        assn_stmt_to_stmt_translation_info stmt_trans_info stmt1
       let murphi_stmt1 :=
-      ast_stmt_to_murphi_stmts (stmt1, ctrlers_lst)
+      ast_stmt_to_murphi_stmts stmt_trans_info1
 
+      let stmt_trans_info2 := 
+        assn_stmt_to_stmt_translation_info stmt_trans_info stmt2
       let murphi_stmt2 :=
-      ast_stmt_to_murphi_stmts (stmt2, ctrlers_lst)
+      ast_stmt_to_murphi_stmts stmt_trans_info2
 
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt1 none murphi_stmt2
 
       [murphi_if_stmt]
     | Conditional.if_statement expr stmt =>
-      let murphi_expr := ast_expr_to_murphi_expr expr
+      let expr_trans_info := 
+        assn_stmt_to_expr_translation_info stmt_trans_info expr
+      let murphi_expr := ast_expr_to_murphi_expr expr_trans_info
 
+      let stmt_trans_info' := 
+        assn_stmt_to_stmt_translation_info stmt_trans_info stmt
       let murphi_stmt :=
-      ast_stmt_to_murphi_stmts (stmt, ctrlers_lst)
+      ast_stmt_to_murphi_stmts stmt_trans_info'
 
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt none []
@@ -3008,8 +3040,10 @@ partial def ast_stmt_to_murphi_stmts
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
 -- add the structure name stuff..
+    let expr_trans_info := 
+      assn_stmt_to_expr_translation_info stmt_trans_info expr
     let murphi_expr :=
-      ast_expr_to_murphi_expr expr
+      ast_expr_to_murphi_expr expr_trans_info
 
     let murphi_assn_expr :=
       Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
@@ -3025,7 +3059,8 @@ end -- END mutually recursive func region --
 
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
-(ctrler_and_trans : (List controller_info) × Description)
+(trans_info : dsl_trans_info)
+-- (ctrler_and_trans : (List controller_info) × Description)
 -- (ctrler : controller_info)
 -- (trans : Description) -- Description.transition
 
@@ -3034,8 +3069,34 @@ def dsl_trans_descript_to_murphi_rule
 
 -- (lst_ctrlers : List controller_info)
 :=
-  let ctrler := ctrler_and_trans.1
-  let trans := ctrler_and_trans.2
+  let ctrler_name := trans_info.ctrler_name
+  let trans := trans_info.trans
+  let ctrler_lst := trans_info.ctrler_lst
+  
+  let filtered_ctrlers := 
+  ctrler_lst.filter (
+    λ ctrler =>
+      -- match if ctrler name
+      -- is the struct name
+      ctrler.name == ctrler_name
+  )
+  -- let ctrler_except : Except String controller_info :=
+  -- do
+  -- match filtered_ctrlers with
+  -- | [one] => return one
+  -- | h :: t => throw "multiple ctrlers with the same name?"
+  -- | [] => throw "no ctrlers with this name?"
+
+  -- let ctrler : controller_info := ctrler_except.get
+  let ctrler : controller_info :=
+  match filtered_ctrlers with
+  | [one] => one
+  | h :: t => dbg_trace "multiple ctrlers with the same name?"
+    default
+  | [] => dbg_trace "no ctrlers with this name?"
+    default
+
+
   -- ======= String Name Setup =======
   /-
   First we can create the required Murphi Rules
