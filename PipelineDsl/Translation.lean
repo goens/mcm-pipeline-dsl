@@ -1547,7 +1547,7 @@ def does_transition_have_await
 --======== For checking if a transition inserts =======
 -- if it does should synth a guard on dest buffer too!
 
-partial def get_insert_function_calls
+partial def get_api_with_guard_function_calls
 (stmt : Pipeline.Statement)
 :=
           -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
@@ -1568,7 +1568,10 @@ partial def get_insert_function_calls
           -- dbg_trace lst_ident
           -- dbg_trace "===== END List of Func Identifiers ====\n"
 
-          if (lst_ident.contains "insert")
+          if (or
+          (lst_ident.contains "insert")
+          (lst_ident.contains "send_memory_request")
+          )
           then
             [lst_ident]
           else
@@ -1578,11 +1581,11 @@ partial def get_insert_function_calls
     | _ => -- isn't going to be a func call
       []
   | Statement.labelled_statement label stmt =>
-    get_insert_function_calls stmt
+    get_api_with_guard_function_calls stmt
   | Statement.listen_handle stmt lst =>
     List.join
     (
-      [get_insert_function_calls stmt]
+      [get_api_with_guard_function_calls stmt]
       ++
       (
         lst.map
@@ -1590,17 +1593,17 @@ partial def get_insert_function_calls
           λ handl =>
           match handl with
           | HandleBlock.mk qname iden_list stmt1 =>
-            get_insert_function_calls stmt1
+            get_api_with_guard_function_calls stmt1
         )
       )
     )
   | Statement.conditional_stmt cond =>
     match cond with
-    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_insert_function_calls)
-    | Conditional.if_statement expr1 stmt1 => get_insert_function_calls stmt1
-  | Statement.block lst_stmt => List.join (lst_stmt.map get_insert_function_calls)
-  | Statement.await term lst_stmt1 => List.join (lst_stmt1.map get_insert_function_calls)
-  | Statement.when qname list_idens stmt => get_insert_function_calls stmt
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_api_with_guard_function_calls)
+    | Conditional.if_statement expr1 stmt1 => get_api_with_guard_function_calls stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_api_with_guard_function_calls)
+  | Statement.await term lst_stmt1 => List.join (lst_stmt1.map get_api_with_guard_function_calls)
+  | Statement.when qname list_idens stmt => get_api_with_guard_function_calls stmt
   -- | Statement.listen_handle  => 
   | _ => []
 
@@ -2666,14 +2669,19 @@ List Murϕ.Statement
           else
           if func_name == "send_memory_request"
           then
-            -- reg file write?
+            -- This should just use the mem
+            -- interface that's manually written
+            -- in Murphi
+            -- i.e. gen this and use the
+            -- pre-exisiting mem-interface API
             []
           else
           if func_name == "write"
           then
           []
           else
-            -- ideally, would throw an error?
+            -- reg file write?
+            -- throw an error for unknown fns?
             -- but just going to return a default
             --
             []
@@ -3154,7 +3162,103 @@ partial def ast_stmt_to_murphi_stmts
     murphi_stmt
 
 end -- END mutually recursive func region --
+
+--===== Convert idents list (qualified name) to MurϕExpr =====
+def qualified_name_to_murphi_expr
+(lst_idents : List Identifier)
+: Except String Murϕ.Expr
+:= do
+  let is_insert := lst_idents.contains "insert"
+  let is_mem_access := lst_idents.contains "send_memory_request"
+
+  let ruleset_core_elem_idx := "i"
+  let core_idx_designator :=
+  Murϕ.Expr.designator (
+    Designator.mk ruleset_core_elem_idx []
+  )
+
+  if is_insert
+  then
+  -- this is a fifo_access_guard_
+  -- since it goes and checks an entry...
+    let dest_ctrler := lst_idents[0]!
+    let insert_func := lst_idents[1]!
+
+    let num_entries := "num_entries"
+
+    -- now build up the conditional
+    let dest_structure_entry_count :=
+      Murϕ.Expr.designator (
+        Designator.mk (
+          -- Example in comments
+          -- core_
+          "core_"
+        )
+        [
+          -- Example in comments
+          -- core_[i]
+          Sum.inr core_idx_designator,
+          -- core_[i].LQ
+          Sum.inl dest_ctrler,
+          -- core_[i].LQ.num_entries
+          Sum.inl num_entries
+        ]
+      )
+
+    let current_state_expr :=
+    Murϕ.Expr.designator (
+      Designator.mk
+      (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
+      []
+    )
+    let num_entries_of_dest_not_full :=
+    Murϕ.Expr.binop (
+      "<"
+    ) dest_structure_entry_count current_state_expr
+
+    return num_entries_of_dest_not_full
+  else
+  if is_mem_access
+  then
+    -- let dest_ctrler := lst_idents[0]!
+    let dest_ctrler := "mem_interface_"
+    let mem_access_func := lst_idents[1]!
+
+    let out_busy := "out_busy"
+
+    -- check that out_busy is false
+    let msg_out_busy_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk (
+          -- Example in comments
+          -- core_
+          "core_"
+        )
+        [
+          -- Example in comments
+          -- core_[i]
+          Sum.inr core_idx_designator,
+          -- core_[i].mem_interface_
+          Sum.inl dest_ctrler,
+          -- core_[i].mem_interface_.out_busy
+          Sum.inl out_busy
+        ]
+      )
+
+    let murphi_false_expr :=
+      Murϕ.Expr.negation msg_out_busy_designator
+    -- let must_out_not_busy_murphi_expr :=
+    --   Murϕ.Expr.binop
+    --   "="
+    --   msg_out_busy_designator
+    --   ()
+    return murphi_false_expr
+  else
+    throw s!"Input isn't insert or mem_access, how did it reach this?"
+
+
 --========= Convert Murphi Stmts to Decls =========
+-- TODO:
 -- def murphi_stmts_to_murphi_decls
 
 --=========== DSL AST to Murphi AST =============
@@ -3326,63 +3430,57 @@ def dsl_trans_descript_to_murphi_rule
   let trans_stmt_blk :=
     get_transition_stmt trans
 
-  -- List order is backwards! (func, then object)
-  let insert_func_call := List.join (
-    get_insert_function_calls trans_stmt_blk
-  )
+  -- TODO: Adjustment to this,
+  -- search if there's an insert API call
+  -- or if there's a memory interface call
+  -- (a) insert also gens the tail := tail + 1
+  -- (b) memory_interface just gens the packet stuff
+  -- maybe we don't need a "build packet" library API
 
-  -- I've flipped the access order around,
-  -- assuming Andrés's fix works
-  let dest_ctrler_lst := insert_func_call.take 1
-  let insert_func := insert_func_call[1]!
+  -- since we can consider there could be multiple
+  -- insert actions to take
 
-  let dest_ctrler := match dest_ctrler_lst with
-  | [dest_name] => dest_name
-  | _ => dbg_trace "How are there other entries?"
-    default
+  let calls_which_can_guard :=
+    get_api_with_guard_function_calls trans_stmt_blk
 
-  let num_entries := "num_entries"
+  -- for each of these func calls (list of idents)
+  -- we want to get their guard,
+  -- i.e. put this "insert" or "memory-access"
+    -- specific code into a separate function,
+  -- and finally use something like a foldl to 
+  -- put together the guard condition
 
-  -- now build up the conditional
-  let dest_structure_entry_count :=
-    Murϕ.Expr.designator (
-      Designator.mk (
-        -- Example in comments
-        -- core_
-        "core_"
-      )
-      [
-        -- Example in comments
-        -- core_[i]
-        Sum.inr core_idx_designator,
-        -- core_[i].LQ
-        Sum.inl dest_ctrler,
-        -- core_[i].LQ.entries
-        Sum.inl num_entries
-      ]
+  let exception_murphi_guard_exprs := 
+    calls_which_can_guard.map qualified_name_to_murphi_expr
+
+  let murphi_guard_exprs : List Murϕ.Expr := 
+    exception_murphi_guard_exprs.map (
+      λ excpt =>
+        match excpt with
+        -- TODO: This is bad, but I don't want
+        -- to refactor right now, maybe later..
+        | .error msg => Murϕ.Expr.designator (Murϕ.Designator.mk "BAD!!!" [])
+        | .ok    murphi => murphi
     )
-
-  let current_state_expr :=
-  Murϕ.Expr.designator (
-    Designator.mk
-    (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
-    []
-  )
-  let num_entries_of_dest_not_full :=
-  Murϕ.Expr.binop (
-    "<"
-  ) dest_structure_entry_count current_state_expr
 
   --========== This is the guard condition =============
   let guard_cond :=
-    if insert_func_call.length != 0
-    then
+    List.foldl (
+      λ mur_expr1 mur_expr2 =>
+        -- and the exprs!
       Murϕ.Expr.binop (
         "&"
-      ) entry_is_at_state_expr num_entries_of_dest_not_full
+      ) mur_expr1 mur_expr2
+    ) entry_is_at_state_expr murphi_guard_exprs
+  -- let guard_cond :=
+  --   if insert_func_call.length != 0
+  --   then
+  --     Murϕ.Expr.binop (
+  --       "&"
+  --     ) entry_is_at_state_expr num_entries_of_dest_not_full
       
-    else
-      entry_is_at_state_expr
+  --   else
+  --     entry_is_at_state_expr
 
   -- dbg_trace "=== What did we find from the insert func? ===\n"
   -- dbg_trace insert_func_call
