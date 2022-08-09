@@ -2379,6 +2379,7 @@ List Murϕ.Statement
   -- If it isn't a term -> func call, with
   -- 2 qualified param names, then we can just call 
   -- the ast_expr_to_murphi_expr actually!
+  let is_await := stmt_trans_info.is_await
   match stmt with
   | Statement.stray_expr expr =>
     match expr with
@@ -2424,6 +2425,7 @@ List Murϕ.Statement
           let dest_ctrler_name := qual_name_list[0]!
           let func_name := qual_name_list[1]!
 
+          -- AZ TODO: Also need to do the "stall" code
           -- Now understand which function is this?
           if func_name == "insert"
           then
@@ -2838,22 +2840,74 @@ List Murϕ.Statement
             -- throw an error for unknown fns?
             -- but just going to return a default
             --
-            []
+            -- (a) Check the args of the call, to get
+            -- the reg number, and value to write...
+            -- (b) Then access the core_[i]'s index
+
+            -- let args := lst_expr
+            -- assume we've "prepared the exprs" in some
+            -- other previous stmts.. and we just use them..
+            -- Just confirm the order...
+            -- i.e. first arg is the reg idx, and 2nd is the write val
+-- structure expr_translation_info where
+-- expr : Pipeline.Expr
+-- lst_ctrlers : List controller_info
+-- ctrler_name : Identifier
+-- -- when statement stuff
+-- src_ctrler : Option Identifier
+-- lst_src_args : Option (List Identifier)
+-- func : Option Identifier
+-- is_await : await_or_not_state
+
+            let dest_reg_expr_trans_info : expr_translation_info :=
+            assn_stmt_to_expr_translation_info stmt_trans_info (lst_expr[0]!)
+            let dest_reg_expr := ast_expr_to_murphi_expr dest_reg_expr_trans_info
+
+            let write_val_expr_trans_info : expr_translation_info :=
+            assn_stmt_to_expr_translation_info stmt_trans_info (lst_expr[1]!)
+
+            let write_val_expr := ast_expr_to_murphi_expr write_val_expr_trans_info
+
+            let murphi_designator := 
+              Murϕ.Designator.mk "core_" [
+                -- core_[i]
+                Sum.inr core_idx_designator,
+                -- core_[i].rf_
+                Sum.inl "rf_",
+                -- core_[i].rf_.rf
+                Sum.inl "rf",
+                -- core_[i].rf_.rf[dest_reg]
+                Sum.inr dest_reg_expr
+              ]
+
+            let murphi_reg_file_assign :=
+            -- [murϕ|
+            -- core_[i].rf_.rf[ £dest_reg_expr ] := £write_val_expr ]
+            Murϕ.Statement.assignment murphi_designator write_val_expr
+
+            -- Then build the expr, maybe with the metaprogramming
+            -- environment
+            -- []
+            [murphi_reg_file_assign]
         else
         if len_1_qual_name
         then
+        dbg_trace "Doesn't make sense.. replace this with Except throw"
         []
         else
           -- len more than 2 qual name...
           -- we don't have that at the moment?
           -- should throw error
           -- just return default
+        dbg_trace "Doesn't make sense.. replace this with Except throw"
           []
          
 
       | _ =>
-        -- just call the term translation
-        -- normally
+        -- just call the term translation normally?
+        -- can't, this is returns some expr?
+        dbg_trace "What was i just passed?? should be a stray expr?"
+        dbg_trace term
         []
       -- Murϕ.Expr.integerConst 0
     | _ =>
@@ -2874,6 +2928,7 @@ List Murϕ.Statement
     -- AZ NOTE: I don't think there is anything this
     -- would map to?
           
+    dbg_trace "What was i just passed?? should be a stray expr?"
     []
   | _ =>
   dbg_trace "passed in sth that's not a stray_expr"
@@ -3314,6 +3369,24 @@ partial def ast_stmt_to_murphi_stmts
         -- Then do we just assign the unit's state?
         []
     murphi_stmt
+  -- TODO: Fill in these cases,
+  -- These kinda go hand in hand,
+  -- Since
+  -- Await should be somewhat simple?
+  | Statement.await term lst_stmts =>
+    -- So, this term is the func call...
+    -- List of Stmts is the code block within...
+      -- But this should just have when stmts...
+    /-
+    Two Main Tasks Here:
+    1. Generate the Murphi code (template probably)
+       to perform the function {search + fwd, search + squash, etc.}
+    -- Function should do sth
+    2. The function may have a certain return case {search success, fail, etc.}
+    -- We generate these cases by matching what the function returned with
+    -/
+    -- 1. March term with a function call, and 
+  | Statement.when _ _ _
 
 end -- END mutually recursive func region --
 
