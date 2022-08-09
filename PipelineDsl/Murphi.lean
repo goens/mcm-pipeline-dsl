@@ -387,6 +387,10 @@ instance : ToString Program where toString := Program.toString
 def Designator.concat : Designator → (ID ⊕ Expr) → Designator
   | .mk id rest, new => Designator.mk id (new::rest)
 
+def Expr.appendCallArg : Expr → Expr → Expr
+  | .call id args, newArg => .call id (args ++ [newArg])
+  | expr, _ => expr
+
 declare_syntax_cat formal
 declare_syntax_cat proc_decl
 declare_syntax_cat designator
@@ -407,6 +411,8 @@ declare_syntax_cat paramstr
 
 syntax (name := paramident1) ident : paramident
 syntax (name := paramident2) "£" ident : paramident
+syntax (name := paramident3) "£(" ident ")" : paramident
+
 syntax  str : paramstr
 syntax  "£" ident : paramstr
 
@@ -464,16 +470,43 @@ syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
 syntax decl decl decl : program
 
+syntax "[murϕ|" formal "]" : term
+syntax "[murϕ|" proc_decl "]" : term
+syntax "[murϕ|" designator "]" : term
+syntax "[murϕ|" quantifier "]" : term
+syntax "[murϕ|" statement "]" : term
+syntax "[murϕ|" mur_alias "]" : term
+syntax "[murϕ|" mur_rule "]" : term
+syntax "[murϕ|" expr "]" : term
+syntax "[murϕ|" type_expr "]" : term
+syntax "[murϕ|" decl "]" : term
+syntax "[murϕ|" program "]" : term
+
+macro_rules
+  | `([murϕ| $x:formal     ]) => `(formal| $x)
+  | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
+  | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
+  | `([murϕ| $x:statement  ]) => `(statement| $x)
+  | `([murϕ| $x:mur_alias  ]) => `(mur_alias| $x)
+  | `([murϕ| $x:mur_rule   ]) => `(mur_rule| $x)
+  | `([murϕ| $x:expr       ]) => `(expr| $x)
+  | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
+  | `([murϕ| $x:decl       ]) => `(decl| $x)
+  | `([murϕ| $x:program    ]) => `(program| $x)
+ -- | `([murϕ| $x:designator ]) => `(designator| $x)
 
 @[macro paramident1]
 def expandParamIdent : Macro
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
   |  `(paramident| £ $x:ident ) => `($x)
+  |  `(paramident| £($x:ident) ) => `($x)
   | _ => Lean.Macro.throwUnsupported
 
 -- This feels very hacky! But it won't work with <|>. TODO: I should produce an MWE
 @[macro paramident2]
 def expandParamIdent2 : Macro := expandParamIdent
+@[macro paramident3]
+def expandParamIdent3 : Macro := expandParamIdent
 
 macro_rules
   |  `(paramstr| $x:str) => `($x)
@@ -548,14 +581,19 @@ def expandRuleset : Lean.Macro
   | _ => do
     Lean.Macro.throwUnsupported
 
-
 macro_rules
   | `(statements| $stmt:statement) => `( [ $stmt ])
   | `(statements| $stmt:statement ; $stmts:statements) => `($stmt :: $stmts)
 
+open TSyntax.Compat in
 macro_rules
   | `(expr| $x = $y) => `(Expr.binop "=" $x $y)
   | `(expr| $x:designator ) => `(Expr.designator $x)
+  | `(expr| $x:paramident($es:expr,*) ) => do
+    let argsArr : Array Term ← es.getElems.mapM λ e => `([murϕ|$e])
+    let args := Lean.quote argsArr.toList
+    `(Expr.call $(← expandParamIdent x) $args)
+--  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
 
 macro_rules
   | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
@@ -565,31 +603,6 @@ macro_rules
 macro_rules
   | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
 
-syntax "[murϕ|" formal "]" : term
-syntax "[murϕ|" proc_decl "]" : term
-syntax "[murϕ|" designator "]" : term
-syntax "[murϕ|" quantifier "]" : term
-syntax "[murϕ|" statement "]" : term
-syntax "[murϕ|" mur_alias "]" : term
-syntax "[murϕ|" mur_rule "]" : term
-syntax "[murϕ|" expr "]" : term
-syntax "[murϕ|" type_expr "]" : term
-syntax "[murϕ|" decl "]" : term
-syntax "[murϕ|" program "]" : term
-
-
-macro_rules
-  | `([murϕ| $x:formal     ]) => `(formal| $x)
-  | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
-  | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
-  | `([murϕ| $x:statement  ]) => `(statement| $x)
-  | `([murϕ| $x:mur_alias  ]) => `(mur_alias| $x)
-  | `([murϕ| $x:mur_rule   ]) => `(mur_rule| $x)
-  | `([murϕ| $x:expr       ]) => `(expr| $x)
-  | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
-  | `([murϕ| $x:decl       ]) => `(decl| $x)
-  | `([murϕ| $x:program    ]) => `(program| $x)
- -- | `([murϕ| $x:designator ]) => `(designator| $x)
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
