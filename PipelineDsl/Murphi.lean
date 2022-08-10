@@ -413,8 +413,8 @@ syntax (name := paramident1) ident : paramident
 syntax (name := paramident2) "£" ident : paramident
 syntax (name := paramident3) "£(" ident ")" : paramident
 
-syntax  str : paramstr
-syntax  "£" ident : paramstr
+syntax (name := paramstr1) str : paramstr
+syntax (name := paramstr2) "£" ident : paramstr
 
 syntax ("var")? paramident (paramident),* ":" type_expr : formal
 syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
@@ -486,6 +486,7 @@ syntax "[murϕ_proc_decl|" proc_decl "]" : term
 syntax "[murϕ_designator|" designator "]" : term
 syntax "[murϕ_quantifier|" quantifier "]" : term
 syntax "[murϕ_statement|" statement "]" : term
+syntax "[murϕ_statements|" statements "]" : term
 syntax "[murϕ_alias|" mur_alias "]" : term
 syntax "[murϕ_rule|" mur_rule "]" : term
 syntax "[murϕ_expr|" expr "]" : term
@@ -503,59 +504,96 @@ macro_rules
   | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
   | `([murϕ| $x:decl       ]) => `(decl| $x)
   | `([murϕ| $x:program    ]) => `(program| $x)
- -- | `([murϕ| $x:designator ]) => `(designator| $x)
-  | `([murϕ_formal| $x:formal     ]) => `(formal| $x)
-  | `([murϕ_proc_decl| $x:proc_decl  ]) => `(proc_decl| $x)
-  | `([murϕ_quantifier| $x:quantifier ]) => `(quantifier| $x)
-  | `([murϕ_statement| $x:statement  ]) => `(statement| $x)
-  | `([murϕ_alias| $x:mur_alias  ]) => `(mur_alias| $x)
-  | `([murϕ_rule| $x:mur_rule   ]) => `(mur_rule| $x)
-  | `([murϕ_expr| $x:expr       ]) => `(expr| $x)
-  | `([murϕ_type_expr| $x:type_expr  ]) => `(type_expr| $x)
-  | `([murϕ_decl| $x:decl       ]) => `(decl| $x)
+ -- | `([murϕ| $x:designator]) => `(designator| $x)
+  | `([murϕ_formal| $x:formal]) => `(formal| $x)
+  | `([murϕ_proc_decl| $x:proc_decl]) => `(proc_decl| $x)
+  | `([murϕ_quantifier| $x:quantifier]) => `(quantifier| $x)
+  | `([murϕ_statement| $x:statement]) => `(statement| $x)
+  | `([murϕ_statements| $x:statements]) => `(statements| $x)
+  | `([murϕ_alias| $x:mur_alias]) => `(mur_alias| $x)
+  | `([murϕ_rule| $x:mur_rule]) => `(mur_rule| $x)
+  | `([murϕ_expr| $x:expr]) => `(expr| $x)
+  | `([murϕ_type_expr| $x:type_expr]) => `(type_expr| $x)
+  | `([murϕ_decl| $x:decl]) => `(decl| $x)
+  | `([murϕ_designator| $x:designator]) => `(designator| $x)
+
+abbrev TMacro α := TSyntax α → MacroM Term
+
+def mapSyntaxArray {α : SyntaxNodeKinds} :
+TSyntaxArray α → (TSyntax α → MacroM Term) → MacroM Term
+  | es, expandFun => do
+    let esArr : Array Term ← es.mapM expandFun
+    return Lean.quote esArr.toList
+
+-- HACK!
+-- def expandTMacros {α} : TSyntax α → MacroM Term
+--   | t => do return ⟨← Lean.expandMacros t⟩
 
 
-@[macro paramident1]
-def expandParamIdent : Macro
+def expandParamIdent : TMacro `paramident
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
   |  `(paramident| £ $x:ident ) => `($x)
   |  `(paramident| £($x:ident) ) => `($x)
   | _ => Lean.Macro.throwUnsupported
 
 -- This feels very hacky! But it won't work with <|>. TODO: I should produce an MWE
-@[macro paramident2]
-def expandParamIdent2 : Macro := expandParamIdent
-@[macro paramident3]
-def expandParamIdent3 : Macro := expandParamIdent
+@[macro paramident1]
+def expandParamIdentMacro1 : Macro
+  | `(paramident| $p) => expandParamIdent p
+  | _ => Lean.Macro.throwUnsupported
 
-macro_rules
+@[macro paramident2]
+def expandParamIdentMacro2 : Macro
+  | `(paramident| $p) => expandParamIdent p
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro paramident3]
+def expandParamIdentMacro3 : Macro
+  | `(paramident| $p) => expandParamIdent p
+  | _ => Lean.Macro.throwUnsupported
+
+def expandParamStr : TMacro `paramstr
   |  `(paramstr| $x:str) => `($x)
   |  `(paramstr| £ $x:ident ) => `($x)
-
-@[macro vardecl]
-def expandVarDecl : Macro
-  | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
-    let idsListSyn : List Syntax := ids.toList.map λ stx => stx.raw
-    let idsList' <- idsListSyn.mapM expandParamIdent
-    let idsList : List Term := idsList'.map λ stx => ⟨stx⟩
-    let texp : Term ← Lean.expandMacros t |>.map λ stx => ⟨stx⟩
-    `(Decl.var $(Lean.quote idsList) $texp)
   | _ => Lean.Macro.throwUnsupported
+
+@[macro paramstr1]
+def expandParamStrMacro1 : Macro
+  | `(paramstr| $p) => expandParamStr p
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro paramstr2]
+def expandParamStrMacro2 : Macro
+  | `(paramstr| $p) => expandParamStr p
+  | _ => Lean.Macro.throwUnsupported
+
+def expandVarDecl : TMacro `var_decl
+  | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
+    let idsList : Term ← mapSyntaxArray ids expandParamIdent
+    `(Decl.var $idsList [murϕ_type_expr| $t])
+  | _ => Lean.Macro.throwUnsupported
+
+-- Hack to lift expandVarDecl to the untyped macro world
+@[macro vardecl]
+def expandVarDeclMacro : Macro
+ | `(var_decl| $v) => expandVarDecl v
+ | _ => Lean.Macro.throwUnsupported
+
 
 /-
 syntax (name := quantifier1) paramident ":" type_expr : quantifier
 syntax (name := quantifier2) paramident ":=" expr "to" expr ("by" expr)? : quantifier
 -/
-open TSyntax.Compat
-def liftListSyntax : List Syntax → MacroM Syntax
-  | [] => `([])
-  | syn::syns => do
-    let syns' <- liftListSyntax syns
-    `($syn ::$syns')
+
+
+def expandSimpleQuantifier : TMacro `quantifier
+  | `(quantifier| $x:paramident : $t) => do
+   `(Quantifier.simple $(← expandParamIdent x) [murϕ_type_expr| $t])
+  | _ => Lean.Macro.throwUnsupported
 
 @[macro simplequantifier]
-def expandSimpleQuantifier : Lean.Macro
-  | `(quantifier| $x:paramident : $t) => do `(Quantifier.simple $(← expandParamIdent x) $t)
+def  expandSimpleQuantifierMacro : Lean.Macro
+  | `(quantifier| $v) => expandSimpleQuantifier v
   | _ => Lean.Macro.throwUnsupported
 
 @[macro quantifierassign]
@@ -563,16 +601,14 @@ def expandQuantifierAssign : Lean.Macro
   | `(quantifier| $x:paramident := $e₁ to $e₂ $[by $e₃]?) => do
     let x' <- expandParamIdent x
     -- TODO: deal with e₃
-    `(Quantifier.assign $x' $e₁ $e₂ none)
+    `(Quantifier.assign $x' [murϕ_expr| $e₁] [murϕ_expr| $e₂] none)
   | _ => Lean.Macro.throwUnsupported
 
-def expandQuantifier := expandSimpleQuantifier >=> expandQuantifierAssign
+--def expandQuantifier := expandSimpleQuantifier >=> expandQuantifierAssign
 
 macro_rules
   | `(decl| var $[$vardecls];*) => do
-    let arraySyn <- vardecls.mapM expandVarDecl
-    let listSyn <- liftListSyntax arraySyn.toList
-    return listSyn
+   mapSyntaxArray vardecls expandVarDecl
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
@@ -583,45 +619,40 @@ def expandSimpleRule : Lean.Macro
     let xSyn <- match x with
       | none => `(none)
       | some x' =>
-        let expanded <- expandMacros x'
+        let expanded <- expandParamStr x'
         `(some $expanded)
-    let dsSynList <-  ds.toList.map (λ x => x.raw) |>.mapM expandMacros
-    let dsSyn <- liftListSyntax dsSynList
-    `(Rule.simplerule $xSyn $e (List.join $dsSyn ) $stmts)
+    let dsSyn ← mapSyntaxArray ds λ d => `([murϕ_decl| $d])
+    `(Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn ) [murϕ_statements| $stmts])
   | _ => Lean.Macro.throwUnsupported
 
 @[macro rulesetsyn]
 def expandRuleset : Lean.Macro
   | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset) => do
-    let qs' <- quantifiers.mapM expandMacros
-    let qs <- liftListSyntax qs'.toList
-    let rs' <- rules.toList.map (λ x => x.raw) |>.mapM expandMacros
-    let rs <- liftListSyntax rs'
+    let qs <- mapSyntaxArray quantifiers λ q => `([murϕ_quantifier| $q])
+    let rs <- mapSyntaxArray rules λ r => `([murϕ_rule| $r])
     `(Rule.ruleset $qs $rs)
   | _ => do
     Lean.Macro.throwUnsupported
 
 macro_rules
-  | `(statements| $stmt:statement) => `( [ $stmt ])
-  | `(statements| $stmt:statement ; $stmts:statements) => `($stmt :: $stmts)
+  | `(statements| $stmt:statement) => `( [ [murϕ_statement| $stmt] ])
+  | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
 
-open TSyntax.Compat in
 macro_rules
-  | `(expr| $x = $y) => `(Expr.binop "=" $x $y)
-  | `(expr| $x:designator ) => `(Expr.designator $x)
+  | `(expr| $x = $y) => `(Expr.binop "=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x:designator ) => `(Expr.designator [murϕ_designator| $x])
   | `(expr| $x:paramident($es:expr,*) ) => do
-    let argsArr : Array Term ← es.getElems.mapM λ e => `([murϕ_expr|$e])
-    let args := Lean.quote argsArr.toList
+    let args <- mapSyntaxArray es.getElems λ e => `([murϕ_expr|$e])
     `(Expr.call $(← expandParamIdent x) $args)
 --  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
 
 macro_rules
   | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
-  | `(designator| $d:designator [$e:expr] ) => `(Designator.concat $d $ Sum.inr $e)
-  | `(designator| $d:designator . $x:paramident ) => do `(Designator.concat $d $ Sum.inl $(← expandParamIdent x))
+  | `(designator| $d:designator [$e:expr] ) => `(Designator.concat [murϕ_designator| $d] $ Sum.inr [murϕ_expr| $e])
+  | `(designator| $d:designator . $x:paramident ) => do `(Designator.concat [murϕ_designator| $d] $ Sum.inl $(← expandParamIdent x))
 
 macro_rules
-  | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
+  | `(statement| $x:designator := $y ) => `(Statement.assignment [murϕ_designator| $x] [murϕ_expr| $y])
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
