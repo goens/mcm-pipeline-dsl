@@ -481,6 +481,16 @@ syntax "[murϕ|" expr "]" : term
 syntax "[murϕ|" type_expr "]" : term
 syntax "[murϕ|" decl "]" : term
 syntax "[murϕ|" program "]" : term
+syntax "[murϕ_formal|" formal "]" : term
+syntax "[murϕ_proc_decl|" proc_decl "]" : term
+syntax "[murϕ_designator|" designator "]" : term
+syntax "[murϕ_quantifier|" quantifier "]" : term
+syntax "[murϕ_statement|" statement "]" : term
+syntax "[murϕ_alias|" mur_alias "]" : term
+syntax "[murϕ_rule|" mur_rule "]" : term
+syntax "[murϕ_expr|" expr "]" : term
+syntax "[murϕ_type_expr|" type_expr "]" : term
+syntax "[murϕ_decl|" decl "]" : term
 
 macro_rules
   | `([murϕ| $x:formal     ]) => `(formal| $x)
@@ -494,6 +504,16 @@ macro_rules
   | `([murϕ| $x:decl       ]) => `(decl| $x)
   | `([murϕ| $x:program    ]) => `(program| $x)
  -- | `([murϕ| $x:designator ]) => `(designator| $x)
+  | `([murϕ_formal| $x:formal     ]) => `(formal| $x)
+  | `([murϕ_proc_decl| $x:proc_decl  ]) => `(proc_decl| $x)
+  | `([murϕ_quantifier| $x:quantifier ]) => `(quantifier| $x)
+  | `([murϕ_statement| $x:statement  ]) => `(statement| $x)
+  | `([murϕ_alias| $x:mur_alias  ]) => `(mur_alias| $x)
+  | `([murϕ_rule| $x:mur_rule   ]) => `(mur_rule| $x)
+  | `([murϕ_expr| $x:expr       ]) => `(expr| $x)
+  | `([murϕ_type_expr| $x:type_expr  ]) => `(type_expr| $x)
+  | `([murϕ_decl| $x:decl       ]) => `(decl| $x)
+
 
 @[macro paramident1]
 def expandParamIdent : Macro
@@ -590,7 +610,7 @@ macro_rules
   | `(expr| $x = $y) => `(Expr.binop "=" $x $y)
   | `(expr| $x:designator ) => `(Expr.designator $x)
   | `(expr| $x:paramident($es:expr,*) ) => do
-    let argsArr : Array Term ← es.getElems.mapM λ e => `([murϕ|$e])
+    let argsArr : Array Term ← es.getElems.mapM λ e => `([murϕ_expr|$e])
     let args := Lean.quote argsArr.toList
     `(Expr.call $(← expandParamIdent x) $args)
 --  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
@@ -602,7 +622,6 @@ macro_rules
 
 macro_rules
   | `(statement| $x:designator := $y ) => `(Statement.assignment $x $y)
-
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
