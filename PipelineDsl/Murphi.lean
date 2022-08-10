@@ -384,7 +384,7 @@ def Program.toString : Program → String
   s!"{decls} \n {procdecls} \n {rules}"
 instance : ToString Program where toString := Program.toString
 
-def Designator.concat : Designator → (ID ⊕ Expr) → Designator
+def Designator.cons : Designator → (ID ⊕ Expr) → Designator
   | .mk id rest, new => Designator.mk id (new::rest)
 
 def Expr.appendCallArg : Expr → Expr → Expr
@@ -426,10 +426,12 @@ syntax designator "[" expr "]" : designator
 syntax (name := simplequantifier) paramident ":" type_expr : quantifier
 syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : quantifier
 syntax designator ":=" expr : statement
-syntax "if" expr "then" statement* ("elsif" expr "then" statement*)? ("else" statement*)? "endif" : statement
+syntax "if" expr "then" sepBy(statement,";",";",allowTrailingSep)
+       ("elsif" expr "then" sepBy(statement,";",";",allowTrailingSep))?
+       ("else" sepBy(statement,";",";",allowTrailingSep))? "endif" : statement
 syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
-syntax "for" quantifier "do" statement* "endfor" : statement
-syntax "while" expr "do" statement* "end" : statement
+syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) "endfor" : statement
+syntax "while" expr "do" sepBy(statement,";",";",allowTrailingSep) "end" : statement
 syntax "alias" sepBy(mur_alias,";") "do" statement* "end" : statement
 syntax paramident "(" expr,+ ")" : statement
 syntax "clear" designator : statement
@@ -612,6 +614,10 @@ macro_rules
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
+  | `(type_expr| $x:expr .. $y) => do `(TypeExpr.integerSubrange [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(type_expr| enum { $[$ids],*} ) => do `(TypeExpr.enum $(← mapSyntaxArray ids expandParamIdent))
+  | `(type_expr| record $[$decls]* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_decl| $d]) ) )
+  | `(type_expr| array[$t₁] of $t₂) => do `(TypeExpr.array [murϕ_type_expr| $t₁] [murϕ_type_expr| $t₂])
 
 @[macro simplerule]
 def expandSimpleRule : Lean.Macro
@@ -638,21 +644,54 @@ macro_rules
   | `(statements| $stmt:statement) => `( [ [murϕ_statement| $stmt] ])
   | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
 
+#check Murϕ.Expr
 macro_rules
-  | `(expr| $x = $y) => `(Expr.binop "=" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x:designator ) => `(Expr.designator [murϕ_designator| $x])
+  | `(expr| $x + $y) => `(Murϕ.Expr.binop "+" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x - $y) => `(Murϕ.Expr.binop "-" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x * $y) => `(Murϕ.Expr.binop "*" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x / $y) => `(Murϕ.Expr.binop "/" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x % $y) => `(Murϕ.Expr.binop "%" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x | $y) => `(Murϕ.Expr.binop "|" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x & $y) => `(Murϕ.Expr.binop "&" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x -> $y) => `(Murϕ.Expr.binop "->" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x < $y) => `(Murϕ.Expr.binop "<" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x <= $y) => `(Murϕ.Expr.binop "<=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x > $y) => `(Murϕ.Expr.binop ">" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x >= $y) => `(Murϕ.Expr.binop ">=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x = $y) => `(Murϕ.Expr.binop "=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| $x != $y) => `(Murϕ.Expr.binop "!=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(expr| !$x) => `(Murϕ.Expr.negation [murϕ_expr| $x])
+  | `(expr| ($e:expr)) => `([murϕ_expr| $e])
+  | `(expr| $x:designator ) => `(Murϕ.Expr.designator [murϕ_designator| $x])
+  | `(expr| $x:num ) => `(Murϕ.Expr.integerConst $x)
   | `(expr| $x:paramident($es:expr,*) ) => do
     let args <- mapSyntaxArray es.getElems λ e => `([murϕ_expr|$e])
-    `(Expr.call $(← expandParamIdent x) $args)
+    `(Murϕ.Expr.call $(← expandParamIdent x) $args)
 --  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
+
 
 macro_rules
   | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
-  | `(designator| $d:designator [$e:expr] ) => `(Designator.concat [murϕ_designator| $d] $ Sum.inr [murϕ_expr| $e])
-  | `(designator| $d:designator . $x:paramident ) => do `(Designator.concat [murϕ_designator| $d] $ Sum.inl $(← expandParamIdent x))
+  | `(designator| $d:designator [$e:expr] ) => `(Designator.cons [murϕ_designator| $d] $ Sum.inr [murϕ_expr| $e])
+  | `(designator| $d:designator . $x:paramident ) => do `(Designator.cons [murϕ_designator| $d] $ Sum.inl $(← expandParamIdent x))
 
 macro_rules
   | `(statement| $x:designator := $y ) => `(Statement.assignment [murϕ_designator| $x] [murϕ_expr| $y])
+  | `(statement| for $q do $[$stmts];* endfor) => do
+  let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
+  `(Statement.forstmt [murϕ_quantifier| $q] $stmtsSyntax)
+  | `(statement| while $expr do $[$stmts];* end) => do
+  let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
+  `(Statement.whilestmt [murϕ_expr| $expr] $stmtsSyntax)
+  | `(statement| if $e then $[$thens];*  else $[$elses];* endif) => do
+  let thensSyntax ← mapSyntaxArray thens λ s => `([murϕ_statement| $s])
+  let elsesSyntax ← mapSyntaxArray elses λ s => `([murϕ_statement| $s])
+  `(Statement.conditional [murϕ_expr| $e] $thensSyntax none $elsesSyntax)
+  | `(statement| assert $e $[$s]?) =>
+  let strSyn := match s with
+    | some strSyn => strSyn
+    | none => Lean.quote ""
+  `(Statement.assertstmt [murϕ_expr| $e] $strSyn)
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
@@ -660,6 +699,7 @@ def foo := "bar"
 
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
+#check [murϕ| £foo .phys_addr := ld_entry .virt_addr]
 #check [murϕ| next_state .core_[j] .lsq_ .lq_ .ld_entries[i] := ld_entry]
 #check [murϕ| ruleset j : cores_t do endruleset]
 #check [murϕ|
