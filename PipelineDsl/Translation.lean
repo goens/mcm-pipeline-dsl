@@ -2935,6 +2935,23 @@ List Murϕ.Statement
   dbg_trace "passed in sth that's not a stray_expr"
   []
 
+partial def api_term_func_to_murphi_func
+( term : Pipeline.Term )
+:=
+  let dsl_func_info :=
+  match term with
+  | Pipeline.Term.function_call qual_name lst_exprs =>
+    -- translate this specific call..
+    -- don't use the the call for other stray exprs
+    (qual_name, lst_exprs)
+  | _ => dbg_trace "this would be an error"
+  let qual_name := dsl_func_info.1
+  let lst_exprs := dsl_func_info.2
+
+  -- Extract info, gen the murphi func code
+  -- this is mostly setting up the Murphi Template
+  let tail_search : Bool := qual_name.contains "tail_search"
+  0
 
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
@@ -3386,7 +3403,13 @@ partial def ast_stmt_to_murphi_stmts
     2. The function may have a certain return case {search success, fail, etc.}
     -- We generate these cases by matching what the function returned with
     -/
-    -- 1. March term with a function call, and 
+    -- 1. March term with a function call (must fix the API names...)
+    -- , use the args for any parameters of the function
+
+    -- 2. in the function template code, translate and insert the
+    -- when conditions in the right place..
+    -- Could also check the number of when stmts and template function
+    -- cases and throw an error if needed
   | Statement.when _ _ _
 
 end -- END mutually recursive func region --
