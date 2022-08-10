@@ -2759,8 +2759,8 @@ List Murϕ.Statement
 
             let set_core_mem_out_msg : Murϕ.Statement :=
             -- TODO: fix "ambiguous" here
-            -- [murϕ|
-            -- £(dest_ctrler_name).out_msg := insert_ld_in_mem_interface( ld_st_entry , j)]
+            [murϕ|
+            £(dest_ctrler_name).out_msg := insert_ld_in_mem_interface( ld_st_entry , j)]
 
             let msg_out := "msg_out"
             let msg_out_designator : Murϕ.Designator := (
