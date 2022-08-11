@@ -697,10 +697,10 @@ def foo := "bar"
 #eval [murϕ| var foo : baz]
 #eval [murϕ| var £foo : baz]
 
-#check [murϕ|
-sq := Sta.core_[j].lsq_.sq_;
-lq := Sta.core_[j].lsq_.lq_;
-]
+-- #check [murϕ_statements|
+-- sq := Sta.core_[j].lsq_.sq_;
+-- lq := Sta.core_[j].lsq_.lq_;
+-- ]
 
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
@@ -727,8 +727,8 @@ ld_entry.ld_state := await_fwd_check;
 
 next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
-Sta := next_state
-end
+Sta := next_state;
+end;
 endruleset
 
 ]
