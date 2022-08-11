@@ -3417,6 +3417,8 @@ partial def ast_stmt_to_murphi_stmts
     -- code will be used with
     -- Also gen any parameterized args accordingly
 
+-- AZ TODO: Move this to the term func 
+-- above this...
     let overall_murphi_tail_search_template : List Murϕ.Statement :=
     [murϕ|
       next_state := Sta;
