@@ -439,7 +439,7 @@ syntax "error" str : statement
 syntax "assert" expr (str)? : statement
 syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
-syntax statement : statements
+syntax statement ";" : statements
 syntax statement ";" statements : statements
 syntax paramident ":" expr : mur_alias
 syntax (name := simplerule) "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
@@ -641,7 +641,7 @@ def expandRuleset : Lean.Macro
     Lean.Macro.throwUnsupported
 
 macro_rules
-  | `(statements| $stmt:statement) => `( [ [murϕ_statement| $stmt] ])
+  | `(statements| $stmt:statement ;) => `( [ [murϕ_statement| $stmt] ])
   | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
 
 #check Murϕ.Expr
@@ -696,6 +696,11 @@ macro_rules
 def foo := "bar"
 #eval [murϕ| var foo : baz]
 #eval [murϕ| var £foo : baz]
+
+#check [murϕ|
+sq := Sta.core_[j].lsq_.sq_;
+lq := Sta.core_[j].lsq_.lq_;
+]
 
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]
 #check [murϕ| ld_entry .phys_addr := ld_entry .virt_addr]

@@ -1,5 +1,7 @@
 -- import PipelineDsl
+
 import PipelineDsl.Murphi
+
 import PipelineDsl.AST
 -- import PipelineDsl.Transformation
 
@@ -2762,7 +2764,7 @@ List Murϕ.Statement
             let set_core_mem_out_msg : Murϕ.Statement :=
             -- TODO: fix "ambiguous" here
             [murϕ|
-            £(dest_ctrler_name).out_msg := insert_ld_in_mem_interface( ld_st_entry , j)]
+            £dest_ctrler_name .out_msg := insert_ld_in_mem_interface( ld_st_entry , j)]
 
             let msg_out := "msg_out"
             let msg_out_designator : Murϕ.Designator := (
@@ -2882,9 +2884,9 @@ List Murϕ.Statement
               ]
 
             let murphi_reg_file_assign :=
-            -- [murϕ|
-            -- core_[i].rf_.rf[ £dest_reg_expr ] := £write_val_expr ]
-            Murϕ.Statement.assignment murphi_designator write_val_expr
+            [murϕ|
+            core_[i].rf_.rf[ £dest_reg_expr ] := £write_val_expr ]
+            -- Murϕ.Statement.assignment murphi_designator write_val_expr
 
             -- Then build the expr, maybe with the metaprogramming
             -- environment
@@ -3410,6 +3412,62 @@ partial def ast_stmt_to_murphi_stmts
     -- when conditions in the right place..
     -- Could also check the number of when stmts and template function
     -- cases and throw an error if needed
+
+    -- TODO: Pick out the dest structure name to the
+    -- code will be used with
+    -- Also gen any parameterized args accordingly
+
+    let overall_murphi_tail_search_template : List Murϕ.Statement :=
+    [murϕ|
+      next_state := Sta;
+  sq := Sta.core_[j].lsq_.sq_;
+  lq := Sta.core_[j].lsq_.lq_;
+  while_break := false;
+  found_entry := false;
+
+  if (sq.num_entries = 0) then
+    while_break := true;
+  end;
+
+  if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
+    st_idx := find_st_idx_of_seq_num(sq,
+                                     sq.st_seq_num);
+  elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
+    st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+  end;
+
+  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1);
+  offset := 0;
+  while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) Do
+    curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
+    if (sq.sq_entries[curr_idx].phys_addr
+        =
+        sq.phys_addr) then
+      value := sq.sq_entries[curr_idx].write_value;
+
+      lq.st_fwd_value := value;
+      lq.lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
+      lq.ld_seq_num := sq.ld_seq_num; --# Know which load
+      lq.valid_access_msg := true;
+
+      found_entry := true;
+    end;
+
+    --# This is not really necessary
+    if (offset != (difference + 1)) then
+      offset := offset + 1;
+    else
+      while_break := true;
+    end;
+  end;
+
+  if (found_entry = false) then
+    lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
+    lq.ld_seq_num := sq.ld_seq_num;
+    lq.valid_access_msg := true;
+  end;
+
+    ]
   | Statement.when _ _ _
 
 end -- END mutually recursive func region --
