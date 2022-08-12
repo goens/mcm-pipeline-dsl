@@ -2938,21 +2938,94 @@ List Murϕ.Statement
   []
 
 partial def api_term_func_to_murphi_func
-( term : Pipeline.Term )
+-- ( term : Pipeline.Term )
+( term_trans_info : term_translation_info )
 :=
-  let dsl_func_info :=
+  let term : Pipeline.Term := term_trans_info.term
+  -- also get the current struct name... etc.
+  let ctrlers_lst := stmt_trans_info.lst_ctrlers
+  let ctrler_name := stmt_trans_info.ctrler_name
+
+  -- when statement stuff (handling nested scopes?
+  -- or rather, clojures?)
+  let src_ctrler := stmt_trans_info.src_ctrler
+  let lst_src_args := stmt_trans_info.lst_src_args
+  let func_name : Identifier := stmt_trans_info.func.get!
+  -- If it isn't a term -> func call, with
+  -- 2 qualified param names, then we can just call 
+  -- the ast_expr_to_murphi_expr actually!
+  let is_await := stmt_trans_info.is_await
+
+  let dsl_func_info : (QualifiedName × List Pipeline.Expr) :=
   match term with
   | Pipeline.Term.function_call qual_name lst_exprs =>
     -- translate this specific call..
     -- don't use the the call for other stray exprs
     (qual_name, lst_exprs)
   | _ => dbg_trace "this would be an error"
-  let qual_name := dsl_func_info.1
-  let lst_exprs := dsl_func_info.2
+  let qual_name : QualifiedName := dsl_func_info.1
+  let lst_names : List Identifier := match qual_name with
+  | QualifiedName.mk lst_idents => lst_idents
+
+  let api_name : Identifier := lst_name[1]!
+
+  let dest_struct : Identifier := lst_name[0]!
+  let lst_exprs : List Pipeline.Expr := dsl_func_info.2
 
   -- Extract info, gen the murphi func code
   -- this is mostly setting up the Murphi Template
   let tail_search : Bool := qual_name.contains "tail_search"
+
+  let overall_murphi_tail_search_template : List Murϕ.Statement :=
+  [
+    -- AZ TODO: introduce a type for the ACCESS_HASH
+    -- or ACCESS_TAIL and just set it at the beginning
+
+    -- [murϕ| next_state := Sta]
+    -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
+    -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
+    [murϕ|  while_break := false],
+    [murϕ|  found_entry := false],
+    [murϕ|  if (sq.num_entries = 0) then
+        while_break := true;
+      endif],
+    [murϕ|  if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
+        st_idx := find_st_idx_of_seq_num(sq,
+                                         sq.st_seq_num);
+      elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
+        st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+      endif],
+    [murϕ|  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1)],
+    [murϕ|  offset := 0],
+    [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
+        curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
+        if (sq.sq_entries[curr_idx].phys_addr
+            =
+            sq.phys_addr) then
+          value := sq.sq_entries[curr_idx].write_value;
+  
+          lq.st_fwd_value := value;
+          lq.lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
+          lq.ld_seq_num := sq.ld_seq_num; --# Know which load
+          lq.valid_access_msg := true;
+  
+          found_entry := true;
+        endif;
+  
+        --# This is not really necessary
+        if (offset != (difference + 1)) then
+          offset := offset + 1;
+        else
+          while_break := true;
+        endif;
+      end],
+    [murϕ|
+      if (found_entry = false) then
+        lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
+        lq.ld_seq_num := sq.ld_seq_num;
+        lq.valid_access_msg := true;
+      endif]
+  ]
   0
 
 -- AZ TODO: Implement these 2 functions!!!
@@ -3417,59 +3490,6 @@ partial def ast_stmt_to_murphi_stmts
     -- code will be used with
     -- Also gen any parameterized args accordingly
 
--- AZ TODO: Move this to the term func 
--- above this...
-    let overall_murphi_tail_search_template : List Murϕ.Statement :=
-    [murϕ|
-      next_state := Sta;
-  sq := Sta.core_[j].lsq_.sq_;
-  lq := Sta.core_[j].lsq_.lq_;
-  while_break := false;
-  found_entry := false;
-
-  if (sq.num_entries = 0) then
-    while_break := true;
-  end;
-
-  if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
-    st_idx := find_st_idx_of_seq_num(sq,
-                                     sq.st_seq_num);
-  elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
-    st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
-  end;
-
-  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1);
-  offset := 0;
-  while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) Do
-    curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
-    if (sq.sq_entries[curr_idx].phys_addr
-        =
-        sq.phys_addr) then
-      value := sq.sq_entries[curr_idx].write_value;
-
-      lq.st_fwd_value := value;
-      lq.lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
-      lq.ld_seq_num := sq.ld_seq_num; --# Know which load
-      lq.valid_access_msg := true;
-
-      found_entry := true;
-    end;
-
-    --# This is not really necessary
-    if (offset != (difference + 1)) then
-      offset := offset + 1;
-    else
-      while_break := true;
-    end;
-  end;
-
-  if (found_entry = false) then
-    lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
-    lq.ld_seq_num := sq.ld_seq_num;
-    lq.valid_access_msg := true;
-  end;
-
-    ]
   | Statement.when _ _ _
 
 end -- END mutually recursive func region --
