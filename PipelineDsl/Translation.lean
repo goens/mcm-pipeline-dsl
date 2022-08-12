@@ -2969,12 +2969,14 @@ partial def api_term_func_to_murphi_func
 
   let api_name : Identifier := lst_name[1]!
 
-  let dest_struct : Identifier := lst_name[0]!
+  let dest_struct_name : Identifier := lst_name[0]!
   let lst_exprs : List Pipeline.Expr := dsl_func_info.2
 
   -- Extract info, gen the murphi func code
   -- this is mostly setting up the Murphi Template
   let tail_search : Bool := qual_name.contains "tail_search"
+  
+  let murphi_loop_check_condition := 0
 
   let overall_murphi_tail_search_template : List Murϕ.Statement :=
   [
@@ -2986,28 +2988,34 @@ partial def api_term_func_to_murphi_func
     -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
     [murϕ|  while_break := false],
     [murϕ|  found_entry := false],
-    [murϕ|  if (sq.num_entries = 0) then
+    [murϕ|  if (£dest_ctrler_name .num_entries = 0) then
         while_break := true;
       endif],
-    [murϕ|  if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
-        st_idx := find_st_idx_of_seq_num(sq,
-                                         sq.st_seq_num);
-      elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
-        st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+      -- AZ TODO: Gen a generic function for the destination queue!
+      -- since we need to search from a given element?
+      -- but the API call actually specifies the constraint on the
+      -- seq num, so maybe this isn't necessary?
+      -- just search from the end and use any conditions that apply?
+      -- This sounds simpler actually.
+    [murϕ|  if (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_HASH) then
+        st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
+                                         £dest_ctrler_name .st_seq_num);
+      elsif (dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
+        st_idx := (dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
       endif],
-    [murϕ|  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1)],
+    [murϕ|  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - dest_ctrler_name .sq_head ) % ( SQ_ENTRY_NUM + 1)],
     [murϕ|  offset := 0],
     [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
         curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
-        if (sq.sq_entries[curr_idx].phys_addr
+        if (dest_ctrler_name .sq_entries[curr_idx] .phys_addr
             =
-            sq.phys_addr) then
-          value := sq.sq_entries[curr_idx].write_value;
+            dest_ctrler_name .phys_addr) then
+          value := dest_ctrler_name .sq_entries[curr_idx] .write_value;
   
-          lq.st_fwd_value := value;
-          lq.lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
-          lq.ld_seq_num := sq.ld_seq_num; --# Know which load
-          lq.valid_access_msg := true;
+          lq .st_fwd_value := value;
+          lq .lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
+          lq .ld_seq_num := dest_ctrler_name .ld_seq_num; --# Know which load
+          lq .valid_access_msg := true;
   
           found_entry := true;
         endif;
@@ -3021,9 +3029,9 @@ partial def api_term_func_to_murphi_func
       end],
     [murϕ|
       if (found_entry = false) then
-        lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
-        lq.ld_seq_num := sq.ld_seq_num;
-        lq.valid_access_msg := true;
+        lq .lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
+        lq .ld_seq_num := dest_ctrler_name .ld_seq_num;
+        lq .valid_access_msg := true;
       endif]
   ]
   0
