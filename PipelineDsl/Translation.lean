@@ -1692,12 +1692,18 @@ partial def get_ctrler_matching_name
 
   dest_ctrler
 
-partial def list_ident_to_murphi_designator_ctrler_var_check
+partial def ist_ident_to_murphi_designator_ctrler_var_check
 ( lst_ident : List Identifier )
 ( lst_ctrlers : List controller_info )
 ( ctrler_name : Identifier )
 -- (stmt_trans_info : stmt_translation_info)
 ( tail_entry : tail_or_entry)
+-- AZ TODO: handle these, so we can translate
+-- exprs that use Entry?
+-- or terms in general that match a ctrler's
+-- state var(s)!
+( dest_ctrler : Option Identifier)
+-- ( args_list: Option (List Identifier))
 : Designator
 :=
     -- get this controller from the
@@ -1766,6 +1772,15 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_ident_list :=
     ident_matches_ident_list lst_ident h
 
+    -- This is for the second check,
+    -- if "entry" is a term identifier,
+    -- translate this as <ctrler>.entries[curr_idx]
+    -- AZ NOTE: it's curr_idx simply because that's
+    -- what the search API (for LQ -> SQ or SQ -> LQ searches)
+    -- uses for indexing to the element it's searching for!
+    let ident_is_entry : Bool :=
+      ident == "entry"
+
     if ident_matches_ident_list
     then
       -- If this matches then i should
@@ -1810,11 +1825,36 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         -- Murϕ.Designator.
 
         murphi_designator
+      else
+        dbg_trace "WHAT CTRLER STRUCTURE ISN'T FIFO?"
+        Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
     else
-      dbg_trace "WHAT CTRLER STRUCTURE ISN'T FIFO?"
+    if ident_is_entry
+    then
+      -- head entry h, is entry, translate to
+      -- <ctrler>.entries[curr_idx]
+
+      -- already have ctrler_name
+      let entries := "entries"
+      let curr_idx_designator_expr :=
+      Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+
+      let sum_list : List (String ⊕ Murϕ.Expr)
+      := List.append [
+        -- entries
+        Sum.inl entries,
+        Sum.inr curr_idx_designator_expr
+      ] (list_ident_to_murphi_ID t)
+
+      -- AZ TODO: Use dest ctrler!
+      -- TODO Tuesday, Aug 16, 2022
+      let murphi_designator :=
+      Murϕ.Designator.mk dest_ctrler sum_list
+      -- Murϕ.Designator.
+
+      murphi_designator
+    else
       Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
-  else
-    Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
   | [] => dbg_trace "ERROR: Empty identifier list???"
     Murϕ.Designator.mk "" []
 
@@ -2978,6 +3018,11 @@ partial def api_term_func_to_murphi_func
   
   let murphi_loop_check_condition := 0
 
+  let match_cond Pipeline.Expr := lst_exprs[0]
+  let murphi_match_cond_expr := ast_expr_to_murphi_expr match_cond
+
+  -- ex. SQ_NUM_ETNRIES_CONST
+  let dest_num_entries_const_name := (String.join [dest_struct_name, "_NUM_ENTRIES_CONST"])
   let overall_murphi_tail_search_template : List Murϕ.Statement :=
   [
     -- AZ TODO: introduce a type for the ACCESS_HASH
@@ -2991,30 +3036,39 @@ partial def api_term_func_to_murphi_func
     [murϕ|  if (£dest_ctrler_name .num_entries = 0) then
         while_break := true;
       endif],
-      -- AZ TODO: Gen a generic function for the destination queue!
-      -- since we need to search from a given element?
-      -- but the API call actually specifies the constraint on the
-      -- seq num, so maybe this isn't necessary?
-      -- just search from the end and use any conditions that apply?
-      -- This sounds simpler actually.
-    [murϕ|  if (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_HASH) then
-        st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
-                                         £dest_ctrler_name .st_seq_num);
-      elsif (dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
-        st_idx := (dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
-      endif],
-    [murϕ|  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - dest_ctrler_name .sq_head ) % ( SQ_ENTRY_NUM + 1)],
+      -- AZ TODO:
+      -- no, can just map the condition check
+
+    -- [murϕ|  if (£dest_ctrler_name .sq_msg_enum = £dest_ctrler_name_ACCESS_HASH) then
+    --     st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
+    --                                      £dest_ctrler_name .st_seq_num);
+    --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
+    --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+    --   endif],
+    [murϕ|  entry_idx := (£dest_ctrler_name .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - £dest_ctrler_name .head ) % £dest_num_entries_const_name],
     [murϕ|  offset := 0],
     [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
-        curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
-        if (dest_ctrler_name .sq_entries[curr_idx] .phys_addr
+        curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
+        if (
+          -- AZ TODO:
+          -- THIS IS WHERE TO TRANSLATE THE "API ARGS LIST"
+          -- INTO CONDITIONS
+          £dest_ctrler_name .entries[curr_idx] .phys_addr
             =
-            dest_ctrler_name .phys_addr) then
-          value := dest_ctrler_name .sq_entries[curr_idx] .write_value;
+            £dest_ctrler_name .phys_addr
+            ) then
+          value := £dest_ctrler_name .entries[curr_idx] .write_value;
   
+          -- AZ TODO:
+          -- This should be replaced with "this" ctrler's
+          -- code
+          -- Note that "entry" indicates access to the dest ctrler's
+          -- fields
+          -- So that we can even use entry in the when block...
           lq .st_fwd_value := value;
           lq .lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
-          lq .ld_seq_num := dest_ctrler_name .ld_seq_num; --# Know which load
+          lq .ld_seq_num := £dest_ctrler_name .ld_seq_num; --# Know which load
           lq .valid_access_msg := true;
   
           found_entry := true;
@@ -3030,7 +3084,7 @@ partial def api_term_func_to_murphi_func
     [murϕ|
       if (found_entry = false) then
         lq .lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
-        lq .ld_seq_num := dest_ctrler_name .ld_seq_num;
+        lq .ld_seq_num := £dest_ctrler_name .ld_seq_num;
         lq .valid_access_msg := true;
       endif]
   ]
