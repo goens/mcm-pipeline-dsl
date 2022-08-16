@@ -3420,25 +3420,24 @@ partial def ast_stmt_to_murphi_stmts
     let overall_murphi_tail_search_template : List Murϕ.Statement :=
     [murϕ|
       next_state := Sta;
-  sq := Sta.core_[j].lsq_.sq_;
-  lq := Sta.core_[j].lsq_.lq_;
-  while_break := false;
-  found_entry := false;
-
-  if (sq.num_entries = 0) then
-    while_break := true;
-  end;
+      sq := Sta.core_[j].lsq_.sq_;
+      lq := Sta.core_[j].lsq_.lq_;
+      while_break := false;
+      found_entry := false;
+      if (sq.num_entries = 0) then
+      while_break := true;
+      endif;
 
   if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
     st_idx := find_st_idx_of_seq_num(sq,
                                      sq.st_seq_num);
   elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
     st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
-  end;
+  endif;
 
   difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1);
   offset := 0;
-  while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) Do
+  while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
     curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
     if (sq.sq_entries[curr_idx].phys_addr
         =
@@ -3451,24 +3450,24 @@ partial def ast_stmt_to_murphi_stmts
       lq.valid_access_msg := true;
 
       found_entry := true;
-    end;
+    endif;
 
     --# This is not really necessary
     if (offset != (difference + 1)) then
       offset := offset + 1;
     else
       while_break := true;
-    end;
+    endif;
   end;
 
   if (found_entry = false) then
     lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
     lq.ld_seq_num := sq.ld_seq_num;
     lq.valid_access_msg := true;
-  end;
+  endif;
 
     ]
-  | Statement.when _ _ _
+--  | Statement.when _ _ _
 
 end -- END mutually recursive func region --
 

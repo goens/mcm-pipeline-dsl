@@ -297,7 +297,7 @@ private partial def statementToString : Statement → String
     s!"for {quantifierToString quant} do {stmtsS} endfor"
   | .whilestmt cond stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
-    s!"while {exprToString cond} do {stmtsS} endwhile"
+    s!"while {exprToString cond} do {stmtsS} end"
   | .aliasstmt aliases stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
     "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS} end"
@@ -447,7 +447,7 @@ syntax (name := simplerule) "rule" (paramstr)? (expr "==>")? (decl* "begin")? st
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
 syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
 syntax "invariant" (str)? expr : mur_rule
-syntax (name := rulesetsyn) "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule
+syntax (name := rulesetsyn) "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
 syntax "(" expr ")" : expr
 syntax designator : expr
@@ -477,6 +477,7 @@ syntax "[murϕ|" proc_decl "]" : term
 syntax "[murϕ|" designator "]" : term
 syntax "[murϕ|" quantifier "]" : term
 syntax "[murϕ|" statement "]" : term
+syntax "[murϕ|" statements "]" : term
 syntax "[murϕ|" mur_alias "]" : term
 syntax "[murϕ|" mur_rule "]" : term
 syntax "[murϕ|" expr "]" : term
@@ -499,6 +500,7 @@ macro_rules
   | `([murϕ| $x:formal     ]) => `(formal| $x)
   | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
   | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
+  | `([murϕ| $x:statements ]) => `(statements| $x)
   | `([murϕ| $x:statement  ]) => `(statement| $x)
   | `([murϕ| $x:mur_alias  ]) => `(mur_alias| $x)
   | `([murϕ| $x:mur_rule   ]) => `(mur_rule| $x)
@@ -633,7 +635,7 @@ def expandSimpleRule : Lean.Macro
 
 @[macro rulesetsyn]
 def expandRuleset : Lean.Macro
-  | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset) => do
+  | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset ) => do
     let qs <- mapSyntaxArray quantifiers λ q => `([murϕ_quantifier| $q])
     let rs <- mapSyntaxArray rules λ r => `([murϕ_rule| $r])
     `(Rule.ruleset $qs $rs)
@@ -732,4 +734,5 @@ end;
 endruleset
 
 ]
+
 end Murϕ
