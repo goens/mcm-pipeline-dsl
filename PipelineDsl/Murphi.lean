@@ -697,6 +697,8 @@ def foo := "bar"
 #eval [murϕ| var foo : baz]
 #eval [murϕ| var £foo : baz]
 
+def test := "hi"
+-- #eval [murϕ| (£test)_13 ]
 -- #check [murϕ_statements|
 -- sq := Sta.core_[j].lsq_.sq_;
 -- lq := Sta.core_[j].lsq_.lq_;
