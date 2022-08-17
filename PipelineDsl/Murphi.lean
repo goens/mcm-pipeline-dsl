@@ -167,7 +167,7 @@ inductive Quantifier
 -/
 inductive Statement
   | assignment : Designator → Expr → Statement
-  | ifstmt : Expr → List Statement → Option (Expr × List Statement) → List Statement → Statement
+  | ifstmt : Expr → List Statement → List (Expr × List Statement) → List Statement → Statement
   | switchstmt : Expr → List (List Expr × List Statement) → List Statement → Statement
   | forstmt : Quantifier → List Statement → Statement
   | whilestmt : Expr → List Statement → Statement
@@ -276,13 +276,12 @@ private partial def quantifierToString : Quantifier → String
 
 private partial def statementToString : Statement → String
   | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
-  | .ifstmt cond thenstmts elifop elsestmts =>
+  | .ifstmt cond thenstmts eliflist elsestmts =>
     let thenS := ";\n".intercalate $ thenstmts.map statementToString
     let elseS := if elsestmts.length == 0 then ""
      else "else " ++ ";\n".intercalate (elsestmts.map statementToString)
-    let elifS := match elifop with
-      | none => ""
-      | some (elifexp, elifstmts) => s!" elsif {exprToString elifexp} then "
+    let elifS := String.intercalate " " $ eliflist.map λ (elifexp, elifstmts) =>
+      s!" elsif {exprToString elifexp} then "
         ++ ";\n".intercalate (elifstmts.map statementToString)
     s!"if {exprToString cond} then " ++ thenS ++ elifS ++ elseS
   | .switchstmt exp cases elsestmts =>
@@ -431,7 +430,7 @@ syntax (name := simplequantifier) paramident ":" type_expr : quantifier
 syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : quantifier
 syntax designator ":=" expr : statement
 syntax "if" expr "then" statements
-       ("elsif" expr "then" sepBy(statement,";",";",allowTrailingSep))?
+       ("elsif" expr "then" statements)*
        ("else" sepBy(statement,";",";",allowTrailingSep))? "endif" : statement
 syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
 syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) "endfor" : statement
@@ -707,10 +706,11 @@ macro_rules
   | `(statement| while $expr do $[$stmts];* end) => do
   let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
   `(Statement.whilestmt [murϕ_expr| $expr] $stmtsSyntax)
-  | `(statement| if $e then $thens:statements  else $[$elses];* endif) => do
+  | `(statement| if $e then $thens:statements $[elsif $es then $elsifs:statements]* else $[$elses];* endif) => do
   let thensSyntax ← `([murϕ_statements| $thens])
+  let elseifsSyntax ← es.toList.zip elsifs.toList |>.mapM λ (exp, stmts) => `(([murϕ_expr| $exp],[murϕ_statements| $stmts]))
   let elsesSyntax ← mapSyntaxArray elses λ s => `([murϕ_statement| $s])
-  `(Statement.conditional [murϕ_expr| $e] $thensSyntax none $elsesSyntax)
+  `(Statement.ifstmt [murϕ_expr| $e] $thensSyntax $(Lean.quote elseifsSyntax) $elsesSyntax)
   | `(statement| assert $e $[$s]?) =>
   let strSyn := match s with
     | some strSyn => strSyn
@@ -758,5 +758,4 @@ end;
 endruleset
 
 ]
-
 end Murϕ
