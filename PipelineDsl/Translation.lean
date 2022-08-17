@@ -3380,7 +3380,7 @@ partial def api_term_func_to_murphi_func
           (squash_offset <= squash_diff)
           &
           (squash_diff > 0)
-        ) Do
+        ) do
         --# squash
         squash_idx := (rob_idx + squash_offset) % (CORE_INST_NUM + 1);
         --# Check if Ld or St
@@ -3465,7 +3465,7 @@ partial def api_term_func_to_murphi_func
         endif;
 
         squash_offset := squash_offset + 1;
-      endif;
+      end;
 
       --# NOTE IMPORTANT! exit from loop!
       loop_break := true;
@@ -3480,7 +3480,7 @@ partial def api_term_func_to_murphi_func
     else
       loop_break := true;
     endif;
-  endif;
+  end;
 
   ]
 
