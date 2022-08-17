@@ -3211,8 +3211,278 @@ partial def api_term_func_to_murphi_func
       endif]
   ]
 
-  let overall_murphi_head_search_template : List Murϕ.Statement :=
-  []
+-- AZ NOTE: Move this to the func call, instead of
+-- in this await-when func call block
+-- since the squash func here for the first LSQ Doesn't
+-- check for the return when cases...
+-- update this to work generically..?
+  let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
+  [murϕ|
+  loop_break := false;
+  if £dest_ctrler_name .num_entries = 0 then
+    loop_break := true;
+  endif;
+
+  --# (1) get matching LQ index num
+  -- if (sq.sq_entries[st_idx].ld_seq_num = 0) then
+  --   entry_idx := lq.ld_head;
+  -- else
+  --   --# Plus 1 to start from the elem after
+  --   --# but only if there are loads after this...
+  --   --# otherwise we run into problems...
+  --   entry_idx := search_lq_seq_num_idx(lq,
+  --                                   lq.ld_seq_num);
+  --   --#if (entry_idx != lq.ld_tail) then
+  --   --#  entry_idx := entry_idx + 1;
+  --   --#else
+  --   --#  loop_break := true;
+  --   --#end;
+  -- endif;
+  entry_idx := £dest_ctrler_name .head;
+  --# (2) loop to tail searching for:
+  --# if plus 1 is outside this range, this should be caught
+  --# by difference check
+  difference := ( £dest_ctrler_name .tail + £dest_num_entries_const_name - entry_idx ) % £dest_num_entries_const_name;
+  offset := 0;
+  --#if (difference != 0) then
+  while ( (offset <= difference) & (loop_break = false)
+          & (difference > 0)
+        ) do
+    --# Do the search
+    curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
+    --# (3) a load entry that's in a state where it's
+    --# already done a read AND has a matching phys addr
+    dest_ctrler_entry := £dest_ctrler_name .entries[curr_idx];
+    -- AZ TODO:
+    -- Need a way to translate it so we get a list of states which come
+    -- after the memory read?
+    -- Wrote down the general steps on my OneNote Drive...
+    -- but save this for when i have some time... just implement a simpler
+    -- version first!
+
+    -- Commented out, but in general is similar to what
+    -- we want in the end...
+    -- already_read_mem := !(
+    --                       ( dest_ctrler_entry.ld_state = await_fwd_check)
+    --                       |
+    --                       ( dest_ctrler_entry.ld_state = await_scheduled)
+    --                     );
+    -- phys_addr_match := dest_ctrler_entry.phys_addr = £dest_ctrler_name .phys_addr;
+
+    --# (4) if match, then reset it's state to before
+    --# it actually tried to check for a fwding st
+    --# (don't have any inst/scoreboard squashing to do)
+    -- AZ TODO NOTE:
+    -- Would use the previous check for something like this..
+    -- if ( already_read_mem & phys_addr_match ) then
+
+    -- AZ TODO NOTE:
+    -- TODO For Thursday:
+    -- DO a simple if check,
+    -- simply the conditional expr
+    -- in the API's arg
+
+    -- But within the conditional, we
+    -- must also do a check, if the
+    -- entry is on an await state 
+    -- we need to properly "terminate"
+    -- the in-flight action so it doesn't
+    -- potentially change any state in
+    -- un-expected ways...
+
+      --# NOTE: fix:
+      --# remove in-flight SQ and SB reqs if
+      --# Load is in a given state
+      -- AZ TODO: don't need these two cases...
+      -- instead need one that checks if we're waiting on
+      -- a response from the memory_interface
+      -- If we are, then we simply transition to a state which
+      -- will have a similar await-when stmt, but
+      -- the when stmt will transition back to the
+      -- "was scheduled state"...
+      -- But this requires us to also generate a new
+      -- transition...?
+
+
+      -- AZ TODO: Thursday:
+      -- Ah no but what we can do is check the dest
+      -- structure's transitions,
+      -- and simply generate a flag?
+      -- so when the "when stmt" that receives
+      -- a mem response execs, if the flag is true,
+      -- then the when stmt will execute a simple 1 line
+      -- <entry>.state := inst_scheduled_state
+      -- like
+      -- if flag then
+      --   set flag to false
+      --   go back to inst scheduled state
+      -- else
+      --   original_when_code
+      -- Just need to remember to add this flag
+      -- to the entry state vars...
+      -- a "ignore_mem_reponse" flag...
+
+      if ( dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
+        if (sq.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
+          sq.valid_access_msg := false;
+          --# I should probably clear the other fields...
+        endif;
+      elsif ( dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
+        if (sb.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
+          sb.valid_access_msg := false;
+          --# I should probably clear the other fields...
+        endif;
+      -- AZ TODO:
+      -- want something like this, but to get this we could
+      -- filter for transitions which have an await which
+      -- awaits on the committed signal from the ROB
+      elsif ( dest_ctrler_entry.ld_state = await_committed ) then
+        --# If the executed msg was sent, and not yet accepted!
+        if (
+            (rob.valid_access_msg = true)
+            &
+            (rob.seq_num = dest_ctrler_entry.instruction.seq_num)
+           ) then
+          rob.valid_access_msg := false;
+        --# If the executed msg was sent, and processed!
+        else
+          rob.is_executed[search_rob_seq_num_idx(rob,dest_ctrler_entry.instruction.seq_num)] := false;
+        endif;
+      endif;
+
+      --#put "=== BEGIN ===\n";
+      --#put dest_ctrler_entry.ld_state;
+      if ( dest_ctrler_entry.ld_state = await_mem_response ) then
+        --# set to squashed state
+        dest_ctrler_entry.ld_state := squashed_await_mem_response;
+        --#put "squashing\n";
+      else
+        dest_ctrler_entry.ld_state := await_fwd_check;
+        --#put "just reset\n";
+      endif;
+      --#put "==== END ====\n";
+      --# Don't bother doing any sophisticated rollback
+      --# or squashing for now
+      --# UPDATE STATE
+      £dest_ctrler_name .ld_entries[curr_idx] := dest_ctrler_entry;
+
+      --# reset other entries after, checking the ROB
+      --# get this entry's index in the ROB,
+      --# and iterate to the tail of the ROB.
+      --#put "INIT ROB_IDX SET:\n";
+      --#put ld_entry.instruction.seq_num;
+      rob_idx := (search_rob_seq_num_idx(rob,
+                                        dest_ctrler_entry.instruction.seq_num)
+                  + 1) % (CORE_INST_NUM + 1);
+      squash_diff := (rob.rob_tail + (CORE_INST_NUM + 1) - rob_idx) % ( CORE_INST_NUM + 1);
+      squash_offset := 0;
+      while (
+          (squash_offset <= squash_diff)
+          &
+          (squash_diff > 0)
+        ) Do
+        --# squash
+        squash_idx := (rob_idx + squash_offset) % (CORE_INST_NUM + 1);
+        --# Check if Ld or St
+        curr_rob_inst := rob.rob_insts[squash_idx];
+
+        if (curr_rob_inst.op = ld) then
+          --# if ld, then copy above
+          squash_ld_id := search_lq_seq_num_idx(£dest_ctrler_name , curr_rob_inst.seq_num);
+          squash_dest_ctrler_entry := £dest_ctrler_name .ld_entries[squash_ld_id];
+
+          if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
+            if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
+              sq.valid_access_msg := false;
+            endif;
+          elsif ( squash_dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
+            if (sb.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
+              sb.valid_access_msg := false;
+            endif;
+          elsif ( squash_dest_ctrler_entry.ld_state = await_committed ) then
+            --# If the executed msg was sent, and not yet accepted!
+            if (
+                (rob.valid_access_msg = true)
+                &
+                (rob.seq_num = squash_dest_ctrler_entry.instruction.seq_num)
+               ) then
+              rob.valid_access_msg := false;
+            --# If the executed msg was sent, and processed!
+            else
+              rob.is_executed[search_rob_seq_num_idx(rob,squash_dest_ctrler_entry.instruction.seq_num)] := false;
+            endif;
+          endif;
+
+          if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
+            squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
+          else
+            squash_dest_ctrler_entry.ld_state := await_fwd_check;
+          endif;
+
+          £dest_ctrler_name .ld_entries[squash_ld_id] := squash_dest_ctrler_entry;
+
+        elsif (curr_rob_inst.op = st) then
+          --#
+          squash_sq_id := search_sq_seq_num_idx(sq, curr_rob_inst.seq_num);
+          squash_sq_entry := sq.sq_entries[squash_sq_id];
+
+          --# Shouldn't need to check this case actually
+          --# LQ must be busy with an older store's req
+          if ( squash_sq_entry.st_state = st_await_lq_squash ) then
+            if (£dest_ctrler_name .st_seq_num = squash_sq_entry.instruction.seq_num) then
+              £dest_ctrler_name .valid_access_msg := false;
+            endif;
+          elsif ( squash_sq_entry.st_state = st_await_committed ) then
+            --# If the executed msg was sent, and not yet accepted!
+            if (
+                (rob.valid_access_msg = true)
+                &
+                (rob.seq_num = squash_sq_entry.instruction.seq_num)
+               ) then
+              rob.valid_access_msg := false;
+            --# If the executed msg was sent, and processed!
+            else
+              rob.is_executed[search_rob_seq_num_idx(rob,squash_sq_entry.instruction.seq_num)] := false;
+            endif;
+          endif;
+
+          --# This case doesn't apply to this SQ
+          --#if ( squash_sq_entry.st_state = await_mem_response ) then
+          --#  squash_sq_entry.st_state := squashed_await_mem_response;
+          --#else
+          --#  squash_dest_ctrler_entry.ld_state := await_fwd_check;
+          --#end;
+          --# NOTE: The state to reset to depends on how
+          --# accurately we model the values that are used.
+          --# i.e. this reset is to stop any insts from using
+          --# a value a load incorrectly read.
+          --# 
+          squash_sq_entry.st_state := st_await_translation;
+
+          sq.sq_entries[squash_sq_id] := squash_sq_entry;
+        else
+          error "inst should be either ld or st";
+        endif;
+
+        squash_offset := squash_offset + 1;
+      endif;
+
+      --# NOTE IMPORTANT! exit from loop!
+      loop_break := true;
+    -- endif;
+
+    if (offset != £dest_num_entries_const_name) then
+      offset := offset + 1;
+      if (( entry_idx + offset ) % £dest_num_entries_const_name) = £dest_ctrler_name .ld_tail then
+        --#
+        loop_break := true;
+      endif;
+    else
+      loop_break := true;
+    endif;
+  endif;
+
+  ]
 
   0
   0
