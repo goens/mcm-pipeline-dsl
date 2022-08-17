@@ -3058,8 +3058,6 @@ partial def api_term_func_to_murphi_func
   -- this is mostly setting up the Murphi Template
   let tail_search : Bool := qual_name.contains "tail_search"
   
-  let murphi_loop_check_condition := 0
-
   -- AZ TODO: This we know should have the one expr,
   -- we could techinically use Except and 'throw' here
   -- if the len isn't 1
@@ -3140,6 +3138,12 @@ partial def api_term_func_to_murphi_func
 
   -- ex. SQ_NUM_ETNRIES_CONST
   let dest_num_entries_const_name := (String.join [dest_struct_name, "_NUM_ENTRIES_CONST"])
+
+  -- AZ NOTE: Use this point to build a different template
+  -- based on the specific API call...
+  -- Or maybe earlier, but i'm not 100% sure
+  -- what the "common code" segments are just yet...
+
   let overall_murphi_tail_search_template : List Murϕ.Statement :=
   [
     -- AZ TODO: introduce a type for the ACCESS_HASH
@@ -3190,10 +3194,6 @@ partial def api_term_func_to_murphi_func
           £when_search_success_murphi_stmts;
 
           -- value := £dest_ctrler_name .entries[curr_idx] .write_value;
-          -- lq .st_fwd_value := value;
-          -- lq .lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
-          -- lq .ld_seq_num := £dest_ctrler_name .ld_seq_num; --# Know which load
-          -- lq .valid_access_msg := true;
   
           found_entry := true;
         endif;
@@ -3208,11 +3208,12 @@ partial def api_term_func_to_murphi_func
     [murϕ|
       if (found_entry = false) then
         £when_search_fail_murphi_stmts;
-        -- lq .lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
-        -- lq .ld_seq_num := £dest_ctrler_name .ld_seq_num;
-        -- lq .valid_access_msg := true;
       endif]
   ]
+
+  let overall_murphi_head_search_template : List Murϕ.Statement :=
+  []
+
   0
   0
 
