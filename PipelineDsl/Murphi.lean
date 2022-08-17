@@ -408,6 +408,7 @@ declare_syntax_cat type_decl
 declare_syntax_cat program
 declare_syntax_cat paramident
 declare_syntax_cat paramstr
+declare_syntax_cat justparam
 
 syntax (name := paramident1) ident : paramident
 syntax (name := paramident2) "£" ident : paramident
@@ -415,6 +416,9 @@ syntax (name := paramident3) "£(" ident ")" : paramident
 
 syntax (name := paramstr1) str : paramstr
 syntax (name := paramstr2) "£" ident : paramstr
+
+syntax (name := justparam1) "£" ident : justparam
+syntax (name := justparam2) "£(" ident ")" : justparam
 
 syntax ("var")? paramident (paramident),* ":" type_expr : formal
 syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
@@ -426,7 +430,7 @@ syntax designator "[" expr "]" : designator
 syntax (name := simplequantifier) paramident ":" type_expr : quantifier
 syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : quantifier
 syntax designator ":=" expr : statement
-syntax "if" expr "then" sepBy(statement,";",";",allowTrailingSep)
+syntax "if" expr "then" statements
        ("elsif" expr "then" sepBy(statement,";",";",allowTrailingSep))?
        ("else" sepBy(statement,";",";",allowTrailingSep))? "endif" : statement
 syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
@@ -440,7 +444,9 @@ syntax "assert" expr (str)? : statement
 syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
 syntax statement ";" : statements
+syntax justparam ";" : statements
 syntax statement ";" statements : statements
+syntax justparam ";" statements : statements
 syntax paramident ":" expr : mur_alias
 syntax (name := simplerule) "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
@@ -533,6 +539,20 @@ TSyntaxArray α → (TSyntax α → MacroM Term) → MacroM Term
 -- def expandTMacros {α} : TSyntax α → MacroM Term
 --   | t => do return ⟨← Lean.expandMacros t⟩
 
+def expandJustParam : TMacro `justparam
+|  `(justparam| £ $x:ident ) => `($x)
+|  `(justparam| £($x:ident) ) => `($x)
+| _ => Lean.Macro.throwUnsupported
+
+@[macro paramident1]
+def expandJustParamMacro1 : Macro
+  | `(justparam| $p) => expandJustParam p
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro paramident2]
+def expandJustParamMacro2 : Macro
+  | `(justparam| $p) => expandJustParam p
+  | _ => Lean.Macro.throwUnsupported
 
 def expandParamIdent : TMacro `paramident
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
@@ -643,7 +663,9 @@ def expandRuleset : Lean.Macro
     Lean.Macro.throwUnsupported
 
 macro_rules
+  | `(statements| $stmt:justparam ;) => do `( [ $(← expandJustParam stmt) ])
   | `(statements| $stmt:statement ;) => `( [ [murϕ_statement| $stmt] ])
+  | `(statements| $stmt:justparam ; $stmts:statements) => do `( $(← expandJustParam stmt) ++ [murϕ_statements| $stmts])
   | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
 
 #check Murϕ.Expr
@@ -685,8 +707,8 @@ macro_rules
   | `(statement| while $expr do $[$stmts];* end) => do
   let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
   `(Statement.whilestmt [murϕ_expr| $expr] $stmtsSyntax)
-  | `(statement| if $e then $[$thens];*  else $[$elses];* endif) => do
-  let thensSyntax ← mapSyntaxArray thens λ s => `([murϕ_statement| $s])
+  | `(statement| if $e then $thens:statements  else $[$elses];* endif) => do
+  let thensSyntax ← `([murϕ_statements| $thens])
   let elsesSyntax ← mapSyntaxArray elses λ s => `([murϕ_statement| $s])
   `(Statement.conditional [murϕ_expr| $e] $thensSyntax none $elsesSyntax)
   | `(statement| assert $e $[$s]?) =>

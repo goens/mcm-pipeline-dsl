@@ -3187,7 +3187,7 @@ partial def api_term_func_to_murphi_func
           -- Note that "entry" indicates access to the dest ctrler's
           -- fields
           -- So that we can even use entry in the when block...
-          £when_search_success_murphi_stmts
+          £when_search_success_murphi_stmts;
 
           -- value := £dest_ctrler_name .entries[curr_idx] .write_value;
           -- lq .st_fwd_value := value;
@@ -3207,7 +3207,7 @@ partial def api_term_func_to_murphi_func
       end],
     [murϕ|
       if (found_entry = false) then
-        £when_search_fail_murphi_stmts
+        £when_search_fail_murphi_stmts;
         -- lq .lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
         -- lq .ld_seq_num := £dest_ctrler_name .ld_seq_num;
         -- lq .valid_access_msg := true;
