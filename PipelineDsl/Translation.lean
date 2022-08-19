@@ -2959,6 +2959,24 @@ List Murϕ.Statement
             -- AZ NOTE:
             -- These are probably the main things... check around line 3400 if need other things..
 
+            -- AZ NOTE: 
+            -- for the "await" state check;
+            -- particularily want to check if we're in
+            -- an await state awaiting on response from
+            -- another unit, ex. Memory Response, or ROB Commit
+
+            -- "detect in-flight action"
+            -- could be a simple check for "await" stmt in
+            -- a transition, but we don't need all
+            -- transitions...?
+            -- Just some specific ones?
+            -- That have either have a pair of send-receive
+            -- Or are explicitly marked, such as mem access
+            -- or ROB response
+
+            -- THough there's still the issue of what should we do for the
+            -- "squash in-flight action"
+
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
             loop_break := false;
@@ -3032,6 +3050,9 @@ List Murϕ.Statement
               -- the in-flight action so it doesn't
               -- potentially change any state in
               -- un-expected ways...
+              if (
+                £murphi_match_cond_expr
+                ) then
 
                 --# NOTE: fix:
                 --# remove in-flight SQ and SB reqs if
@@ -3065,6 +3086,8 @@ List Murϕ.Statement
                 -- to the entry state vars...
                 -- a "ignore_mem_reponse" flag...
 
+                -- is there a quick and simple way implement
+                -- the check for a 'waiting state' ?
                 if ( dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
                   if (sq.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
                     sq.valid_access_msg := false;
@@ -3212,7 +3235,7 @@ List Murϕ.Statement
 
                 --# NOTE IMPORTANT! exit from loop!
                 loop_break := true;
-              -- endif;
+              endif;
 
               if (offset != £dest_num_entries_const_name) then
                 offset := offset + 1;
@@ -3993,57 +4016,13 @@ partial def ast_stmt_to_murphi_stmts
     -- TODO: Pick out the dest structure name to the
     -- code will be used with
     -- Also gen any parameterized args accordingly
+    let term_trans_info := assn_stmt_to_term_translation_info stmt_trans_info term
 
-    let overall_murphi_tail_search_template : List Murϕ.Statement :=
-    [murϕ|
-      next_state := Sta;
-      sq := Sta.core_[j].lsq_.sq_;
-      lq := Sta.core_[j].lsq_.lq_;
-      while_break := false;
-      found_entry := false;
-      if (sq.num_entries = 0) then
-      while_break := true;
-      endif;
+    let murphi_tail_search_template : List Murϕ.Statement :=
+    api_term_func_to_murphi_func term_trans_info lst_stmts
 
-  if (sq.sq_msg_enum = SQ_ACCESS_HASH) then
-    st_idx := find_st_idx_of_seq_num(sq,
-                                     sq.st_seq_num);
-  elsif (sq.sq_msg_enum = SQ_ACCESS_TAIL) then
-    st_idx := (sq.sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
-  endif;
-
-  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1);
-  offset := 0;
-  while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
-    curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
-    if (sq.sq_entries[curr_idx].phys_addr
-        =
-        sq.phys_addr) then
-      value := sq.sq_entries[curr_idx].write_value;
-
-      lq.st_fwd_value := value;
-      lq.lq_msg_enum := LQ_SEARCH_RESULT_SUCCESS;
-      lq.ld_seq_num := sq.ld_seq_num; --# Know which load
-      lq.valid_access_msg := true;
-
-      found_entry := true;
-    endif;
-
-    --# This is not really necessary
-    if (offset != (difference + 1)) then
-      offset := offset + 1;
-    else
-      while_break := true;
-    endif;
-  end;
-
-  if (found_entry = false) then
-    lq.lq_msg_enum := LQ_SEARCH_RESULT_FAIL;
-    lq.ld_seq_num := sq.ld_seq_num;
-    lq.valid_access_msg := true;
-  endif;
-
-    ]
+    murphi_tail_search_template
+    
   | Statement.when _ _ _
 
 end -- END mutually recursive func region --
