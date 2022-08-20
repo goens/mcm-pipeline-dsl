@@ -2974,8 +2974,29 @@ List Murϕ.Statement
             -- Or are explicitly marked, such as mem access
             -- or ROB response
 
+            -- start by looking at list of transitions..
+            -- for the dest struct that is..
+            -- General detection algo:
+            -- search for transitions with await & none
+            -- check that the predecessor block
+            -- initiates some request to the await'd structure
+
+            -- Or, well, there's also the option of just
+            -- knowing what type of await'ing we're doing;
+            -- i.e. ROB Commit API is a asynch in-flight await
+            -- i.e. mem reponse API is also a in-flight await
+            -- This is probably a decent stop-gap solution to
+            -- just get things working without needing to
+            -- implement too much analysis
+
             -- THough there's still the issue of what should we do for the
             -- "squash in-flight action"
+
+            -- So how do we know what the "squash" action is?
+            -- In the discussion, Dan & Vijay brought up
+            -- perhaps having the user specify the SSP of
+            -- wht the squash action is...
+            -- Okay, so how to express this...?
 
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
@@ -2984,21 +3005,6 @@ List Murϕ.Statement
               loop_break := true;
             endif;
 
-            --# (1) get matching LQ index num
-            -- if (sq.sq_entries[st_idx].ld_seq_num = 0) then
-            --   entry_idx := lq.ld_head;
-            -- else
-            --   --# Plus 1 to start from the elem after
-            --   --# but only if there are loads after this...
-            --   --# otherwise we run into problems...
-            --   entry_idx := search_lq_seq_num_idx(lq,
-            --                                   lq.ld_seq_num);
-            --   --#if (entry_idx != lq.ld_tail) then
-            --   --#  entry_idx := entry_idx + 1;
-            --   --#else
-            --   --#  loop_break := true;
-            --   --#end;
-            -- endif;
             entry_idx := £dest_ctrler_name .head;
             --# (2) loop to tail searching for:
             --# if plus 1 is outside this range, this should be caught
