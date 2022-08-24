@@ -208,7 +208,8 @@ partial def mkTerm : Syntax → Except String Term
   | `(dsl_term|  $i:ident ) => return Term.var i.getId.toString
   | `(dsl_term|  $n:qualified_name ) => Except.map (λ x => Term.qualified_var x) (mkQualifiedName n)
   | `(dsl_term|  $c:call ) => mkCall c
-  | _ => throw "error parsing term"
+  | `(dsl_term|  ($e:expr) ) => return Term.expr (← mkExpr e)
+  | other => throw s!"error parsing term {other}"
 
 partial def mkTypedIdentifier : Syntax → Except String TypedIdentifier
   | `(typed_identifier| $t:ident $x:ident ) => do

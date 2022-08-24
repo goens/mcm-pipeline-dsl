@@ -48,6 +48,7 @@ inductive Term
 | qualified_var : QualifiedName → Term -- variable is a lean keyword...
 | const : Const → Term -- constant is a lean keyword...
 | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
+| expr : Expr → Term
 
 inductive Const
 | num_lit : Nat → Const
@@ -136,6 +137,7 @@ private partial def termToString : Term → String
   | .var i => toString i
   | .qualified_var n => qualifiedNameToString n
   | .const c => constToString c
+  | .expr e => exprToString e
   | .function_call n es => (qualifiedNameToString n) ++ "(" ++ String.intercalate ", " (es.map exprToString)  ++ ")"
 
 private partial def constToString : Const → String

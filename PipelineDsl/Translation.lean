@@ -2144,7 +2144,10 @@ partial def ast_term_to_murphi_expr
       -- Detect this case somehow ahead of time and ignore
       -- this....
       Murϕ.Expr.integerConst 0
-  
+      -- TODO: handle this case. Should be more or less (if it was done with a monad :D)
+   --| Term.expr exp => -- ast_expr_to_murphi_expr exp
+   |Term.expr _ => panic! "unimplemented case (nested terms/expressions)"
+
 
 --===== Helper func, DSL Expr to Murphi Expr. =====
 partial def ast_binop_to_murphi_binop_expr
