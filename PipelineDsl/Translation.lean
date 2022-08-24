@@ -2146,7 +2146,11 @@ partial def ast_term_to_murphi_expr
       Murϕ.Expr.integerConst 0
       -- TODO: handle this case. Should be more or less (if it was done with a monad :D)
    --| Term.expr exp => -- ast_expr_to_murphi_expr exp
-   |Term.expr _ => panic! "unimplemented case (nested terms/expressions)"
+  | Term.expr expr =>
+    let expr_trans_info := assn_term_to_expr_translation_info term_trans_info expr
+    let pipeline_expr := ast_expr_to_murphi_expr expr_trans_info
+    pipeline_expr
+  -- panic! "unimplemented case (nested terms/expressions)"
 
 
 --===== Helper func, DSL Expr to Murphi Expr. =====
