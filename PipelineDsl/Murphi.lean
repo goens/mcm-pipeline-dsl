@@ -706,9 +706,12 @@ macro_rules
   | `(statement| while $expr do $[$stmts];* end) => do
   let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
   `(Statement.whilestmt [murϕ_expr| $expr] $stmtsSyntax)
-  | `(statement| if $e then $thens:statements $[elsif $es then $elsifs:statements]* else $[$elses];* endif) => do
+  | `(statement| if $e then $thens:statements $[elsif $es then $elsifs:statements]* $[else $[$opElses];*]? endif) => do
   let thensSyntax ← `([murϕ_statements| $thens])
   let elseifsSyntax ← es.toList.zip elsifs.toList |>.mapM λ (exp, stmts) => `(([murϕ_expr| $exp],[murϕ_statements| $stmts]))
+  let elses := match opElses with
+    | none => #[]
+    | some es => es
   let elsesSyntax ← mapSyntaxArray elses λ s => `([murϕ_statement| $s])
   `(Statement.ifstmt [murϕ_expr| $e] $thensSyntax $(Lean.quote elseifsSyntax) $elsesSyntax)
   | `(statement| assert $e $[$s]?) =>
