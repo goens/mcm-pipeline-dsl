@@ -442,6 +442,7 @@ syntax "error" str : statement
 syntax "assert" expr (str)? : statement
 syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
+syntax justparam : statements
 syntax statement ";" : statements
 syntax justparam ";" : statements
 syntax statement ";" statements : statements
@@ -664,6 +665,7 @@ def expandRuleset : Lean.Macro
 
 macro_rules
   | `(statements| $stmt:justparam ;) => do `( [ $(← expandJustParam stmt) ])
+  | `(statements| $stmts:justparam ) => do `( $(← expandJustParam stmts))
   | `(statements| $stmt:statement ;) => `( [ [murϕ_statement| $stmt] ])
   | `(statements| $stmt:justparam ; $stmts:statements) => do `( $(← expandJustParam stmt) ++ [murϕ_statements| $stmts])
   | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
@@ -763,5 +765,13 @@ end;
 endruleset
 
 ]
+
+def somestmts := [murϕ| a := b; b := c; ]
+def somestmts' := [murϕ| £somestmts; b := c; ]
+def onestmt := [murϕ| b := c ]
+
+#check [murϕ| if (true) then
+  £somestmts
+  endif]
 
 end Murϕ
