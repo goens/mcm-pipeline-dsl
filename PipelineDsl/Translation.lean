@@ -2255,6 +2255,27 @@ partial def ast_expr_to_murphi_expr
 
     murphi_sub_expr
 
+  | Pipeline.Expr.binand term1 term2 =>
+    let murphi_sub_expr :=
+      ast_binop_to_murphi_binop_expr term1 term2 "&" expr_trans_info
+
+    murphi_sub_expr
+
+  | Pipeline.Expr.binor term1 term2 =>
+    let murphi_sub_expr :=
+      ast_binop_to_murphi_binop_expr term1 term2 "|" expr_trans_info
+
+    murphi_sub_expr
+
+-- no direct xor translation in Murphi,
+-- must expand (a ^ b)
+-- into ((!a) & b) | (a & (!b))
+  -- | Pipeline.Expr.binxor term1 term2 =>
+  --   let murphi_sub_expr :=
+  --     ast_binop_to_murphi_binop_expr term1 term2 "^" expr_trans_info
+
+  --   murphi_sub_expr
+
   | _ => dbg_trace "These things don't map to"
     dbg_trace "Murphi directly...."
     dbg_trace "So, we leave this for later..."
