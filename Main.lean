@@ -3,7 +3,7 @@ import Lean
 import PipelineDsl.Preprocess
 import PipelineDsl.Translation
 import PipelineDsl.Transformation
-import PipelineDsl.MurphiTests
+-- import PipelineDsl.MurphiTests
 open Lean Pipeline
 
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -32,7 +32,7 @@ def main (args : List String): IO Unit := do
   let sanity_check := toString parsed.2 == toString round.2
   println! s!"parse . toString . parse . toString == parse . toString? : {sanity_check}"
   println! "---- test murhpi ----"
-  println! testprog.toString
+  -- println! testprog.toString
 
   -- transform tests...
   println! s!"===== Transform Testing ====="
@@ -87,8 +87,20 @@ def main (args : List String): IO Unit := do
   let ctrler_list := List.replicate num_transitions ctrlers
   let ctrler_list := List.replicate num_transitions ctrlers
 
-  let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
+  -- let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
+  let joined_transition_and_ctrlers :=
+  tsfmed_ctrler.transition_list.map
+    λ trans =>
+    {
+      ctrler_name := tsfmed_ctrler.name,
+      ctrler_lst := ctrlers,
+      trans := trans
+    }
 
+-- structure dsl_trans_info where
+-- ctrler_name: Identifier
+-- ctrler_lst : List controller_info
+-- trans : Description -- Description.transition
   let dummy :=
     joined_transition_and_ctrlers.map dsl_trans_descript_to_murphi_rule
   println! s!"Dummy:\n{dummy}"

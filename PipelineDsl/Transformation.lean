@@ -359,94 +359,94 @@ i.e. whether or not schedule and "perform/execute"
 
 --======= Fns to get Controller Ordering info =====
 
-def filter_lst_of_stmts_for_ordering_asn
-(lst_stmts : List Statement)
-:=
-  List.filter (
-    λ stmt => 
-      match stmt with
-      -- | Statement.variable_assignment qual_name expr =>
-      --   match qual_name with
-      --   | QualifiedName.mk lst_idents' =>
-      --     if (lst_idents'.contains "element_ordering")
-      --       then true
-      --       else false
-      | Statement.value_declaration typed_ident expr =>
-        match typed_ident with
-        | TypedIdentifier.mk tident ident =>
-          if (
-            or
-            (tident == "element_ordering")
-            (ident == "ordering")
-          )
-          then true
-          else false
-      | _ => false
+-- def filter_lst_of_stmts_for_ordering_asn
+-- (lst_stmts : List Statement)
+-- :=
+--   List.filter (
+--     λ stmt => 
+--       match stmt with
+--       -- | Statement.variable_assignment qual_name expr =>
+--       --   match qual_name with
+--       --   | QualifiedName.mk lst_idents' =>
+--       --     if (lst_idents'.contains "element_ordering")
+--       --       then true
+--       --       else false
+--       | Statement.value_declaration typed_ident expr =>
+--         match typed_ident with
+--         | TypedIdentifier.mk tident ident =>
+--           if (
+--             or
+--             (tident == "element_ordering")
+--             (ident == "ordering")
+--           )
+--           then true
+--           else false
+--       | _ => false
         
-  )
-  lst_stmts
+--   )
+--   lst_stmts
 
-def get_val_decl_stmt_var
-(stmt : Statement)
-:= 
-  match stmt with
-  | Statement.value_declaration typed_ident expr =>
-  -- | Statement.variable_assignment qual_name expr =>
-    match expr with
-    | Expr.some_term term =>
-      match term with
-      | Term.var ident =>
-        ident
-      | _ => dbg_trace "Error: unexpected Term"
-      default
-    | _ => dbg_trace "Error: unexpected Expr"
-      default
-  | _ => dbg_trace "Error: unexpected Stmt"
-    -- dbg_trace "BEGIN Stmt:\n"
-    -- dbg_trace stmt
-    -- dbg_trace "END Stmt:\n"
-    default
+-- def get_val_decl_stmt_var
+-- (stmt : Statement)
+-- := 
+--   match stmt with
+--   | Statement.value_declaration typed_ident expr =>
+--   -- | Statement.variable_assignment qual_name expr =>
+--     match expr with
+--     | Expr.some_term term =>
+--       match term with
+--       | Term.var ident =>
+--         ident
+--       | _ => dbg_trace "Error: unexpected Term"
+--       default
+--     | _ => dbg_trace "Error: unexpected Expr"
+--       default
+--   | _ => dbg_trace "Error: unexpected Stmt"
+--     -- dbg_trace "BEGIN Stmt:\n"
+--     -- dbg_trace stmt
+--     -- dbg_trace "END Stmt:\n"
+--     default
 
-def get_ordering_from_ctrler_descript
-(ctrler_descript : Description)
-:= 
-  match ctrler_descript with
-  | Description.controller ident stmt =>
-    match stmt with
-    | Statement.block lst_stmts =>
-      let ordering_stmt_lst := (
-        filter_lst_of_stmts_for_ordering_asn
-        lst_stmts
-      )
-      -- should only be 1 stmt for ordering
-      let ordering_stmt :=
-        match ordering_stmt_lst with
-        | [one_stmt] => one_stmt
-        | _ => dbg_trace "Error: unexpected List size?"
-          -- dbg_trace "List:\n"
-          -- dbg_trace ordering_stmt_lst
-          -- dbg_trace "List_stmts:\n"
-          -- dbg_trace lst_stmts
-          default
-      -- as an Identifier
-      let ordering_type :=
-        get_val_decl_stmt_var ordering_stmt
+-- def get_ordering_from_ctrler_descript
+-- (ctrler_descript : Description)
+-- := 
+--   match ctrler_descript with
+--   | Description.controller ident stmt =>
+--     match stmt with
+--     | Statement.block lst_stmts =>
+--       let ordering_stmt_lst := (
+--         filter_lst_of_stmts_for_ordering_asn
+--         lst_stmts
+--       )
+--       -- should only be 1 stmt for ordering
+--       let ordering_stmt :=
+--         match ordering_stmt_lst with
+--         | [one_stmt] => one_stmt
+--         | _ => dbg_trace "Error: unexpected List size?"
+--           -- dbg_trace "List:\n"
+--           -- dbg_trace ordering_stmt_lst
+--           -- dbg_trace "List_stmts:\n"
+--           -- dbg_trace lst_stmts
+--           default
+--       -- as an Identifier
+--       let ordering_type :=
+--         get_val_decl_stmt_var ordering_stmt
 
-      ordering_type
-    | _ => dbg_trace "Error: unexpected stmt in order search"
-      default
-  | _ => dbg_trace "Error: unexpected ctrler in order search"
-    default
+--       ordering_type
+--     | _ => dbg_trace "Error: unexpected stmt in order search"
+--       default
+--   | _ => dbg_trace "Error: unexpected ctrler in order search"
+--     default
 
-def get_ctrler_elem_ordering
-(ctrler : controller_info)
-:=
-  let ctrler_description := ctrler.controller_descript
-  let ctrler_ordering :=
-    get_ordering_from_ctrler_descript (
-      ctrler_description
-    )
-  ctrler_ordering
+-- def get_ctrler_elem_ordering
+-- (ctrler : controller_info)
+-- :=
+--   let ctrler_description := ctrler.controller_descript
+--   let ctrler_ordering :=
+--     get_ordering_from_ctrler_descript (
+--       ctrler_description
+--     )
+--   ctrler_ordering
       
 --========= Disambiguating between Ctrler Types ======
 

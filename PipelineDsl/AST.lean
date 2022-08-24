@@ -55,6 +55,7 @@ inductive Const
 
 inductive QualifiedName
 | mk : List Identifier → QualifiedName
+deriving Inhabited
 
 -- TODO: Test this (expr) in a sandbox
 inductive Expr
