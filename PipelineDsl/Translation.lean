@@ -129,6 +129,17 @@ instance : ToString controller_info := ⟨
     "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
   ⟩ 
 
+inductive how_many_found
+| nothing
+| one
+| two_or_more
+
+
+structure trans_and_expected_func where
+expected_func : Identifier
+expected_struct : Identifier
+trans : Pipeline.Description
+
 structure dsl_trans_info where
 ctrler_name: Identifier
 ctrler_lst : List controller_info
@@ -152,6 +163,7 @@ lst_src_args : Option (List Identifier)
 func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
+trans_obj : Description
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -163,6 +175,7 @@ lst_src_args : Option (List Identifier)
 func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
+trans_obj : Description
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -174,6 +187,7 @@ lst_src_args : Option (List Identifier)
 func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
+trans_obj : Description
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -189,6 +203,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -205,6 +220,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -221,6 +237,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 )
 
 partial def assn_expr_to_term_translation_info
@@ -238,6 +255,7 @@ term_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 
 
 )
@@ -257,6 +275,7 @@ term_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 
 )
 
@@ -275,6 +294,7 @@ expr_translation_info
   translation_info.func
   translation_info.is_await
   translation_info.entry_keyword_dest
+  translation_info.trans_obj
 
 )
 --- =========== CUT FROM TRANSFORMATION ================
@@ -1697,6 +1717,10 @@ partial def get_ctrler_matching_name
     dbg_trace "or a undefined ctrler?"
     -- I should do a name check, like for:
     -- memory_interface, or 
+    dbg_trace "===== The ctrler name?? ====="
+    dbg_trace ctrler_name
+    dbg_trace "===== List of Controllers ====="
+    dbg_trace lst_ctrlers
     default
 
   dest_ctrler
@@ -1721,6 +1745,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     -- get this controller from the
     -- controller name
   let this_ctrler : controller_info :=
+    dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
     get_ctrler_matching_name ctrler_name lst_ctrlers
   let this_ctrler_state_vars := this_ctrler.state_vars
   let state_var_idents : List Identifier :=
@@ -1897,8 +1922,6 @@ partial def ast_term_to_murphi_expr
   let src_ctrler := term_trans_info.src_ctrler
   let lst_src_args := term_trans_info.lst_src_args
 
-  let entry_keyword_dest : Identifier := Option.get! term_trans_info.entry_keyword_dest
-
   match term with
   | Term.negation term' =>
     let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
@@ -1939,20 +1962,40 @@ partial def ast_term_to_murphi_expr
       -- then we need to check if it's from
       -- the src ctrler's state vars
 
+      let lst_src_args_extracted :=
+        if lst_src_args.isSome
+        then
+          lst_src_args.get!
+        else
+          panic! "calling func didn't provide the list of src ctrler args!"
+
       let ident_in_args : Bool :=
-        (Option.get! lst_src_args).contains ident
+        lst_src_args_extracted.contains ident
       
       if ident_in_args
       then
         -- Then we check if it's one of the
         -- src ctrler's state vars.
 
+      let src_ctrler_extracted :=
+        if src_ctrler.isSome
+        then
+          src_ctrler.get!
+        else
+          panic! "calling func didn't provide the list of src ctrler args!"
         -- if yes, we gen with the src
         -- ctrler's args
+        let bool_thing : Bool :=
+        if src_ctrler_extracted == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
+
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           [ident]
-        ) (lst_ctrlers) (Option.get! src_ctrler) (tail_or_entry.entry)
+        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry)
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -1964,6 +2007,13 @@ partial def ast_term_to_murphi_expr
         -- if it is from the state vars, then
         -- we use that ctrler gen designator
         -- function..
+        let bool_thing : Bool :=
+        if curr_ctrler_name == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
+
         let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           [ident]
@@ -2001,11 +2051,36 @@ partial def ast_term_to_murphi_expr
     let is_src_ctrler_none : Bool :=
       src_ctrler == none
 
+    let root_ident_option := lst_ident[0]?
+    let root_ident := if root_ident_option.isSome then
+    root_ident_option.get!
+    else
+    panic! "there isn't even 1 ident in the lst of identifiers?"
+
     let is_entry_keyword : Bool :=
-      lst_ident[0]! == "entry"
+      root_ident == "entry"
 
     if is_entry_keyword
     then
+
+      let entry_keyword_dest : Identifier := 
+      if term_trans_info.entry_keyword_dest.isSome
+      then
+        term_trans_info.entry_keyword_dest.get!
+      else
+      dbg_trace "=== this is the lst of idents ==="
+      dbg_trace lst_ident
+      dbg_trace curr_ctrler_name
+      dbg_trace term_trans_info.trans_obj
+        panic! "Should have a dest if using entry keyword?"
+
+      let bool_thing : Bool :=
+      if entry_keyword_dest == "" then
+      dbg_trace "===== BLANK STRING CTRLER NAME ====="
+      false
+      else
+      true
+
       -- then translate using the entry_keyword_dest
       let murphi_designator : Designator :=
       list_ident_to_murphi_designator_ctrler_var_check (
@@ -2019,7 +2094,12 @@ partial def ast_term_to_murphi_expr
     else
     if !is_src_ctrler_none
     then
-      let ident := lst_ident[0]!
+      let root_ident_option := lst_ident[0]?
+      let root_ident := if root_ident_option.isSome then
+      root_ident_option.get!
+      else
+      panic! "there isn't even 1 ident in the lst of identifiers?"
+      let ident := root_ident
       -- if not then we need to consider
       -- the src controller
 
@@ -2031,20 +2111,38 @@ partial def ast_term_to_murphi_expr
     -- check if the first item in the list
     -- belongs to the args list
 
+      let lst_src_args_extracted :=
+        if lst_src_args.isSome
+        then
+          lst_src_args.get!
+        else
+          panic! "calling func didn't provide the list of src ctrler args!"
       let ident_in_args : Bool :=
-        (Option.get! lst_src_args).contains ident
+        lst_src_args_extracted.contains ident
       
       if ident_in_args
       then
         -- Then we check if it's one of the
         -- src ctrler's state vars.
 
+        let src_ctrler_extracted :=
+          if src_ctrler.isSome
+          then
+            src_ctrler.get!
+          else
+            panic! "calling func didn't provide the list of src ctrler args!"
         -- if yes, we gen with the src
         -- ctrler's args
+        let bool_thing : Bool :=
+        if src_ctrler_extracted == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           lst_ident
-        ) (lst_ctrlers) (Option.get! src_ctrler) (tail_or_entry.entry)
+        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry)
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2056,6 +2154,12 @@ partial def ast_term_to_murphi_expr
         -- if it is from the state vars, then
         -- we use that ctrler gen designator
         -- function..
+        let bool_thing : Bool :=
+        if curr_ctrler_name == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
         let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check lst_ident lst_ctrlers curr_ctrler_name tail_or_entry.entry
           -- Note that curr_ctrler is likely
@@ -2068,6 +2172,12 @@ partial def ast_term_to_murphi_expr
     else
 
 
+        let bool_thing : Bool :=
+        if curr_ctrler_name == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         lst_ident
@@ -2463,16 +2573,60 @@ partial def find_when_from_transition
 
 -- ===== transition & listen/handle -> murphi if stmt ======
 partial def state_listen_handle_to_murphi_if_stmt
-( expected_func : Identifier )
-( expected_struct : Identifier )
--- run this for each transition description
--- Do the check if it has a listen/handle block with 
--- the expected func/struct
--- but maybe nicer to write as a monad
--- can try tomorrow (Wednesday) with Andrés maybe?
-( trans : Pipeline.Description )
+( trans_and_func : trans_and_expected_func )
+:
+List (Murϕ.Expr × List Murϕ.Statement)
 :=
-  0
+  let trans : Pipeline.Description := trans_and_func.trans
+  let expected_func : Identifier := trans_and_func.expected_func
+  let expected_struct : Identifier := trans_and_func.expected_struct
+  -- search for this "listen-handle stmt in the trans"
+  -- this should be a 'top-level' stmt as well...
+
+-- remember overall goal is to make a Murphi if stmt..
+-- but these will return any list of murphi stmt code
+-- that's in the handle block... (if there is any)
+
+  let stmt_blk := match trans with
+  | Pipeline.Description.transition ident stmt =>
+  stmt
+  | _ => dbg_trace "TODO: throw an error here!"
+    default
+
+  let stmt_lst := match stmt_blk with
+  | Pipeline.Statement.block lst_stmt => lst_stmt
+  | _ => dbg_trace "TODO: throw an error here!"
+    default
+
+  let listen_handle_blk_lst : List Pipeline.Statement :=
+  stmt_lst.filter (
+    λ stmt =>
+      match stmt with
+      | Pipeline.Statement.listen_handle _ _ => true
+      | _ => false
+  )
+
+  let how_many_listen_handle_blks : how_many_found :=
+  match listen_handle_blk_lst with
+  | [one] => how_many_found.one
+  | [] => how_many_found.nothing
+  | h::t => how_many_found.two_or_more
+
+  match how_many_listen_handle_blks with
+  | how_many_found.nothing =>
+    -- construct a murphi expr condition on the transition state
+    -- and an empty statement list
+    []
+  | how_many_found.one =>
+    -- construct a murphi expr condition on the transition state
+    -- and an empty statement list
+    []
+  | how_many_found.two_or_more =>
+    -- must have found more than one!
+    -- TODO: Later, we should check each listen handle blk?
+    -- panic! "TODO: Replace with throw... multiple listen-handles in 1 transition.."
+      []
+  
 
 partial def ast_stmt_stray_expr_to_murphi_expr
 (stmt_trans_info : stmt_translation_info)
@@ -2494,7 +2648,7 @@ List Murϕ.Statement
   -- or rather, clojures?)
   let src_ctrler := stmt_trans_info.src_ctrler
   let lst_src_args := stmt_trans_info.lst_src_args
-  let func_name : Identifier := stmt_trans_info.func.get!
+  let func_name : Option Identifier := stmt_trans_info.func
   -- If it isn't a term -> func call, with
   -- 2 qualified param names, then we can just call 
   -- the ast_expr_to_murphi_expr actually!
@@ -2541,12 +2695,13 @@ List Murϕ.Statement
           -- read the name, check what the
           -- 1. Dest structure is
           -- 2. the function call API
+          dbg_trace "== this was len 2 qual name check'd =="
           let dest_ctrler_name := qual_name_list[0]!
-          let func_name := qual_name_list[1]!
+          let api_func_name := qual_name_list[1]!
 
           -- AZ TODO: Also need to do the "stall" code
           -- Now understand which function is this?
-          if func_name == "insert"
+          if api_func_name == "insert"
           then
             -- structure insert sth
             -- Need some template/boilerplate code
@@ -2665,6 +2820,8 @@ List Murϕ.Statement
               dbg_trace "or a undefined ctrler?"
               -- I should do a name check, like for:
               -- memory_interface, or 
+              dbg_trace dest_ctrler_name
+              dbg_trace ctrlers_lst
               default
 
             -- First search for the structure/ctrler
@@ -2724,8 +2881,9 @@ List Murϕ.Statement
                 dbg_trace "FAIL: qualified name, is not len 2!"
                 false
               
-              let struct_name := qual_name_list[0]!
-              let when_func_name := qual_name_list[1]!
+              dbg_trace "== This was also len 2 checked! =="
+              let struct_name : Identifier := qual_name_list[0]!
+              let when_func_name : Identifier := qual_name_list[1]!
               let struct_name_sanity := struct_name == ctrler_name
               let when_func_name_sanity := when_func_name == func_name
 
@@ -2762,9 +2920,10 @@ List Murϕ.Statement
                 dest_ctrler_name
                 struct_name
                 lst_ident
-                (Option.some func_name)
+                (Option.some api_func_name)
                 (await_or_not_state.not_await)
                 none
+                stmt_trans_info.trans_obj
               )
 
               let murphi_stmts : List Murϕ.Statement :=
@@ -2803,7 +2962,7 @@ List Murϕ.Statement
             -- any vars in the stmts
 
           else
-          if (and (func_name == "send_load_request")
+          if (and (api_func_name == "send_load_request")
           (dest_ctrler_name == "memory_interface"))
           then
             -- should be from reg_file
@@ -2827,6 +2986,7 @@ List Murϕ.Statement
             3. set the out_busy to true
             -/
             let this_ctrler : controller_info :=
+    dbg_trace "===== mem_interface api gen ====="
               get_ctrler_matching_name ctrler_name ctrlers_lst
             let ctrler_ordering :=
               get_ctrler_elem_ordering this_ctrler
@@ -2952,9 +3112,10 @@ List Murϕ.Statement
 
             combined_stmts
           else
-          if (and (func_name == "write")
+          if (and (api_func_name == "write")
           (dest_ctrler_name == "reg_file"))
           then
+            dbg_trace "== Translating reg_file write API =="
             let write_val_expr := lst_expr[0]!
             let write_val_trans_expr : expr_translation_info :=
               assn_stmt_to_expr_translation_info stmt_trans_info write_val_expr
@@ -2966,7 +3127,7 @@ List Murϕ.Statement
 
             [murϕ| Sta .core[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
           else
-          if (func_name == "head_search_squash")
+          if (api_func_name == "head_search_squash")
           then
             -- AZ TODO:
             -- Copy over the other setup stuff as well
@@ -2976,6 +3137,7 @@ List Murϕ.Statement
 
             -- TODO: replace the lst_exprs with whatever the
             -- args list thing is here
+            dbg_trace "== Translating head_search_squash API =="
             let match_cond : Pipeline.Expr := lst_expr[0]!
             let match_cond_trans_info : expr_translation_info :=  {
             expr := match_cond
@@ -2987,7 +3149,8 @@ List Murϕ.Statement
             lst_src_args := stmt_trans_info.lst_src_args,
             func := stmt_trans_info.func,
             is_await := stmt_trans_info.is_await,
-            entry_keyword_dest := Option.some dest_ctrler_name
+            entry_keyword_dest := Option.some dest_ctrler_name,
+            trans_obj := stmt_trans_info.trans_obj
             }
 
 -- (
@@ -3070,6 +3233,7 @@ List Murϕ.Statement
                 false
             )
             -- should just be 1 ctrler with this name...
+            dbg_trace "trying to access a ld_ctrler...?"
             let ld_ctrler : controller_info :=
             ld_ctrler_lst[0]!
             -- check for transition's and their specific
@@ -3498,6 +3662,7 @@ List Murϕ.Statement
 -- func : Option Identifier
 -- is_await : await_or_not_state
 
+            dbg_trace "== Assuming there's a dest_reg and write_val expr =="
             let dest_reg_expr_trans_info : expr_translation_info :=
             assn_stmt_to_expr_translation_info stmt_trans_info (lst_expr[0]!)
             let dest_reg_expr := ast_expr_to_murphi_expr dest_reg_expr_trans_info
@@ -3590,7 +3755,7 @@ partial def api_term_func_to_murphi_func
   -- or rather, clojures?)
   let src_ctrler := term_trans_info.src_ctrler
   let lst_src_args := term_trans_info.lst_src_args
-  let func_name : Identifier := term_trans_info.func.get!
+  let func_name : Option Identifier := term_trans_info.func
   -- If it isn't a term -> func call, with
   -- 2 qualified param names, then we can just call 
   -- the ast_expr_to_murphi_expr actually!
@@ -3608,6 +3773,7 @@ partial def api_term_func_to_murphi_func
   let lst_names : List Identifier := match qual_name with
   | QualifiedName.mk lst_idents => lst_idents
 
+  dbg_trace "== trying to get list of api names out of a func call Qual name =="
   let api_name : Identifier := lst_names[1]!
 
   let dest_struct_name : Identifier := lst_names[0]!
@@ -3620,6 +3786,7 @@ partial def api_term_func_to_murphi_func
   -- AZ TODO: This we know should have the one expr,
   -- we could techinically use Except and 'throw' here
   -- if the len isn't 1
+  dbg_trace "== trying to get expr from func call arg list =="
   let match_cond : Pipeline.Expr := lst_exprs[0]!
   let match_cond_trans_info : expr_translation_info :=  {
     expr := match_cond
@@ -3631,7 +3798,8 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := dest_struct_name
+    entry_keyword_dest := Option.some dest_struct_name,
+    trans_obj := term_trans_info.trans_obj
   }
 
   -- (
@@ -3677,6 +3845,7 @@ partial def api_term_func_to_murphi_func
     | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
     is_search_fail
   )
+  dbg_trace "== assuming there are when search success/fail stmts found! =="
   let when_search_success := when_search_success_list[0]!
   let when_search_fail := when_search_fail_list[0]!
 
@@ -3688,7 +3857,8 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := dest_struct_name
+    entry_keyword_dest := Option.some dest_struct_name,
+    trans_obj := term_trans_info.trans_obj
   }
   let when_search_fail_trans_info : stmt_translation_info := {
     stmt := when_search_fail,
@@ -3698,7 +3868,8 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := dest_struct_name
+    entry_keyword_dest := Option.some dest_struct_name,
+    trans_obj := term_trans_info.trans_obj
   }
 
   let when_search_success_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_success_trans_info
@@ -3803,7 +3974,7 @@ partial def ast_stmt_to_murphi_stmts
   -- or rather, clojures?)
   let src_ctrler := stmt_trans_info.src_ctrler
   let lst_src_args := stmt_trans_info.lst_src_args
-  let func_name : Identifier := stmt_trans_info.func.get!
+  let func_name : Option Identifier := stmt_trans_info.func
   let await_or_not := stmt_trans_info.is_await
 
   match stmt with
@@ -4114,11 +4285,25 @@ partial def ast_stmt_to_murphi_stmts
   -- <designator>.entries[<entry>] thing
   -- though figuring out <entry> is difficult
   -/
+    let unwrapped_func_name :=
+    if func_name.isSome then
+      func_name.get!
+    else
+      -- panic! "func name wasn't provided?"
+      -- var assignment won't always be assigned a func name
+      ""
+
     let tail_entry : tail_or_entry :=
-    if func_name == "insert"
+    if unwrapped_func_name == "insert"
     then tail_or_entry.tail
     else tail_or_entry.entry
 
+        let bool_thing : Bool :=
+        if ctrler_name == "" then
+        dbg_trace "===== BLANK STRING CTRLER NAME ====="
+        false
+        else
+        true
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
@@ -4155,6 +4340,7 @@ partial def ast_stmt_to_murphi_stmts
       -- this structure's entry state
       -- ident
       let this_ctrler : controller_info :=
+    dbg_trace "===== dsl transition to murphi translation ====="
         get_ctrler_matching_name ctrler_name ctrlers_lst
 
       let ctrler_ordering :=
@@ -4247,17 +4433,26 @@ partial def ast_stmt_to_murphi_stmts
     -- Could also check the number of when stmts and template function
     -- cases and throw an error if needed
 
-    -- TODO: Pick out the dest structure name to the
-    -- code will be used with
-    -- Also gen any parameterized args accordingly
-    let term_trans_info := assn_stmt_to_term_translation_info stmt_trans_info term.get!
-    -- TODO: Actually handle the Option term
+    if term.isSome
+    then
+      let extracted_term := if term.isSome then
+      term.get!
+      else
+      panic! "Term was blank?? But none case would have been above?"
 
-    let murphi_tail_search_template : List Murϕ.Statement :=
-    api_term_func_to_murphi_func term_trans_info lst_stmts
+      -- TODO: Pick out the dest structure name to the
+      -- code will be used with
+      -- Also gen any parameterized args accordingly
+      let term_trans_info := assn_stmt_to_term_translation_info stmt_trans_info extracted_term
+      -- TODO: Actually handle the Option term
 
-    murphi_tail_search_template
-    
+      let murphi_tail_search_template : List Murϕ.Statement :=
+      api_term_func_to_murphi_func term_trans_info lst_stmts
+
+      murphi_tail_search_template
+    else
+      []
+
   | Statement.when _ _ _ =>
   -- TODO : Implement this case
     []
@@ -4282,6 +4477,7 @@ def qualified_name_to_murphi_expr
   then
   -- this is a fifo_access_guard_
   -- since it goes and checks an entry...
+    dbg_trace "== trying to get ctrler from list of idents in qual name translation =="
     let dest_ctrler := lst_idents[0]!
     let insert_func := lst_idents[1]!
 
@@ -4321,6 +4517,8 @@ def qualified_name_to_murphi_expr
   else
   if is_mem_access
   then
+
+    dbg_trace "== trying to get ctrler_name from lst of idents! in qual name trans =="
     let dest_ctrler := lst_idents[0]!
     -- let dest_ctrler := "mem_interface_"
     let mem_access_func := lst_idents[1]!
@@ -4649,6 +4847,7 @@ def dsl_trans_descript_to_murphi_rule
     then await_or_not_state.await
     else await_or_not_state.not_await
     entry_keyword_dest := none
+    trans_obj := trans
   }
     
 
