@@ -454,6 +454,7 @@ syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
 syntax "invariant" (str)? expr : mur_rule
 syntax (name := rulesetsyn) "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
+syntax justparam : expr
 syntax "(" expr ")" : expr
 syntax designator : expr
 syntax num : expr
@@ -669,6 +670,7 @@ macro_rules
 
 #check Murϕ.Expr
 macro_rules
+  | `(expr| $p:justparam) => do do `( $(← expandJustParam p))
   | `(expr| $x + $y) => `(Murϕ.Expr.binop "+" [murϕ_expr| $x] [murϕ_expr| $y])
   | `(expr| $x - $y) => `(Murϕ.Expr.binop "-" [murϕ_expr| $x] [murϕ_expr| $y])
   | `(expr| $x * $y) => `(Murϕ.Expr.binop "*" [murϕ_expr| $x] [murϕ_expr| $y])
@@ -761,4 +763,5 @@ end;
 endruleset
 
 ]
+
 end Murϕ
