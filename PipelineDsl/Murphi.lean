@@ -723,7 +723,7 @@ macro_rules
     | some strSyn => strSyn
     | none => Lean.quote ""
   `(Statement.assertstmt [murϕ_expr| $e] $strSyn)
-
+  | `(statement| error $msg) => `(Statement.errorstmt $msg)
 def foo := "bar"
 #eval [murϕ| var foo : baz]
 #eval [murϕ| var £foo : baz]
