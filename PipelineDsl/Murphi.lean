@@ -278,12 +278,13 @@ private partial def statementToString : Statement → String
   | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
   | .ifstmt cond thenstmts eliflist elsestmts =>
     let thenS := ";\n".intercalate $ thenstmts.map statementToString
-    let elseS := if elsestmts.length == 0 then ""
-     else "else " ++ ";\n".intercalate (elsestmts.map statementToString)
+    let elseS :=
+     if elsestmts.length == 0 then "\nend"
+     else "else\n" ++ ";\n".intercalate (elsestmts.map statementToString)
     let elifS := String.intercalate " " $ eliflist.map λ (elifexp, elifstmts) =>
       s!" elsif {exprToString elifexp} then "
         ++ ";\n".intercalate (elifstmts.map statementToString)
-    s!"if {exprToString cond} then " ++ thenS ++ elifS ++ elseS
+    s!"if {exprToString cond} then\n" ++ thenS ++ "\n" ++ elifS ++ "\n" ++ elseS
   | .switchstmt exp cases elsestmts =>
     let casesS := "\n".intercalate $ cases.map
       λ (exps,stmts) => ",".intercalate (exps.map exprToString) ++ " : "
@@ -321,7 +322,7 @@ private partial def ruleToString : Rule → String
     let expS := match opExp with
       | none => ""
       | some exp => exprToString exp ++ " ==>\n"
-      s!"rule \"{nameS}\" \n {expS} \n {declsS}\n begin {stmtsS} end"
+      s!"rule \"{nameS}\" \n{expS} \n{declsS}\nbegin\n{stmtsS}\nend\n"
   | .startstate opName decls stmts =>
     let stmtsS := ";\n".intercalate (stmts.map statementToString)
     let declsS := String.intercalate ";\n" $ decls.map declToString
@@ -337,7 +338,7 @@ private partial def ruleToString : Rule → String
   | .ruleset quants rules =>
     let quantsS := "; ".intercalate (quants.map quantifierToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
-    s!"ruleset {quantsS} do \n {rulesS} end"
+    s!"\nruleset {quantsS} do \n{rulesS}\nend"
   | .aliasrule aliases rules =>
     let aliasesS := "; ".intercalate (aliases.map aliasToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString

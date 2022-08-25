@@ -619,7 +619,7 @@ partial def get_stmts_with_transitions
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
     | Conditional.if_statement expr1 stmt1 => get_stmts_with_transitions stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
-  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
+  | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
   | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
   -- | Statement.listen_handle  => 
   | _ => default
@@ -685,7 +685,7 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.conditional_stmt cond => true
           | Statement.transition iden1 => true
           | Statement.block lst_stmts1 => true
-          | Statement.await none await_lst =>
+          | Statement.await _ await_lst =>
           -- dbg_trace "==BEGIN await ==\n"
           -- dbg_trace trans_name
           -- dbg_trace await_lst
@@ -700,7 +700,7 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.listen_handle stmt1 lst => true
           | _ => false
         )
-      | Statement.await none await_lst => await_lst
+      | Statement.await _ await_lst => await_lst
       | Statement.when qname ident_list stmt => [stmt]
       | Statement.transition iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
@@ -1557,7 +1557,7 @@ partial def check_if_transition_stmt_blk_has_an_await
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map check_if_transition_stmt_blk_has_an_await)
     | Conditional.if_statement expr1 stmt1 => check_if_transition_stmt_blk_has_an_await stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map check_if_transition_stmt_blk_has_an_await)
-  | Statement.await none lst_stmt1 =>
+  | Statement.await _ lst_stmt1 =>
   -- List.join (lst_stmt1.map get_stmts_with_transitions)
     [true]
   | Statement.when qname list_idens stmt => check_if_transition_stmt_blk_has_an_await stmt
@@ -1719,8 +1719,8 @@ partial def get_ctrler_matching_name
     -- memory_interface, or 
     dbg_trace "===== The ctrler name?? ====="
     dbg_trace ctrler_name
-    dbg_trace "===== List of Controllers ====="
-    dbg_trace lst_ctrlers
+    -- dbg_trace "===== List of Controllers ====="
+    -- dbg_trace lst_ctrlers
     default
 
   dest_ctrler
@@ -1745,7 +1745,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     -- get this controller from the
     -- controller name
   let this_ctrler : controller_info :=
-    dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
+    -- dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
     get_ctrler_matching_name ctrler_name lst_ctrlers
   let this_ctrler_state_vars := this_ctrler.state_vars
   let state_var_idents : List Identifier :=
@@ -1790,14 +1790,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         | tail_or_entry.tail => "tail"
         | tail_or_entry.entry => "i"
 
-        let fifo_idx_expr:=
-        Murϕ.Expr.designator (
-        Murϕ.Designator.mk ctrler_name [
-          -- entries
-          -- Assume the buffer entries are
-          -- referred to as 'i'
-          Sum.inl idx
-        ])
+        let fifo_idx_expr : Murϕ.Expr :=
+        match tail_entry with
+        | tail_or_entry.tail =>
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk ctrler_name [
+            -- entries
+            -- Assume the buffer entries are
+            -- referred to as 'i'
+            Sum.inl idx
+          ])
+        | tail_or_entry.entry =>
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk idx [])
 
         let murphi_designator :=
         Murϕ.Designator.mk ctrler_name [
@@ -1850,12 +1855,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         | tail_or_entry.tail => "tail"
         | tail_or_entry.entry => "i"
 
-        let fifo_tail_expr:=
-        Murϕ.Expr.designator (
-        Murϕ.Designator.mk ctrler_name [
-          -- entries
-          Sum.inl idx
-        ])
+        let fifo_tail_expr : Murϕ.Expr :=
+        match tail_entry with
+        | tail_or_entry.tail =>
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk ctrler_name [
+            -- entries
+            -- Assume the buffer entries are
+            -- referred to as 'i'
+            Sum.inl idx
+          ])
+        | tail_or_entry.entry =>
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk idx [])
 
         let sum_list : List (String ⊕ Murϕ.Expr)
         := List.append [
@@ -2071,8 +2083,9 @@ partial def ast_term_to_murphi_expr
       dbg_trace "=== this is the lst of idents ==="
       dbg_trace lst_ident
       dbg_trace curr_ctrler_name
+      dbg_trace term_trans_info.entry_keyword_dest
       dbg_trace term_trans_info.trans_obj
-        panic! "Should have a dest if using entry keyword?"
+      panic! "Should have a dest if using entry keyword?"
 
       let bool_thing : Bool :=
       if entry_keyword_dest == "" then
@@ -2416,7 +2429,7 @@ partial def recursive_await_when_search
   lst_stmts.map (
     λ stmt =>
       match stmt with
-      | Statement.await none lst_stmts =>
+      | Statement.await _ lst_stmts =>
         let ret_val :=
         recursive_await_when_search lst_stmts func_name curr_ctrler_name
         -- needed to do this explicitly so
@@ -2653,6 +2666,9 @@ List Murϕ.Statement
   -- 2 qualified param names, then we can just call 
   -- the ast_expr_to_murphi_expr actually!
   let is_await := stmt_trans_info.is_await
+    dbg_trace "***** BEGIN stmt, stray_expr *****"
+    dbg_trace stmt
+    dbg_trace "***** END stmt, stray expr *****"
   match stmt with
   | Statement.stray_expr expr =>
     match expr with
@@ -2675,16 +2691,21 @@ List Murϕ.Statement
         let len_more_than_2_qual_name : Bool
                             := qual_name_len > 2
 
+        dbg_trace "***** BEGIN stray_expr, qual_name *****"
+        dbg_trace qual_name_list
+        dbg_trace "*** expr args"
+        dbg_trace lst_expr
+        dbg_trace "***** END stray_expr *****"
 
               -- Define some stuff I use later....
               -- too many branching paths...
               let entries := "entries"
-              let ruleset_entry_elem_idx := "j"
+              let ruleset_entry_elem_idx := "i"
               let entry_idx_designator :=
               Murϕ.Expr.designator (
                 Designator.mk ruleset_entry_elem_idx []
               )
-              let ruleset_core_elem_idx := "i"
+              let ruleset_core_elem_idx := "j"
               let core_idx_designator :=
               Murϕ.Expr.designator (
                 Designator.mk ruleset_core_elem_idx []
@@ -2821,7 +2842,7 @@ List Murϕ.Statement
               -- I should do a name check, like for:
               -- memory_interface, or 
               dbg_trace dest_ctrler_name
-              dbg_trace ctrlers_lst
+              -- dbg_trace ctrlers_lst
               default
 
             -- First search for the structure/ctrler
@@ -3042,7 +3063,7 @@ List Murϕ.Statement
             let set_core_mem_out_msg : Murϕ.Statement :=
             -- TODO: fix "ambiguous" here
             [murϕ|
-            £dest_ctrler_name .out_msg := insert_ld_in_mem_interface( ld_st_entry , j)]
+            £dest_ctrler_name .out_msg := insert_ld_in_mem_interface( ld_st , j)]
 
             let msg_out := "msg_out"
             let msg_out_designator : Murϕ.Designator := (
@@ -3662,7 +3683,7 @@ List Murϕ.Statement
 -- func : Option Identifier
 -- is_await : await_or_not_state
 
-            dbg_trace "== Assuming there's a dest_reg and write_val expr =="
+            -- dbg_trace "== Assuming there's a dest_reg and write_val expr =="
             let dest_reg_expr_trans_info : expr_translation_info :=
             assn_stmt_to_expr_translation_info stmt_trans_info (lst_expr[0]!)
             let dest_reg_expr := ast_expr_to_murphi_expr dest_reg_expr_trans_info
@@ -3773,7 +3794,7 @@ partial def api_term_func_to_murphi_func
   let lst_names : List Identifier := match qual_name with
   | QualifiedName.mk lst_idents => lst_idents
 
-  dbg_trace "== trying to get list of api names out of a func call Qual name =="
+  -- dbg_trace "== trying to get list of api names out of a func call Qual name =="
   let api_name : Identifier := lst_names[1]!
 
   let dest_struct_name : Identifier := lst_names[0]!
@@ -3782,11 +3803,14 @@ partial def api_term_func_to_murphi_func
   -- Extract info, gen the murphi func code
   -- this is mostly setting up the Murphi Template
   let tail_search : Bool := lst_names.contains "tail_search"
+  dbg_trace "&&&&& BEGIN is await function tail_search? &&&&&"
+  dbg_trace tail_search
+  dbg_trace "&&&&& END is await function tail_search? &&&&&"
   
   -- AZ TODO: This we know should have the one expr,
   -- we could techinically use Except and 'throw' here
   -- if the len isn't 1
-  dbg_trace "== trying to get expr from func call arg list =="
+  -- dbg_trace "== trying to get expr from func call arg list =="
   let match_cond : Pipeline.Expr := lst_exprs[0]!
   let match_cond_trans_info : expr_translation_info :=  {
     expr := match_cond
@@ -3806,6 +3830,9 @@ partial def api_term_func_to_murphi_func
   -- assn_term_to_expr_translation_info term_trans_info match_cond)
 
   let murphi_match_cond_expr := ast_expr_to_murphi_expr match_cond_trans_info
+  dbg_trace "&&&&& BEGIN match if cond &&&&&"
+  dbg_trace murphi_match_cond_expr
+  dbg_trace "&&&&& END match if cond &&&&&"
 
   -- AZ TODO: Identify the "search success case"
   -- and the "search failure case"
@@ -3818,6 +3845,9 @@ partial def api_term_func_to_murphi_func
         true
       | _ => false
   )
+  dbg_trace "&&&&& BEGIN when_stmts &&&&&"
+  dbg_trace when_stmts
+  dbg_trace "&&&&& END when_stmts &&&&&"
       -- qual name is probably the structure -- ... list idents is the args list!
       -- so take the qual name and check for search_success / fail
   let when_search_success_list : List Pipeline.Statement := when_stmts.filter (
@@ -3845,7 +3875,13 @@ partial def api_term_func_to_murphi_func
     | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
     is_search_fail
   )
-  dbg_trace "== assuming there are when search success/fail stmts found! =="
+  dbg_trace "&&&&& BEGIN when_success &&&&&"
+  dbg_trace when_search_success_list
+  dbg_trace "&&&&& END when_success &&&&&"
+  dbg_trace "&&&&& BEGIN when_fail &&&&&"
+  dbg_trace when_search_fail_list
+  dbg_trace "&&&&& END when_fail &&&&&"
+  -- dbg_trace "== assuming there are when search success/fail stmts found! =="
   let when_search_success := when_search_success_list[0]!
   let when_search_fail := when_search_fail_list[0]!
 
@@ -3874,6 +3910,12 @@ partial def api_term_func_to_murphi_func
 
   let when_search_success_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_success_trans_info
   let when_search_fail_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+  dbg_trace "&&&&& BEGIN Murϕ when_success &&&&&"
+  dbg_trace when_search_success_murphi_stmts
+  dbg_trace "&&&&& END Murϕ when_success &&&&&"
+  dbg_trace "&&&&& BEGIN Murϕ when_fail &&&&&"
+  dbg_trace when_search_fail_murphi_stmts
+  dbg_trace "&&&&& END Murϕ when_fail &&&&&"
 
   -- ex. SQ_NUM_ETNRIES_CONST
   let dest_num_entries_const_name := (String.join [dest_struct_name, "_NUM_ENTRIES_CONST"])
@@ -3957,8 +3999,8 @@ partial def api_term_func_to_murphi_func
 -- update this to work generically..?
 
   -- 0
-  -- overall_murphi_tail_search_template
-  default
+  overall_murphi_tail_search_template
+  -- default
 
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
@@ -4214,6 +4256,9 @@ partial def ast_stmt_to_murphi_stmts
   Should be 1 for 1 between the DSL and Murphi
   -/
   | Statement.conditional_stmt conditional =>
+  dbg_trace "!!!!! BEGIN Conditional !!!!!"
+  dbg_trace stmt
+  dbg_trace "!!!!! END Conditional !!!!!"
     match conditional with
     | Conditional.if_else_statement expr stmt1 stmt2 =>
       -- map to Murphi
@@ -4237,6 +4282,10 @@ partial def ast_stmt_to_murphi_stmts
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt1 [] murphi_stmt2
 
+  dbg_trace "!!!!! BEGIN generated if-else -> if stmt !!!!!"
+  dbg_trace murphi_if_stmt
+  dbg_trace "!!!!! END generated if-else -> if stmt !!!!!"
+
       [murphi_if_stmt]
     | Conditional.if_statement expr stmt =>
       let expr_trans_info := 
@@ -4250,6 +4299,9 @@ partial def ast_stmt_to_murphi_stmts
 
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt [] []
+  dbg_trace "!!!!! BEGIN generated if-stmt -> if stmt !!!!!"
+  dbg_trace murphi_if_stmt
+  dbg_trace "!!!!! END generated if-stmt -> if stmt !!!!!"
 
       [murphi_if_stmt]
 
@@ -4340,7 +4392,7 @@ partial def ast_stmt_to_murphi_stmts
       -- this structure's entry state
       -- ident
       let this_ctrler : controller_info :=
-    dbg_trace "===== dsl transition to murphi translation ====="
+    -- dbg_trace "===== dsl transition to murphi translation ====="
         get_ctrler_matching_name ctrler_name ctrlers_lst
 
       let ctrler_ordering :=
@@ -4353,7 +4405,7 @@ partial def ast_stmt_to_murphi_stmts
       then
       -- we access the specific entry i for the rule
 
-      let ruleset_core_elem_idx := "i"
+      let ruleset_core_elem_idx := "j"
       let core_idx_designator :=
       Murϕ.Expr.designator (
         Designator.mk ruleset_core_elem_idx []
@@ -4363,7 +4415,7 @@ partial def ast_stmt_to_murphi_stmts
 
       let entries := "entries"
 
-      let ruleset_entry_elem_idx := "j"
+      let ruleset_entry_elem_idx := "i"
       let entry_idx_designator :=
       Murϕ.Expr.designator (
         Designator.mk ruleset_entry_elem_idx []
@@ -4477,7 +4529,7 @@ def qualified_name_to_murphi_expr
   then
   -- this is a fifo_access_guard_
   -- since it goes and checks an entry...
-    dbg_trace "== trying to get ctrler from list of idents in qual name translation =="
+    -- dbg_trace "== trying to get ctrler from list of idents in qual name translation =="
     let dest_ctrler := lst_idents[0]!
     let insert_func := lst_idents[1]!
 
@@ -4518,7 +4570,7 @@ def qualified_name_to_murphi_expr
   if is_mem_access
   then
 
-    dbg_trace "== trying to get ctrler_name from lst of idents! in qual name trans =="
+    -- dbg_trace "== trying to get ctrler_name from lst of idents! in qual name trans =="
     let dest_ctrler := lst_idents[0]!
     -- let dest_ctrler := "mem_interface_"
     let mem_access_func := lst_idents[1]!
@@ -4861,6 +4913,14 @@ def dsl_trans_descript_to_murphi_rule
     -- murphi_stmts_to_murphi_decls lst_murphi_stmt
     []
 
+  dbg_trace "===== BEGIN TRANSLATION INFO ====="
+  dbg_trace "=== ctrler ==="
+  dbg_trace ctrler_name
+  dbg_trace "=== transition ==="
+  dbg_trace trans
+  dbg_trace "=== lst murphi stmt ==="
+    dbg_trace lst_murphi_stmt
+  dbg_trace "===== END TRANSLATION INFO ====="
   -- ======= After the analysis ======
   let murphi_core_ruleset :=
     Rule.ruleset -- List of quantifier, List of rule
