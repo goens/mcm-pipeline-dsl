@@ -135,11 +135,6 @@ inductive how_many_found
 | two_or_more
 
 
-structure trans_and_expected_func where
-expected_func : Identifier
-expected_struct : Identifier
-trans : Pipeline.Description
-
 structure dsl_trans_info where
 ctrler_name: Identifier
 ctrler_lst : List controller_info
@@ -188,6 +183,13 @@ func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
+
+structure trans_and_expected_func where
+expected_func : Identifier
+expected_struct : Identifier
+trans : Pipeline.Description
+stmt_trans_info : stmt_translation_info
+dest_ctrler_name : Identifier
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -2588,6 +2590,7 @@ partial def find_when_from_transition
 partial def state_listen_handle_to_murphi_if_stmt
 ( trans_and_func : trans_and_expected_func )
 :
+-- List of (if Condition, and List of if cond stmts)
 List (Murϕ.Expr × List Murϕ.Statement)
 :=
   let trans : Pipeline.Description := trans_and_func.trans
@@ -2627,17 +2630,172 @@ List (Murϕ.Expr × List Murϕ.Statement)
 
   match how_many_listen_handle_blks with
   | how_many_found.nothing =>
-    -- construct a murphi expr condition on the transition state
-    -- and an empty statement list
+  -- Don't need to make anything,
+  -- This will just result in going to
+  -- the else case for the state;
+  -- which will do nothing
     []
   | how_many_found.one =>
     -- construct a murphi expr condition on the transition state
     -- and an empty statement list
-    []
+
+    /-
+    1. Check for listen-handle stmt
+    1.a) check if it has a handle stmt which contains a specific
+         func name/struct pair, if it does, gen the if-cond stuff
+    
+    2. If cond stuff is just
+    2.a) A murphi cond which checks if the
+         structure is on a given state/transition
+    2.b) The translated stmts in the handle blk;
+         Translated in the same way as a Func call
+         Should have a src struct; dest struct info
+    -/
+
+    /-
+    2. Check for specific handle code!
+    -/
+    let listen_handle : Pipeline.Statement := 
+      match listen_handle_blk_lst with
+      | [one] => one
+      | _ => dbg_trace "shouldn't get here based on prev. enum"
+        -- TODO: should throw
+        default
+    
+    -- get the list of handle blks?
+    let handle_blks : List Pipeline.HandleBlock :=
+      match listen_handle with
+      | Pipeline.Statement.listen_handle _ lst_handle_blks =>
+        lst_handle_blks
+      | _ => dbg_trace "shouldn't get here based on prev. filter func"
+        -- TODO: throw
+        default
+
+    let filtered_handle_blks : List Pipeline.HandleBlock := 
+      handle_blks.filter (
+        λ handle_blk =>
+          let qual_name : Pipeline.QualifiedName :=
+          match handle_blk with
+          | Pipeline.HandleBlock.mk qual_name' _ _ =>
+            qual_name'
+          
+          let lst_qual_name_idents : List Identifier :=
+          match qual_name with
+          | Pipeline.QualifiedName.mk lst_idents =>
+            lst_idents
+
+          if ( and
+          (lst_qual_name_idents.contains expected_func)
+          (lst_qual_name_idents.contains expected_struct)
+          ) then
+            true
+          else
+            false
+      )
+
+    -- Now, if there was a match
+    -- map it, if not, return []
+    -- If there were 2 matches,
+    -- then throw.. (TODO)
+
+    let matching_handle_cases : how_many_found :=
+    match filtered_handle_blks with
+    | [] => how_many_found.nothing
+    | [_] => how_many_found.one
+    | _ :: _ => how_many_found.two_or_more
+
+    match matching_handle_cases with
+    | how_many_found.nothing =>
+      []
+    | how_many_found.one =>
+      -- convert into exec code!
+      let func's_handle_blk : Pipeline.HandleBlock :=
+      filtered_handle_blks[0]!
+      -- match filtered_handle_blks with
+      -- | [one] => one
+      -- | _ => dbg_trace "shouldn't reach here!"
+      --   -- TODO: throw!
+        
+
+      --with the handle blk, match to access it's parts
+      let args_and_stmts : ( List Identifier × Pipeline.Statement ) :=
+        match func's_handle_blk with
+        | Pipeline.HandleBlock.mk qual_name lst_ident stmts_blk =>
+          (lst_ident, stmts_blk)
+
+      let args : List Identifier := args_and_stmts.1
+      let stmt_blk : Pipeline.Statement := args_and_stmts.2
+
+      -- provide the translation info;
+      -- the args and stmt_blk
+-- stmt : Pipeline.Statement
+-- lst_ctrlers : List controller_info
+-- ctrler_name : Identifier
+-- -- when statement stuff
+-- src_ctrler : Option Identifier
+-- lst_src_args : Option (List Identifier)
+-- func : Option Identifier
+-- is_await : await_or_not_state
+-- entry_keyword_dest : Option Identifier
+-- trans_obj : Description
+      let stmt_trans_info : stmt_translation_info := {
+        stmt := stmt_blk,
+        lst_ctrlers := trans_and_func.stmt_trans_info.lst_ctrlers,
+        -- set the ctrler we're translating for to
+        -- just this structure actually.
+        -- so we can use the same ctrler name.
+        ctrler_name := trans_and_func.stmt_trans_info.ctrler_name,
+        -- is there a src ctrler?
+        -- well, we still have args in the handle blk, so 
+        -- we want the args to be from the "src" ctrler,
+        -- i.e. ROB if doing a squash to LQ
+        -- and so I assume the caller has provided this..?
+        -- or I set the manually here.
+        src_ctrler := expected_struct,
+        lst_src_args := args,
+        func := expected_func,
+        is_await := trans_and_func.stmt_trans_info.is_await,
+        -- Don't think we need this here, but...
+        entry_keyword_dest := trans_and_func.dest_ctrler_name,
+        trans_obj := trans_and_func.trans
+      }
+      -- TODO NOTE: THIS MUST BE TESTED!
+
+      let if_blk_stmts := ast_stmt_to_murphi_stmts stmt_trans_info
+
+      -- Okay, this means I need to know how to index into the
+      -- current entry as well!
+      -- This could be something like 
+      -- LQ.entries[curr_idx]
+      -- Must do sth like pass it in through the struct
+      -- so we don't need to re-deduce this!
+
+      -- TODO NOTE: Finish this;
+      -- i.e.
+      -- 1. add the indexing info to the struct from the calling func!
+      -- 2. finish the expr
+      -- 3. make a foldl or something that will actually construct the
+      -- Murphi if statement!
+      let murphi_entry_is_on_state_cond : Murϕ.Expr :=
+        [murϕ|
+        trans_and_func.dest_ctrler_name ]
+
+      [(murphi_entry_is_on_state_cond, if_blk_stmts)]
+    | how_many_found.two_or_more =>
+      -- defining the same handle case twice?
+      -- should throw an error...
+      default
+
   | how_many_found.two_or_more =>
     -- must have found more than one!
     -- TODO: Later, we should check each listen handle blk?
     -- panic! "TODO: Replace with throw... multiple listen-handles in 1 transition.."
+    -- NOTE: I suppose this is unsupported 
+    -- right now;
+    -- since the code needs to listen specifically at
+    -- specific points, but the Murphi rule/transitions
+    -- are atomic, so this requires a decomposition into
+    -- subsection transitions which have just 1 listen/handle
       []
   
 
@@ -4109,7 +4267,7 @@ partial def ast_stmt_to_murphi_stmts
   This also applies to the memory interface call
   -/
 
-  | Statement.stray_expr expr =>
+  | Statement.stray_expr _ =>
   -- AZ NOTE!
   -- We don't want to call the
   -- ast_expr_to_murphi_expr here, since we
