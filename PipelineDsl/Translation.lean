@@ -2710,11 +2710,14 @@ List (Murϕ.Expr × List Murϕ.Statement)
     | how_many_found.one =>
       -- convert into exec code!
       let func's_handle_blk : Pipeline.HandleBlock :=
-      filtered_handle_blks[0]!
-      -- match filtered_handle_blks with
-      -- | [one] => one
-      -- | _ => dbg_trace "shouldn't reach here!"
-      --   -- TODO: throw!
+      -- filtered_handle_blks[0]!
+      match filtered_handle_blks with
+      | [one] => one
+      | _ => dbg_trace "shouldn't reach here!"
+        -- TODO: throw!
+        -- make an empty one for now
+        -- could probably use this for 'deriving Inhabited"
+        Pipeline.HandleBlock.mk (Pipeline.QualifiedName.mk [""]) [""] (Pipeline.Statement.block [])
         
 
       --with the handle blk, match to access it's parts
@@ -2770,6 +2773,11 @@ List (Murϕ.Expr × List Murϕ.Statement)
       -- Must do sth like pass it in through the struct
       -- so we don't need to re-deduce this!
 
+      let trans_name : Identifier :=
+      match trans with
+      | Description.transition ident stmt => ident
+      | _ => dbg_trace "Shouldn't be another Description"
+        default
       -- TODO NOTE: Finish this;
       -- i.e.
       -- 1. add the indexing info to the struct from the calling func!
@@ -2778,7 +2786,7 @@ List (Murϕ.Expr × List Murϕ.Statement)
       -- Murphi if statement!
       let murphi_entry_is_on_state_cond : Murϕ.Expr :=
         [murϕ|
-        trans_and_func.dest_ctrler_name ]
+        £trans_and_func.dest_ctrler_name .entries[i] .state = £trans_name]
 
       [(murphi_entry_is_on_state_cond, if_blk_stmts)]
     | how_many_found.two_or_more =>
@@ -3420,6 +3428,81 @@ List Murϕ.Statement
             -- construct if / else stmt which does something
             -- based on each state's / transitions listen/await
             -- stmts
+-- structure trans_and_expected_func where
+-- expected_func : Identifier
+-- expected_struct : Identifier
+-- trans : Pipeline.Description
+-- stmt_trans_info : stmt_translation_info
+-- dest_ctrler_name : Identifier
+            let this_ctrler : controller_info :=
+    dbg_trace "===== ROB SQUASH api gen ====="
+              get_ctrler_matching_name ctrler_name ctrlers_lst
+            let handle_trans_info_lst : List trans_and_expected_func :=
+            this_ctrler.transition_list.map (
+            λ trans' =>
+            {
+              expected_func := "squash",
+              expected_struct := "ROB",
+              trans := trans',
+              stmt_trans_info := stmt_trans_info,
+              dest_ctrler_name := dest_ctrler_name
+            }
+            )
+
+            let trans_handle_squash_list : List (Murϕ.Expr × (List Murϕ.Statement)) :=
+            List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
+
+            -- This would be the if stmt
+            -- to do handle ROB Squash signals
+            let trans_handle_squash_if_stmt : List Murϕ.Statement :=
+            match trans_handle_squash_list with
+            | [] => --dbg_trace ""
+              -- Nothing found, nothing to generate?
+              []
+            | [one] => 
+              let murphi_if_condition := one.1
+              let murphi_true_cond_stmts := one.2
+              [
+              [murϕ|
+              if (£murphi_if_condition) then
+              £murphi_true_cond_stmts
+              endif
+              ]
+              ]
+            | h :: t => 
+              let len_2_if_conds : Bool :=
+              trans_handle_squash_list.length == 2
+              let more_than_2_if_conds : Bool :=
+              trans_handle_squash_list.length > 2
+
+              let first_if_cond := trans_handle_squash_list[0]!
+              let if_condition_0 := first_if_cond.1
+              let true_cond_stmts_0 := first_if_cond.2
+
+              let snd_if_cond := trans_handle_squash_list[1]!
+              let if_condition_1 := snd_if_cond.1
+              let true_cond_stmts_1 := snd_if_cond.2
+
+              if len_2_if_conds then
+                [
+                [murϕ|
+                if (£if_condition_0) then
+                  £true_cond_stmts_0
+                elsif (£if_condition_1) then
+                  £true_cond_stmts_1
+                else
+                  error "Unexpected case in this transition";
+                endif
+                ]
+                ]
+              else
+              if more_than_2_if_conds then
+                let murphi_if_stmt : Murϕ.Statement :=
+                Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0 t []
+
+                [murphi_if_stmt]
+              else
+                panic! "Should have caught other cases before this one?"
 
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
@@ -3546,27 +3629,28 @@ List Murϕ.Statement
                     squash_ld_id := search_lq_seq_num_idx(£dest_ctrler_name , curr_rob_inst.seq_num);
                     squash_dest_ctrler_entry := £dest_ctrler_name .ld_entries[squash_ld_id];
 
-                    if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
-                      if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                        sq.valid_access_msg := false;
-                      endif;
-                    elsif ( squash_dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
-                      if (sb.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                        sb.valid_access_msg := false;
-                      endif;
-                    elsif ( squash_dest_ctrler_entry.ld_state = await_committed ) then
-                      --# If the executed msg was sent, and not yet accepted!
-                      if (
-                          (rob.valid_access_msg = true)
-                          &
-                          (rob.seq_num = squash_dest_ctrler_entry.instruction.seq_num)
-                         ) then
-                        rob.valid_access_msg := false;
-                      --# If the executed msg was sent, and processed!
-                      else
-                        rob.is_executed[search_rob_seq_num_idx(rob,squash_dest_ctrler_entry.instruction.seq_num)] := false;
-                      endif;
-                    endif;
+                    £trans_handle_squash_if_stmt;
+                    -- if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
+                    --   if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
+                    --     sq.valid_access_msg := false;
+                    --   endif;
+                    -- elsif ( squash_dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
+                    --   if (sb.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
+                    --     sb.valid_access_msg := false;
+                    --   endif;
+                    -- elsif ( squash_dest_ctrler_entry.ld_state = await_committed ) then
+                    --   --# If the executed msg was sent, and not yet accepted!
+                    --   if (
+                    --       (rob.valid_access_msg = true)
+                    --       &
+                    --       (rob.seq_num = squash_dest_ctrler_entry.instruction.seq_num)
+                    --      ) then
+                    --     rob.valid_access_msg := false;
+                    --   --# If the executed msg was sent, and processed!
+                    --   else
+                    --     rob.is_executed[search_rob_seq_num_idx(rob,squash_dest_ctrler_entry.instruction.seq_num)] := false;
+                    --   endif;
+                    -- endif;
 
                     if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
                       squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
@@ -3816,7 +3900,8 @@ List Murϕ.Statement
             end;
 
             ]
-            []
+            -- []
+            overall_murphi_head_search_squash_template
           else
             -- reg file write?
             -- throw an error for unknown fns?
