@@ -143,6 +143,7 @@ trans : Description -- Description.transition
 inductive tail_or_entry
 | tail : tail_or_entry
 | entry : tail_or_entry
+| custom_entry : tail_or_entry
 
 inductive await_or_not_state
 | await : await_or_not_state
@@ -159,6 +160,8 @@ func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
+-- assign var?
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -171,6 +174,7 @@ func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -183,6 +187,7 @@ func : Option Identifier
 is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
 
 structure trans_and_expected_func where
 expected_func : Identifier
@@ -190,6 +195,11 @@ expected_struct : Identifier
 trans : Pipeline.Description
 stmt_trans_info : stmt_translation_info
 dest_ctrler_name : Identifier
+-- dest_ctrler_entry : Murϕ.Expr
+-- NOTE: This is for translating and 
+-- using a specific entry name with a
+-- ctrler which has entries
+specific_murphi_dest_expr : Murϕ.Expr
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -206,6 +216,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -223,6 +234,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -240,6 +252,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
 )
 
 partial def assn_expr_to_term_translation_info
@@ -258,8 +271,7 @@ term_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
-
-
+  translation_info.specific_murphi_dest_expr
 )
 
 partial def assn_term_to_term_translation_info
@@ -278,7 +290,7 @@ term_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
-
+  translation_info.specific_murphi_dest_expr
 )
 
 partial def assn_term_to_expr_translation_info
@@ -297,7 +309,7 @@ expr_translation_info
   translation_info.is_await
   translation_info.entry_keyword_dest
   translation_info.trans_obj
-
+  translation_info.specific_murphi_dest_expr
 )
 --- =========== CUT FROM TRANSFORMATION ================
 def filter_lst_of_stmts_for_ordering_asn
@@ -1733,6 +1745,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 ( ctrler_name : Identifier )
 -- (stmt_trans_info : stmt_translation_info)
 ( tail_entry : tail_or_entry)
+( specific_murphi_dest_expr : Option Murϕ.Expr )
 -- AZ TODO: handle these, so we can translate
 -- exprs that use Entry?
 -- or terms in general that match a ctrler's
@@ -1791,6 +1804,13 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match tail_entry with
         | tail_or_entry.tail => "tail"
         | tail_or_entry.entry => "i"
+        | tail_or_entry.custom_entry => "" -- directly use the provided expr..
+
+        let specific_murphi_dest_extracted : Murϕ.Expr :=
+        if specific_murphi_dest_expr.isSome then
+          specific_murphi_dest_expr.get!
+        else
+          panic! "TODO: throw! should have passed this as a non-none arg"
 
         let fifo_idx_expr : Murϕ.Expr :=
         match tail_entry with
@@ -1805,6 +1825,8 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         | tail_or_entry.entry =>
           Murϕ.Expr.designator (
           Murϕ.Designator.mk idx [])
+        | tail_or_entry.custom_entry =>
+          specific_murphi_dest_extracted
 
         let murphi_designator :=
         Murϕ.Designator.mk ctrler_name [
@@ -1856,6 +1878,13 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match tail_entry with
         | tail_or_entry.tail => "tail"
         | tail_or_entry.entry => "i"
+        | tail_or_entry.custom_entry => "" -- directly use the provided expr..
+
+        let specific_murphi_dest_extracted : Murϕ.Expr :=
+        if specific_murphi_dest_expr.isSome then
+          specific_murphi_dest_expr.get!
+        else
+          panic! "TODO: throw! should have passed this as a non-none arg"
 
         let fifo_tail_expr : Murϕ.Expr :=
         match tail_entry with
@@ -1870,6 +1899,8 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         | tail_or_entry.entry =>
           Murϕ.Expr.designator (
           Murϕ.Designator.mk idx [])
+        | tail_or_entry.custom_entry =>
+          specific_murphi_dest_extracted
 
         let sum_list : List (String ⊕ Murϕ.Expr)
         := List.append [
@@ -1986,12 +2017,15 @@ partial def ast_term_to_murphi_expr
       let ident_in_args : Bool :=
         lst_src_args_extracted.contains ident
       
+      let specific_murphi_dest_expr_is_some : Bool :=
+      term_trans_info.specific_murphi_dest_expr.isSome
+      
       if ident_in_args
       then
         -- Then we check if it's one of the
         -- src ctrler's state vars.
 
-      let src_ctrler_extracted :=
+        let src_ctrler_extracted :=
         if src_ctrler.isSome
         then
           src_ctrler.get!
@@ -2009,7 +2043,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           [ident]
-        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry)
+        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) none
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2027,6 +2061,12 @@ partial def ast_term_to_murphi_expr
         false
         else
         true
+        -- specify tail or entry here
+        let tail_or_entry_or_custom :=
+        if specific_murphi_dest_expr_is_some then
+          tail_or_entry.custom_entry
+        else
+          tail_or_entry.entry
 
         let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check
@@ -2035,19 +2075,33 @@ partial def ast_term_to_murphi_expr
           -- Note that curr_ctrler is likely
           -- the dest ctrler
           curr_ctrler_name
-          tail_or_entry.entry
+          tail_or_entry_or_custom
+          -- will if none naturally if it is none
+          term_trans_info.specific_murphi_dest_expr
         )
         let murphi_expr_designator :=
         Murϕ.Expr.designator murphi_designator
 
         murphi_expr_designator
     else
+      let specific_murphi_dest_expr_is_some : Bool :=
+      term_trans_info.specific_murphi_dest_expr.isSome
+
+      let tail_or_entry_or_custom :=
+      if specific_murphi_dest_expr_is_some then
+        -- dbg_trace "THIS IS UNIMPLEMENTED?"
+        tail_or_entry.custom_entry
+      else
+        tail_or_entry.entry
+
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         [ident]
         lst_ctrlers
         curr_ctrler_name
-        tail_or_entry.entry
+        tail_or_entry_or_custom
+        -- will if none naturally if it is none
+        term_trans_info.specific_murphi_dest_expr
       )
       let murphi_expr_designator :=
       Murϕ.Expr.designator murphi_designator
@@ -2073,6 +2127,10 @@ partial def ast_term_to_murphi_expr
 
     let is_entry_keyword : Bool :=
       root_ident == "entry"
+
+      
+    let specific_murphi_dest_expr_is_some : Bool :=
+      term_trans_info.specific_murphi_dest_expr.isSome
 
     if is_entry_keyword
     then
@@ -2100,7 +2158,7 @@ partial def ast_term_to_murphi_expr
       let murphi_designator : Designator :=
       list_ident_to_murphi_designator_ctrler_var_check (
         lst_ident
-      ) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry)
+      ) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry) none
 
       let murphi_expr_designator : Murϕ.Expr := 
       Murϕ.Expr.designator murphi_designator
@@ -2157,7 +2215,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           lst_ident
-        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry)
+        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) none
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2175,8 +2233,18 @@ partial def ast_term_to_murphi_expr
         false
         else
         true
+
+        let tail_or_entry_or_custom :=
+        if specific_murphi_dest_expr_is_some then
+          tail_or_entry.custom_entry
+        else
+          tail_or_entry.entry
+
         let murphi_designator := (
-          list_ident_to_murphi_designator_ctrler_var_check lst_ident lst_ctrlers curr_ctrler_name tail_or_entry.entry
+          list_ident_to_murphi_designator_ctrler_var_check
+          lst_ident lst_ctrlers curr_ctrler_name
+          tail_or_entry_or_custom
+          term_trans_info.specific_murphi_dest_expr
           -- Note that curr_ctrler is likely
           -- the dest ctrler
         )
@@ -2193,12 +2261,20 @@ partial def ast_term_to_murphi_expr
         false
         else
         true
+
+      let tail_or_entry_or_custom :=
+      if specific_murphi_dest_expr_is_some then
+        tail_or_entry.custom_entry
+      else
+        tail_or_entry.entry
+
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         lst_ident
         lst_ctrlers
         curr_ctrler_name
-        tail_or_entry.entry
+        tail_or_entry_or_custom
+        term_trans_info.specific_murphi_dest_expr
       )
       let murphi_expr_designator :=
       Murϕ.Expr.designator murphi_designator
@@ -2760,7 +2836,8 @@ List (Murϕ.Expr × List Murϕ.Statement)
         is_await := trans_and_func.stmt_trans_info.is_await,
         -- Don't think we need this here, but...
         entry_keyword_dest := trans_and_func.dest_ctrler_name,
-        trans_obj := trans_and_func.trans
+        trans_obj := trans_and_func.trans,
+        specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr
       }
       -- TODO NOTE: THIS MUST BE TESTED!
 
@@ -2784,9 +2861,14 @@ List (Murϕ.Expr × List Murϕ.Statement)
       -- 2. finish the expr
       -- 3. make a foldl or something that will actually construct the
       -- Murphi if statement!
+      -- A FUTURE TODO:
+      -- once we have different structure types,
+      -- the dest structure may not have entries, and we
+      -- may not need the .entries part
+      let dest_struct_entry := trans_and_func.specific_murphi_dest_expr
       let murphi_entry_is_on_state_cond : Murϕ.Expr :=
         [murϕ|
-        £trans_and_func.dest_ctrler_name .entries[i] .state = £trans_name]
+        £trans_and_func.dest_ctrler_name .entries[ £dest_struct_entry ] .state = £trans_name]
 
       [(murphi_entry_is_on_state_cond, if_blk_stmts)]
     | how_many_found.two_or_more =>
@@ -3111,6 +3193,7 @@ List Murϕ.Statement
                 (await_or_not_state.not_await)
                 none
                 stmt_trans_info.trans_obj
+                none
               )
 
               let murphi_stmts : List Murϕ.Statement :=
@@ -3337,7 +3420,8 @@ List Murϕ.Statement
             func := stmt_trans_info.func,
             is_await := stmt_trans_info.is_await,
             entry_keyword_dest := Option.some dest_ctrler_name,
-            trans_obj := stmt_trans_info.trans_obj
+            trans_obj := stmt_trans_info.trans_obj,
+            specific_murphi_dest_expr := none
             }
 
 -- (
@@ -3437,6 +3521,10 @@ List Murϕ.Statement
             let this_ctrler : controller_info :=
     dbg_trace "===== ROB SQUASH api gen ====="
               get_ctrler_matching_name ctrler_name ctrlers_lst
+
+            let squash_ld_id :=
+            Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
+
             let handle_trans_info_lst : List trans_and_expected_func :=
             this_ctrler.transition_list.map (
             λ trans' =>
@@ -3445,7 +3533,9 @@ List Murϕ.Statement
               expected_struct := "ROB",
               trans := trans',
               stmt_trans_info := stmt_trans_info,
-              dest_ctrler_name := dest_ctrler_name
+              dest_ctrler_name := dest_ctrler_name,
+              -- dest_ctrler_entry := squash_ld_id
+              specific_murphi_dest_expr := squash_ld_id
             }
             )
 
@@ -3587,7 +3677,7 @@ List Murϕ.Statement
                 £murphi_match_cond_expr
                 ) then
                 -- Should implement a) in 1 line...
-                found_entry_seq_num := dest_ctrler_entry .instruction .seq_num;
+                violating_seq_num := dest_ctrler_entry .instruction .seq_num;
 
                 -- Beginning of trying to implement
                 -- part b) in 2 b)
@@ -3596,7 +3686,7 @@ List Murϕ.Statement
                 -- generation in the above code on 
                 -- line 3001
                 rob_idx := (search_rob_seq_num_idx(rob,
-                                                  found_entry_seq_num)
+                                                  violating_seq_num)
                                                   -- comment out +1
                                                   -- if don't want to
                                                   -- skip this elem
@@ -3627,9 +3717,9 @@ List Murϕ.Statement
                     -- But maybe do a simpler version for now
                     --# if ld, then copy above
                     squash_ld_id := search_lq_seq_num_idx(£dest_ctrler_name , curr_rob_inst.seq_num);
-                    squash_dest_ctrler_entry := £dest_ctrler_name .ld_entries[squash_ld_id];
+                    squash_dest_ctrler_entry := £dest_ctrler_name .entries[squash_ld_id];
 
-                    £trans_handle_squash_if_stmt;
+                    £trans_handle_squash_if_stmt
                     -- if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
                     --   if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
                     --     sq.valid_access_msg := false;
@@ -3652,13 +3742,13 @@ List Murϕ.Statement
                     --   endif;
                     -- endif;
 
-                    if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
-                      squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
-                    else
-                      squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    endif;
+                    -- if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
+                    --   squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
+                    -- else
+                    --   squash_dest_ctrler_entry.ld_state := await_fwd_check;
+                    -- endif;
 
-                    £dest_ctrler_name .ld_entries[squash_ld_id] := squash_dest_ctrler_entry;
+                    -- £dest_ctrler_name .ld_entries[squash_ld_id] := squash_dest_ctrler_entry;
 
                   elsif (curr_rob_inst.op = st) then
                     --#
@@ -4054,6 +4144,8 @@ partial def api_term_func_to_murphi_func
   -- we could techinically use Except and 'throw' here
   -- if the len isn't 1
   -- dbg_trace "== trying to get expr from func call arg list =="
+  let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+
   let match_cond : Pipeline.Expr := lst_exprs[0]!
   let match_cond_trans_info : expr_translation_info :=  {
     expr := match_cond
@@ -4066,7 +4158,8 @@ partial def api_term_func_to_murphi_func
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_struct_name,
-    trans_obj := term_trans_info.trans_obj
+    trans_obj := term_trans_info.trans_obj,
+    specific_murphi_dest_expr :=  curr_idx
   }
 
   -- (
@@ -4137,7 +4230,8 @@ partial def api_term_func_to_murphi_func
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_struct_name,
-    trans_obj := term_trans_info.trans_obj
+    trans_obj := term_trans_info.trans_obj,
+    specific_murphi_dest_expr := curr_idx
   }
   let when_search_fail_trans_info : stmt_translation_info := {
     stmt := when_search_fail,
@@ -4148,7 +4242,8 @@ partial def api_term_func_to_murphi_func
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_struct_name,
-    trans_obj := term_trans_info.trans_obj
+    trans_obj := term_trans_info.trans_obj,
+    specific_murphi_dest_expr := curr_idx
   }
 
   let when_search_success_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_success_trans_info
@@ -4602,7 +4697,7 @@ partial def ast_stmt_to_murphi_stmts
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
-        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry
+        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry none
 
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
@@ -5143,6 +5238,7 @@ def dsl_trans_descript_to_murphi_rule
     else await_or_not_state.not_await
     entry_keyword_dest := none
     trans_obj := trans
+    specific_murphi_dest_expr := none
   }
     
 
