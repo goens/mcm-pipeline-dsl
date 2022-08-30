@@ -2888,6 +2888,121 @@ List (Murϕ.Expr × List Murϕ.Statement)
     -- subsection transitions which have just 1 listen/handle
       []
   
+partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
+(stmt_trans_info : stmt_translation_info)
+(ctrler_to_translate_handle_blks : Identifier)
+(queue_idx : Murϕ.Expr)
+(dest_ctrler_name : Identifier)
+
+(expected_func : Identifier)
+(expected_struct : Identifier)
+: List Murϕ.Statement -- if stmt..
+:=
+  -- let stmt := stmt_trans_info.stmt
+  let ctrlers_lst := stmt_trans_info.lst_ctrlers
+  let ctrler_name := stmt_trans_info.ctrler_name
+
+  -- when statement stuff (handling nested scopes?
+  -- or rather, clojures?)
+
+  -- let src_ctrler := stmt_trans_info.src_ctrler
+  -- let lst_src_args := stmt_trans_info.lst_src_args
+  -- let func_name : Option Identifier := stmt_trans_info.func
+
+  -- search the ctrlers_lst, for the ld struct name
+  let ld_ctrler_lst : List controller_info :=
+  ctrlers_lst.filter (
+    λ ctrler =>
+    -- find the one with a matching name
+    if ctrler.name == ctrler_to_translate_handle_blks
+    then
+      true
+    else
+      false
+  )
+  -- check for transition's and their specific
+  -- listen/handle
+  -- construct if / else stmt which does something
+  -- based on each state's / transitions listen/await
+  -- stmts
+  let this_ctrler : controller_info :=
+  -- dbg_trace "===== ROB SQUASH api gen ====="
+    get_ctrler_matching_name ctrler_name ctrlers_lst
+
+  let ctrler_squash_idx := queue_idx
+  -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
+
+  let handle_trans_info_lst : List trans_and_expected_func :=
+  this_ctrler.transition_list.map (
+  λ trans' =>
+  {
+    expected_func := expected_func,
+    expected_struct := expected_struct,
+    trans := trans',
+    stmt_trans_info := stmt_trans_info,
+    dest_ctrler_name := dest_ctrler_name,
+    specific_murphi_dest_expr := ctrler_squash_idx
+  }
+  )
+
+  let trans_handle_squash_list : List (Murϕ.Expr × (List Murϕ.Statement)) :=
+  List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
+
+  -- This would be the if stmt
+  -- to do handle ROB Squash signals
+  let trans_handle_squash_if_stmt : List Murϕ.Statement :=
+  match trans_handle_squash_list with
+  | [] => --dbg_trace ""
+    -- Nothing found, nothing to generate?
+    []
+  | [one] => 
+    let murphi_if_condition := one.1
+    let murphi_true_cond_stmts := one.2
+    [
+    [murϕ|
+    if (£murphi_if_condition) then
+    £murphi_true_cond_stmts
+    endif
+    ]
+    ]
+  | h :: t => 
+    let len_2_if_conds : Bool :=
+    trans_handle_squash_list.length == 2
+    let more_than_2_if_conds : Bool :=
+    trans_handle_squash_list.length > 2
+
+    let first_if_cond := trans_handle_squash_list[0]!
+    let if_condition_0 := first_if_cond.1
+    let true_cond_stmts_0 := first_if_cond.2
+
+    let snd_if_cond := trans_handle_squash_list[1]!
+    let if_condition_1 := snd_if_cond.1
+    let true_cond_stmts_1 := snd_if_cond.2
+
+    if len_2_if_conds then
+      [
+      [murϕ|
+      if (£if_condition_0) then
+        £true_cond_stmts_0
+      elsif (£if_condition_1) then
+        £true_cond_stmts_1
+      -- else
+        -- actually, could be on other states,
+        -- so don't error here!
+        -- error "Unexpected case in this transition";
+      endif
+      ]
+      ]
+    else
+    if more_than_2_if_conds then
+      let murphi_if_stmt : Murϕ.Statement :=
+      Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0 t []
+
+      [murphi_if_stmt]
+    else
+      panic! "Should have caught other cases before this one?"
+  
+  trans_handle_squash_if_stmt
 
 partial def ast_stmt_stray_expr_to_murphi_expr
 (stmt_trans_info : stmt_translation_info)
@@ -3493,106 +3608,27 @@ List Murϕ.Statement
             -- Call
 
             -- search the ctrlers_lst, for the ld struct name
-            let ld_ctrler_lst : List controller_info :=
-            ctrlers_lst.filter (
-              λ ctrler =>
-              -- find the one with a matching name
-              if ctrler.name == speculative_ld_unit_name
-              then
-                true
-              else
-                false
-            )
-            -- should just be 1 ctrler with this name...
-            dbg_trace "trying to access a ld_ctrler...?"
-            let ld_ctrler : controller_info :=
-            ld_ctrler_lst[0]!
-            -- check for transition's and their specific
-            -- listen/handle
-            -- construct if / else stmt which does something
-            -- based on each state's / transitions listen/await
-            -- stmts
--- structure trans_and_expected_func where
--- expected_func : Identifier
--- expected_struct : Identifier
--- trans : Pipeline.Description
--- stmt_trans_info : stmt_translation_info
--- dest_ctrler_name : Identifier
-            let this_ctrler : controller_info :=
-    dbg_trace "===== ROB SQUASH api gen ====="
-              get_ctrler_matching_name ctrler_name ctrlers_lst
-
             let squash_ld_id :=
             Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
+            let expected_func := "squash"
+            let expected_struct := "ROB"
 
-            let handle_trans_info_lst : List trans_and_expected_func :=
-            this_ctrler.transition_list.map (
-            λ trans' =>
-            {
-              expected_func := "squash",
-              expected_struct := "ROB",
-              trans := trans',
-              stmt_trans_info := stmt_trans_info,
-              dest_ctrler_name := dest_ctrler_name,
-              -- dest_ctrler_entry := squash_ld_id
-              specific_murphi_dest_expr := squash_ld_id
-            }
+            let ld_trans_handle_squash_if_stmt : List Murϕ.Statement := (
+              ctrler_trans_handle_stmts_to_murphi_if_stmt (
+              stmt_trans_info) speculative_ld_unit_name squash_ld_id (
+              dest_ctrler_name) expected_func expected_struct
             )
 
-            let trans_handle_squash_list : List (Murϕ.Expr × (List Murϕ.Statement)) :=
-            List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
+            let squash_st_id :=
+            Murϕ.Expr.designator (Murϕ.Designator.mk "squash_st_id" [])
+            let expected_func := "squash"
+            let expected_struct := "ROB"
 
-            -- This would be the if stmt
-            -- to do handle ROB Squash signals
-            let trans_handle_squash_if_stmt : List Murϕ.Statement :=
-            match trans_handle_squash_list with
-            | [] => --dbg_trace ""
-              -- Nothing found, nothing to generate?
-              []
-            | [one] => 
-              let murphi_if_condition := one.1
-              let murphi_true_cond_stmts := one.2
-              [
-              [murϕ|
-              if (£murphi_if_condition) then
-              £murphi_true_cond_stmts
-              endif
-              ]
-              ]
-            | h :: t => 
-              let len_2_if_conds : Bool :=
-              trans_handle_squash_list.length == 2
-              let more_than_2_if_conds : Bool :=
-              trans_handle_squash_list.length > 2
-
-              let first_if_cond := trans_handle_squash_list[0]!
-              let if_condition_0 := first_if_cond.1
-              let true_cond_stmts_0 := first_if_cond.2
-
-              let snd_if_cond := trans_handle_squash_list[1]!
-              let if_condition_1 := snd_if_cond.1
-              let true_cond_stmts_1 := snd_if_cond.2
-
-              if len_2_if_conds then
-                [
-                [murϕ|
-                if (£if_condition_0) then
-                  £true_cond_stmts_0
-                elsif (£if_condition_1) then
-                  £true_cond_stmts_1
-                else
-                  error "Unexpected case in this transition";
-                endif
-                ]
-                ]
-              else
-              if more_than_2_if_conds then
-                let murphi_if_stmt : Murϕ.Statement :=
-                Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0 t []
-
-                [murphi_if_stmt]
-              else
-                panic! "Should have caught other cases before this one?"
+            let st_trans_handle_squash_if_stmt : List Murϕ.Statement := (
+              ctrler_trans_handle_stmts_to_murphi_if_stmt (
+              stmt_trans_info) speculative_st_unit_name squash_st_id (
+              dest_ctrler_name) expected_func expected_struct
+            )
 
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
@@ -3638,20 +3674,6 @@ List Murϕ.Statement
               -- AZ TODO NOTE:
               -- Would use the previous check for something like this..
               -- if ( already_read_mem & phys_addr_match ) then
-
-              -- AZ TODO NOTE:
-              -- TODO For Thursday:
-              -- DO a simple if check,
-              -- simply the conditional expr
-              -- in the API's arg
-
-              -- But within the conditional, we
-              -- must also do a check, if the
-              -- entry is on an await state 
-              -- we need to properly "terminate"
-              -- the in-flight action so it doesn't
-              -- potentially change any state in
-              -- un-expected ways...
 
               -- TODO NOTE:
               -- Tuesday Aug 23;
@@ -3716,10 +3738,11 @@ List Murϕ.Statement
                     -- insts
                     -- But maybe do a simpler version for now
                     --# if ld, then copy above
-                    squash_ld_id := search_lq_seq_num_idx(£dest_ctrler_name , curr_rob_inst.seq_num);
-                    squash_dest_ctrler_entry := £dest_ctrler_name .entries[squash_ld_id];
+                    -- TODO: Auto gen the search func per queue struct we generate...
+                    squash_ld_id := search_lq_seq_num_idx(£speculative_ld_unit_name , curr_rob_inst.seq_num);
+                    -- squash_dest_ctrler_entry := £speculative_ld_unit_name .entries[squash_ld_id];
 
-                    £trans_handle_squash_if_stmt
+                    £ld_trans_handle_squash_if_stmt
                     -- if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
                     --   if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
                     --     sq.valid_access_msg := false;
@@ -3752,227 +3775,102 @@ List Murϕ.Statement
 
                   elsif (curr_rob_inst.op = st) then
                     --#
-                    squash_sq_id := search_sq_seq_num_idx(sq, curr_rob_inst.seq_num);
-                    squash_sq_entry := sq.sq_entries[squash_sq_id];
+                    squash_st_id := search_sq_seq_num_idx(£speculative_st_unit_name, curr_rob_inst.seq_num);
+                    -- squash_st_entry := £speculative_st_unit_name .entries[squash_st_id];
 
-                    --# Shouldn't need to check this case actually
-                    --# LQ must be busy with an older store's req
-                    if ( squash_sq_entry.st_state = st_await_lq_squash ) then
-                      if (£dest_ctrler_name .st_seq_num = squash_sq_entry.instruction.seq_num) then
-                        £dest_ctrler_name .valid_access_msg := false;
-                      endif;
-                    elsif ( squash_sq_entry.st_state = st_await_committed ) then
-                      --# If the executed msg was sent, and not yet accepted!
-                      if (
-                          (rob.valid_access_msg = true)
-                          &
-                          (rob.seq_num = squash_sq_entry.instruction.seq_num)
-                         ) then
-                        rob.valid_access_msg := false;
-                      --# If the executed msg was sent, and processed!
-                      else
-                        rob.is_executed[search_rob_seq_num_idx(rob,squash_sq_entry.instruction.seq_num)] := false;
-                      endif;
-                    endif;
+                    £st_trans_handle_squash_if_stmt
+                    -- --# Shouldn't need to check this case actually
+                    -- --# LQ must be busy with an older store's req
+                    -- if ( squash_sq_entry.st_state = st_await_lq_squash ) then
+                    --   if (£dest_ctrler_name .st_seq_num = squash_sq_entry.instruction.seq_num) then
+                    --     £dest_ctrler_name .valid_access_msg := false;
+                    --   endif;
+                    -- elsif ( squash_sq_entry.st_state = st_await_committed ) then
+                    --   --# If the executed msg was sent, and not yet accepted!
+                    --   if (
+                    --       (rob.valid_access_msg = true)
+                    --       &
+                    --       (rob.seq_num = squash_sq_entry.instruction.seq_num)
+                    --      ) then
+                    --     rob.valid_access_msg := false;
+                    --   --# If the executed msg was sent, and processed!
+                    --   else
+                    --     rob.is_executed[search_rob_seq_num_idx(rob,squash_sq_entry.instruction.seq_num)] := false;
+                    --   endif;
+                    -- endif;
 
-                    --# This case doesn't apply to this SQ
-                    --#if ( squash_sq_entry.st_state = await_mem_response ) then
-                    --#  squash_sq_entry.st_state := squashed_await_mem_response;
-                    --#else
-                    --#  squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    --#end;
-                    --# NOTE: The state to reset to depends on how
-                    --# accurately we model the values that are used.
-                    --# i.e. this reset is to stop any insts from using
-                    --# a value a load incorrectly read.
-                    --# 
-                    squash_sq_entry.st_state := st_await_translation;
+                    -- --# This case doesn't apply to this SQ
+                    -- --#if ( squash_sq_entry.st_state = await_mem_response ) then
+                    -- --#  squash_sq_entry.st_state := squashed_await_mem_response;
+                    -- --#else
+                    -- --#  squash_dest_ctrler_entry.ld_state := await_fwd_check;
+                    -- --#end;
+                    -- --# NOTE: The state to reset to depends on how
+                    -- --# accurately we model the values that are used.
+                    -- --# i.e. this reset is to stop any insts from using
+                    -- --# a value a load incorrectly read.
+                    -- --# 
+                    -- squash_sq_entry.st_state := st_await_translation;
 
-                    sq.sq_entries[squash_sq_id] := squash_sq_entry;
+                    -- sq.sq_entries[squash_sq_id] := squash_sq_entry;
                   else
+                    -- in the future, handle other inst types
                     error "inst should be either ld or st";
                   endif;
 
                   squash_offset := squash_offset + 1;
                 end;
-                --# NOTE: fix:
-                --# remove in-flight SQ and SB reqs if
-                --# Load is in a given state
-                -- AZ TODO: don't need these two cases...
-                -- instead need one that checks if we're waiting on
-                -- a response from the memory_interface
-                -- If we are, then we simply transition to a state which
-                -- will have a similar await-when stmt, but
-                -- the when stmt will transition back to the
-                -- "was scheduled state"...
-                -- But this requires us to also generate a new
-                -- transition...?
 
+                -- if ( dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
+                --   if (sq.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
+                --     sq.valid_access_msg := false;
+                --     --# I should probably clear the other fields...
+                --   endif;
+                -- elsif ( dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
+                --   if (sb.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
+                --     sb.valid_access_msg := false;
+                --     --# I should probably clear the other fields...
+                --   endif;
+                -- -- AZ TODO:
+                -- -- want something like this, but to get this we could
+                -- -- filter for transitions which have an await which
+                -- -- awaits on the committed signal from the ROB
+                -- elsif ( dest_ctrler_entry.ld_state = await_committed ) then
+                --   --# If the executed msg was sent, and not yet accepted!
+                --   if (
+                --       (rob.valid_access_msg = true)
+                --       &
+                --       (rob.seq_num = dest_ctrler_entry.instruction.seq_num)
+                --      ) then
+                --     rob.valid_access_msg := false;
+                --   --# If the executed msg was sent, and processed!
+                --   else
+                --     rob.is_executed[search_rob_seq_num_idx(rob,dest_ctrler_entry.instruction.seq_num)] := false;
+                --   endif;
+                -- endif;
 
-                -- AZ TODO: Thursday:
-                -- Ah no but what we can do is check the dest
-                -- structure's transitions,
-                -- and simply generate a flag?
-                -- so when the "when stmt" that receives
-                -- a mem response execs, if the flag is true,
-                -- then the when stmt will execute a simple 1 line
-                -- <entry>.state := inst_scheduled_state
-                -- like
-                -- if flag then
-                --   set flag to false
-                --   go back to inst scheduled state
+                -- --#put "=== BEGIN ===\n";
+                -- --#put dest_ctrler_entry.ld_state;
+                -- if ( dest_ctrler_entry.ld_state = await_mem_response ) then
+                --   --# set to squashed state
+                --   dest_ctrler_entry.ld_state := squashed_await_mem_response;
+                --   --#put "squashing\n";
                 -- else
-                --   original_when_code
-                -- Just need to remember to add this flag
-                -- to the entry state vars...
-                -- a "ignore_mem_reponse" flag...
+                --   dest_ctrler_entry.ld_state := await_fwd_check;
+                --   --#put "just reset\n";
+                -- endif;
 
-                -- is there a quick and simple way implement
-                -- the check for a 'waiting state' ?
-                if ( dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
-                  if (sq.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
-                    sq.valid_access_msg := false;
-                    --# I should probably clear the other fields...
-                  endif;
-                elsif ( dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
-                  if (sb.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
-                    sb.valid_access_msg := false;
-                    --# I should probably clear the other fields...
-                  endif;
-                -- AZ TODO:
-                -- want something like this, but to get this we could
-                -- filter for transitions which have an await which
-                -- awaits on the committed signal from the ROB
-                elsif ( dest_ctrler_entry.ld_state = await_committed ) then
-                  --# If the executed msg was sent, and not yet accepted!
-                  if (
-                      (rob.valid_access_msg = true)
-                      &
-                      (rob.seq_num = dest_ctrler_entry.instruction.seq_num)
-                     ) then
-                    rob.valid_access_msg := false;
-                  --# If the executed msg was sent, and processed!
-                  else
-                    rob.is_executed[search_rob_seq_num_idx(rob,dest_ctrler_entry.instruction.seq_num)] := false;
-                  endif;
-                endif;
-
-                --#put "=== BEGIN ===\n";
-                --#put dest_ctrler_entry.ld_state;
-                if ( dest_ctrler_entry.ld_state = await_mem_response ) then
-                  --# set to squashed state
-                  dest_ctrler_entry.ld_state := squashed_await_mem_response;
-                  --#put "squashing\n";
-                else
-                  dest_ctrler_entry.ld_state := await_fwd_check;
-                  --#put "just reset\n";
-                endif;
                 --#put "==== END ====\n";
                 --# Don't bother doing any sophisticated rollback
                 --# or squashing for now
                 --# UPDATE STATE
-                £dest_ctrler_name .ld_entries[curr_idx] := dest_ctrler_entry;
+                £dest_ctrler_name .entries[curr_idx] := dest_ctrler_entry;
 
                 --# reset other entries after, checking the ROB
                 --# get this entry's index in the ROB,
                 --# and iterate to the tail of the ROB.
                 --#put "INIT ROB_IDX SET:\n";
                 --#put ld_entry.instruction.seq_num;
-                rob_idx := (search_rob_seq_num_idx(rob,
-                                                  dest_ctrler_entry .instruction .seq_num)
-                            + 1) % (CORE_INST_NUM + 1);
-                squash_diff := (rob.rob_tail + (CORE_INST_NUM + 1) - rob_idx) % ( CORE_INST_NUM + 1);
-                squash_offset := 0;
-                while (
-                    (squash_offset <= squash_diff)
-                    &
-                    (squash_diff > 0)
-                  ) do
-                  --# squash
-                  squash_idx := (rob_idx + squash_offset) % (CORE_INST_NUM + 1);
-                  --# Check if Ld or St
-                  curr_rob_inst := rob.rob_insts[squash_idx];
-
-                  if (curr_rob_inst.op = ld) then
-                    --# if ld, then copy above
-                    squash_ld_id := search_lq_seq_num_idx(£dest_ctrler_name , curr_rob_inst.seq_num);
-                    squash_dest_ctrler_entry := £dest_ctrler_name .ld_entries[squash_ld_id];
-
-                    if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
-                      if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                        sq.valid_access_msg := false;
-                      endif;
-                    elsif ( squash_dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
-                      if (sb.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                        sb.valid_access_msg := false;
-                      endif;
-                    elsif ( squash_dest_ctrler_entry.ld_state = await_committed ) then
-                      --# If the executed msg was sent, and not yet accepted!
-                      if (
-                          (rob.valid_access_msg = true)
-                          &
-                          (rob.seq_num = squash_dest_ctrler_entry.instruction.seq_num)
-                         ) then
-                        rob.valid_access_msg := false;
-                      --# If the executed msg was sent, and processed!
-                      else
-                        rob.is_executed[search_rob_seq_num_idx(rob,squash_dest_ctrler_entry.instruction.seq_num)] := false;
-                      endif;
-                    endif;
-
-                    if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
-                      squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
-                    else
-                      squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    endif;
-
-                    £dest_ctrler_name .ld_entries[squash_ld_id] := squash_dest_ctrler_entry;
-
-                  elsif (curr_rob_inst.op = st) then
-                    --#
-                    squash_sq_id := search_sq_seq_num_idx(sq, curr_rob_inst.seq_num);
-                    squash_sq_entry := sq.sq_entries[squash_sq_id];
-
-                    --# Shouldn't need to check this case actually
-                    --# LQ must be busy with an older store's req
-                    if ( squash_sq_entry.st_state = st_await_lq_squash ) then
-                      if (£dest_ctrler_name .st_seq_num = squash_sq_entry.instruction.seq_num) then
-                        £dest_ctrler_name .valid_access_msg := false;
-                      endif;
-                    elsif ( squash_sq_entry.st_state = st_await_committed ) then
-                      --# If the executed msg was sent, and not yet accepted!
-                      if (
-                          (rob.valid_access_msg = true)
-                          &
-                          (rob.seq_num = squash_sq_entry.instruction.seq_num)
-                         ) then
-                        rob.valid_access_msg := false;
-                      --# If the executed msg was sent, and processed!
-                      else
-                        rob.is_executed[search_rob_seq_num_idx(rob,squash_sq_entry.instruction.seq_num)] := false;
-                      endif;
-                    endif;
-
-                    --# This case doesn't apply to this SQ
-                    --#if ( squash_sq_entry.st_state = await_mem_response ) then
-                    --#  squash_sq_entry.st_state := squashed_await_mem_response;
-                    --#else
-                    --#  squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    --#end;
-                    --# NOTE: The state to reset to depends on how
-                    --# accurately we model the values that are used.
-                    --# i.e. this reset is to stop any insts from using
-                    --# a value a load incorrectly read.
-                    --# 
-                    squash_sq_entry.st_state := st_await_translation;
-
-                    sq.sq_entries[squash_sq_id] := squash_sq_entry;
-                  else
-                    error "inst should be either ld or st";
-                  endif;
-
-                  squash_offset := squash_offset + 1;
-                end;
 
                 --# NOTE IMPORTANT! exit from loop!
                 loop_break := true;
@@ -3980,7 +3878,7 @@ List Murϕ.Statement
 
               if (offset != £dest_num_entries_const_name) then
                 offset := offset + 1;
-                if (( entry_idx + offset ) % £dest_num_entries_const_name) = £dest_ctrler_name .ld_tail then
+                if (( entry_idx + offset ) % £dest_num_entries_const_name) = £dest_ctrler_name .tail then
                   --#
                   loop_break := true;
                 endif;
@@ -4947,8 +4845,137 @@ def qualified_name_to_murphi_expr
 
 
 --========= Convert Murphi Stmts to Decls =========
+structure decls_and_init_record where
+stmt_list : List Pipeline.Statement
+decl_list : List Murϕ.Decl
+init_list : List Murϕ.Statement -- assignment expr
+
+-- structure decls_and_init_record where
+-- decl_list : List Murϕ.Decl
+-- init_list : List Murϕ.Statement -- assignment expr
+-- deriving Inhabited
+
+-- abbrev VarDeclGenM := StateT decls_and_init_record Id
+
+-- def getDeclList (murexp: VarDeclGenM (List Murϕ.Decl)) : (List Murϕ.Decl) := Id.run do
+--   let decl_list <- murexp.run default |>.1
+--   decl_list
+
+-- def getInitList (murexp: VarDeclGenM (List Murϕ.Statement)) : (List Murϕ.Statement) := Id.run do
+--   let init_list <- murexp.run default |>.1
+--   init_list
+
+-- def setDeclList
+-- (old_lists : decls_and_init_recordni)
+-- (new_decl_list : List Murϕ.Decl)
+-- : 
+
+structure decl_and_init_list where
+decl_list : List Murϕ.Decl
+init_list : List Murϕ.Statement
+
+def gen_decl_from_stmt_and_append
+(decl_init_list : decl_and_init_list)
+(murphi_stmt : Murϕ.Statement)
+: decl_and_init_list
+:=
+  let decl_list := decl_init_list.decl_list
+  let init_list := decl_init_list.init_list
+
+-- inductive Statement
+--   | assignment : Designator → Expr → Statement
+--   | ifstmt : Expr → List Statement → List (Expr × List Statement) → List Statement → Statement
+--   | switchstmt : Expr → List (List Expr × List Statement) → List Statement → Statement
+--   | forstmt : Quantifier → List Statement → Statement
+--   | whilestmt : Expr → List Statement → Statement
+--   | aliasstmt : List Alias → List Statement → Statement
+--   | proccall : ID → List Expr → Statement
+--   | clearstmt : Designator → Statement
+--   | errorstmt : String → Statement
+--   | assertstmt : Expr → String → Statement
+--   | putstmtexp : Expr → Statement
+--   | putstmtstr : String → Statement
+--   | returnstmt : Option Expr → Statement
+--   deriving Inhabited
+  -- process the murphi stmt
+  let decl_init_tuple : (List Murϕ.Decl) × (List Murϕ.Statement)
+  :=
+  match murphi_stmt with
+  | Murϕ.Statement.assignment designator_ _ =>
+    -- Check if the first part of the designator_ has
+    -- been previously declared in the Decl list
+    -- 1) If not, add it to the list; gen an init statement and return that
+    -- 2) If it has, we just return the original list...
+
+    /- 1) -/
+    let desig_base_id : String :=
+    match designator_ with
+    | Murϕ.Designator.mk id _ => id
+
+    let assign_var_is_declared : Bool
+    := true
+    -- TODO: get this working?
+    -- decl_list.contains designator_
+
+    let new_decl_init_list : (List Murϕ.Decl) × (List Murϕ.Statement)
+    :=
+      if !assign_var_is_declared then
+        -- undeclared, so we declare and init it if necessary
+        /-
+        1. Declare the var.
+        How to determine the type?
+        a) If the var is a struct defined in a core_,
+        then it's the struct type
+        ex.
+        LQ.entries[i].value := 0
+        -- can check if the list is empty or not?
+        -- or just check if the name is a defined structure's
+        -- name.
+        -- This means we also carry around the list of structure names
+        b) Otherwise, we'd have to check if this has been defined somewhere
+
+        c) Or if there's no list in the Designator, can try to figure out
+        the expr's type, but this seems like a lot of work...
+        
+        So if we were to generate Decls for aribtrarily translated Murphi
+        code, how would be do so easily?
+        -/
+        /-
+        2. Init the var.
+        Init it if it's something we
+        directly reference..
+        -/
+        (decl_list, init_list)
+      else
+        -- declared, so we just return the original lists
+        -- and the fold which uses this func continues
+        -- to the next Murphi stmt
+        (decl_list, init_list)
+    new_decl_init_list
+  | _ => (decl_list, init_list)
+
+  {decl_list := [], init_list := []}  
+
 -- TODO:
--- def murphi_stmts_to_murphi_decls
+def murphi_stmts_to_murphi_decls
+-- use a monad, need a struct
+-- input is list of stmts
+( stmts_and_state : decls_and_init_record)
+: decls_and_init_record
+:=
+  -- get relevant info
+  let stmts_to_translate := stmts_and_state.stmt_list
+  let decls_transd_so_far := stmts_and_state.decl_list
+  let init_stmts_so_far := stmts_and_state.init_list
+
+  -- foldl thru the stmts list, match stmt with | case
+  -- translate line by line
+  -- if blk, can recursively call
+  --   if recursive, then still same; add decls & init to list..
+
+  -- List.foldl
+
+  {stmt_list := [], decl_list := [], init_list := []}
 
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
@@ -5249,6 +5276,11 @@ def dsl_trans_descript_to_murphi_rule
 
   let lst_murphi_decls :=
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
+  -- TODO NOTE: There are default vars to decl, like
+  -- next_state of type (Sta or state)
+  -- TODO NOTE: This should also gen the initialization
+  -- assignment stmts for the Decls
+  -- TODO NOTE: Use a Monad if necessary
     -- murphi_stmts_to_murphi_decls lst_murphi_stmt
     []
 
