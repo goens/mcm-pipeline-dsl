@@ -4843,32 +4843,129 @@ def qualified_name_to_murphi_expr
   else
     throw s!"Input isn't insert or mem_access, how did it reach this?"
 
+--========= Convert DSL Decl and Decl Assn Stmts to Decls =========
+-- TODO: Check what I did to Decl Assn Stmts
+
+def dsl_type_to_murphi_type
+( dsl_type : Identifier )
+: Murϕ.TypeExpr
+:=
+  -- Types that one may use in the DSL.. & it's Murphi Test Harness "Equivalent" (for now that is)
+  -- DSL        |    Murphi Test Harness
+  -- -----------------------------------
+  -- address    |    addr_idx_t
+  -- u32        |    val_t
+  -- packet     |    N/A
+  -- seq_num    |    inst_idx_t
+  let murphi_type_name : ID :=
+  if dsl_type == "address" then
+    "addr_idx_t"
+  else if dsl_type == "u32" then
+    "val_t"
+  else if dsl_type == "seq_num" then
+    "inst_idx_t"
+  else
+    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+
+  let murphi_type_expr : Murϕ.TypeExpr :=
+  Murϕ.TypeExpr.previouslyDefined murphi_type_name
+
+  murphi_type_expr
+
+partial def ast_decl_assn_decl_to_murphi_decl
+( stmt : Pipeline.Statement )
+: List Murϕ.Decl
+:=
+  -- match stmt; check for decl & assn decl; convert to Murϕ.Decl
+-- inductive Statement
+-- | labelled_statement : Label → Statement → Statement
+-- | variable_declaration : TypedIdentifier → Statement
+-- | value_declaration : TypedIdentifier →  Expr → Statement
+-- | variable_assignment : QualifiedName  → Expr → Statement
+-- | conditional_stmt : Conditional → Statement
+-- | listen_handle : Statement → List HandleBlock → Statement
+-- | await : Option Term → List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
+-- | when :  QualifiedName → List Identifier → Statement → Statement
+-- | transition : Identifier → Statement
+-- | stray_expr : Expr → Statement
+-- | block : /- { -/ List Statement /- } -/ → Statement
+-- | return_stmt : Expr → Statement
+  match stmt with
+  | Pipeline.Statement.variable_declaration typed_ident =>
+    let (typed, ident) :=
+    match typed_ident with
+    | TypedIdentifier.mk typed ident => (typed, ident)
+
+    -- use ident for the Decl name
+    -- map type (typed) to a type for the decl
+-- inductive Decl
+--   | const : ID → Expr → Decl
+--   | type  : ID → TypeExpr → Decl
+--   | var   : List ID → TypeExpr → Decl
+    let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
+    
+    [Murϕ.Decl.var [ident] murphi_type_expr]
+  | Pipeline.Statement.value_declaration typed_ident _ =>
+    let (typed, ident) :=
+    match typed_ident with
+    | TypedIdentifier.mk typed ident => (typed, ident)
+
+    let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
+    
+    [Murϕ.Decl.var [ident] murphi_type_expr]
+  | .labelled_statement _ stmt =>
+    ast_decl_assn_decl_to_murphi_decl stmt
+  | .conditional_stmt condition =>
+    match condition with
+    | Pipeline.Conditional.if_else_statement _ stmt1 stmt2 =>
+      (ast_decl_assn_decl_to_murphi_decl stmt1) ++ (ast_decl_assn_decl_to_murphi_decl stmt2)
+    | .if_statement _ stmt =>
+      (ast_decl_assn_decl_to_murphi_decl stmt)
+  | .listen_handle stmt _ => ast_decl_assn_decl_to_murphi_decl stmt
+  | .await none _ => []
+  | .await term stmt_list =>
+     let await_stmts_decls :=
+     List.join (stmt_list.map ast_decl_assn_decl_to_murphi_decl)
+
+-- inductive Term
+-- | negation: Term → Term
+-- | logical_negation: Term → Term
+-- | binary_negation: Term → Term
+-- | var : Identifier → Term -- variable is a lean keyword...
+-- | qualified_var : QualifiedName → Term -- variable is a lean keyword...
+-- | const : Const → Term -- constant is a lean keyword...
+-- | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
+-- | expr : Expr → Term
+
+    --  let func_decls :=
+
+    -- let q_name :=
+    --  match term with
+    --  | Pipeline.Term.function_call q_name _ => q_name
+    --  | _ => dbg_trace "Throw!" -- throw! 
+    --    panic! "Shouldn't get here.."
+    
+    -- let func_ctrler_name := q_name[0]
+    -- let matching_ctrler := get_ctrler_matching_name ctrler_name
+      
+    -- I don't know if i want to try this right now...
+    -- Main thing TODO, there's this edge case of name collisions,
+    -- if the func dest ctrler has decls which use the same name...
+    -- then when translating we need to give the murphi code a new name..
+    -- But then we also need to translate Decls???
+    await_stmts_decls
+       
+  | .when _ _ stmt => ast_decl_assn_decl_to_murphi_decl stmt
+  | .block stmt_lst => List.join (stmt_lst.map ast_decl_assn_decl_to_murphi_decl)
+  | _ => []
 
 --========= Convert Murphi Stmts to Decls =========
--- structure decls_and_init_record where
--- decl_list : List Murϕ.Decl
--- init_list : List Murϕ.Statement -- assignment expr
--- deriving Inhabited
-
--- abbrev VarDeclGenM := StateT decls_and_init_record Id
-
--- def getDeclList (murexp: VarDeclGenM (List Murϕ.Decl)) : (List Murϕ.Decl) := Id.run do
---   let decl_list <- murexp.run default |>.1
---   decl_list
-
--- def getInitList (murexp: VarDeclGenM (List Murϕ.Statement)) : (List Murϕ.Statement) := Id.run do
---   let init_list <- murexp.run default |>.1
---   init_list
-
--- def setDeclList
--- (old_lists : decls_and_init_recordni)
--- (new_decl_list : List Murϕ.Decl)
--- : 
 
 structure decl_and_init_list where
 decl_list : List Murϕ.Decl
 init_list : List Murϕ.Statement
 trans : Pipeline.Description
+ctrler_names : List Identifier
 
 abbrev DeclInitM := StateT decl_and_init_list Id
 
@@ -4951,6 +5048,18 @@ match murphi_stmt with
       directly reference..
       -/
       -- TODO: implement
+
+      -- 1. One case: it's a Ctrler!
+      -- Check if it is a ctrler!,
+      -- if it is, then create a new init & decl!
+      let is_ctrler := (← get).ctrler_names.contains Designator.getID
+
+      -- 2. another case: it's a func var...
+      -- we should create a decl for this..
+      -- But the type requires us to search
+      -- in the stmts for any called ctrler funcs
+      -- and see if we can match the stmt/ctrler name there
+
       let new_inits := []
       let new_decls := []
       (new_decls, new_inits)
@@ -4960,10 +5069,22 @@ match murphi_stmt with
       -- to the next Murphi stmt
       ([], [])
   new_decl_init_list
+--   | ifstmt : Expr → List Statement → List (Expr × List Statement) → List Statement → Statement
+--   | switchstmt : Expr → List (List Expr × List Statement) → List Statement → Statement
+--   | forstmt : Quantifier → List Statement → Statement
+--   | whilestmt : Expr → List Statement → Statement
+--   | aliasstmt : List Alias → List Statement → Statement
+--   | proccall : ID → List Expr → Statement
+--   | clearstmt : Designator → Statement
+--   | errorstmt : String → Statement
+--   | assertstmt : Expr → String → Statement
+--   | putstmtexp : Expr → Statement
+--   | putstmtstr : String → Statement
+--   | returnstmt : Option Expr → Statement
 | _ => ([], [])
-modify λ { trans := trans, init_list := init_list, decl_list := decl_list } =>
+modify λ { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names } =>
   { trans := trans, init_list := init_list ++ decl_init_tuple.2,
-    decl_list := decl_list ++ decl_init_tuple.1 }
+    decl_list := decl_list ++ decl_init_tuple.1, ctrler_names := ctrler_names }
 
 -- TODO:
 def murphi_stmts_to_murphi_decls
@@ -4982,6 +5103,7 @@ def murphi_stmts_to_murphi_decls
   -- if blk, can recursively call
   --   if recursive, then still same; add decls & init to list..
 
+  -- α : Unit, β : List Pipeline.Statement
   -- List.foldl
 
   -- TODO: implement
@@ -5277,16 +5399,23 @@ def dsl_trans_descript_to_murphi_rule
     trans_obj := trans
     specific_murphi_dest_expr := none
   }
-    
 
-  let lst_murphi_stmt :=
+  -- The murphi stmts for the transition body
+  let lst_murphi_stmt : List Murϕ.Statement:=
   -- AZ TODO: Implement the AST Stmts => Murphi Stmts fn
     -- AZ TODO: Use the struct!
     ast_stmt_to_murphi_stmts stmt_trans_info
+    
+  -- List of ctrler names ( identifiers )
+  let lst_ctrler_names : List Identifier := 
+  ctrler_lst.map λ ctrler => ctrler.name
+
+  let simple_ast_murphi_decls : List Murϕ.Decl := ast_decl_assn_decl_to_murphi_decl trans_stmt_blk
+
   let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
   let murphi_stmts_decls := murphi_stmts_decls_monad.run
-    { trans := trans, init_list := [], decl_list := []} |>.run.2
-  let (lst_murphi_decls, murphi_inits) :=
+    { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names} |>.run.2
+  let (lst_murphi_decls, murphi_inits) := (murphi_stmts_decls.decl_list, murphi_stmts_decls.init_list)
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
   -- TODO NOTE: There are default vars to decl, like
   -- next_state of type (Sta or state)
@@ -5294,7 +5423,7 @@ def dsl_trans_descript_to_murphi_rule
   -- assignment stmts for the Decls
   -- TODO NOTE: Use a Monad if necessary
     -- murphi_stmts_to_murphi_decls lst_murphi_stmt
-    ([],[])
+    -- ([],[])
 
   dbg_trace "===== BEGIN TRANSLATION INFO ====="
   dbg_trace "=== ctrler ==="
