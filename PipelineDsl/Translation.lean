@@ -4873,6 +4873,7 @@ init_list : List Murϕ.Statement -- assignment expr
 structure decl_and_init_list where
 decl_list : List Murϕ.Decl
 init_list : List Murϕ.Statement
+trans : Pipeline.Description
 
 def gen_decl_from_stmt_and_append
 (decl_init_list : decl_and_init_list)
@@ -4881,6 +4882,15 @@ def gen_decl_from_stmt_and_append
 :=
   let decl_list := decl_init_list.decl_list
   let init_list := decl_init_list.init_list
+
+  let trans := decl_init_list.trans
+  -- TODO: get the list of stmts, find any decls,
+  -- record the decls and their types in a list
+  -- Generate the decls!
+  -- map decls from "dsl" types to Murphi types...
+  -- Need to define a manual table of translations
+
+  -- Later, check if the root qual name var is in this list already or not
 
 -- inductive Statement
 --   | assignment : Designator → Expr → Statement
