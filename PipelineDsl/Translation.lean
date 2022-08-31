@@ -4845,11 +4845,6 @@ def qualified_name_to_murphi_expr
 
 
 --========= Convert Murphi Stmts to Decls =========
-structure decls_and_init_record where
-stmt_list : List Pipeline.Statement
-decl_list : List Murϕ.Decl
-init_list : List Murϕ.Statement -- assignment expr
-
 -- structure decls_and_init_record where
 -- decl_list : List Murϕ.Decl
 -- init_list : List Murϕ.Statement -- assignment expr
@@ -4875,22 +4870,28 @@ decl_list : List Murϕ.Decl
 init_list : List Murϕ.Statement
 trans : Pipeline.Description
 
+abbrev DeclInitM := StateT decl_and_init_list Id
+
+def Decl.getIDs : Decl → List ID
+| .const id _ => [id]
+| .type id _ => [id]
+| .var ids _ => ids
+
+def Designator.getID : Designator → ID
+| .mk id _ => id
+
 def gen_decl_from_stmt_and_append
-(decl_init_list : decl_and_init_list)
 (murphi_stmt : Murϕ.Statement)
-: decl_and_init_list
-:=
-  let decl_list := decl_init_list.decl_list
-  let init_list := decl_init_list.init_list
+: DeclInitM Unit
+:= do
+let decl_list := (← get).decl_list
+-- TODO: get the list of stmts, find any decls,
+-- record the decls and their types in a list
+-- Generate the decls!
+-- map decls from "dsl" types to Murphi types...
+-- Need to define a manual table of translations
 
-  let trans := decl_init_list.trans
-  -- TODO: get the list of stmts, find any decls,
-  -- record the decls and their types in a list
-  -- Generate the decls!
-  -- map decls from "dsl" types to Murphi types...
-  -- Need to define a manual table of translations
-
-  -- Later, check if the root qual name var is in this list already or not
+-- Later, check if the root qual name var is in this list already or not
 
 -- inductive Statement
 --   | assignment : Designator → Expr → Statement
@@ -4907,76 +4908,74 @@ def gen_decl_from_stmt_and_append
 --   | putstmtstr : String → Statement
 --   | returnstmt : Option Expr → Statement
 --   deriving Inhabited
-  -- process the murphi stmt
-  let decl_init_tuple : (List Murϕ.Decl) × (List Murϕ.Statement)
+-- process the murphi stmt
+let decl_init_tuple : (List Murϕ.Decl) × (List Murϕ.Statement)
+:=
+match murphi_stmt with
+| Murϕ.Statement.assignment designator _ =>
+  -- Check if the first part of the designator has
+  -- been previously declared in the Decl list
+  -- 1) If not, add it to the list; gen an init statement and return that
+  -- 2) If it has, we just return the original list...
+
+  /- 1) -/
+  let assign_var_is_declared : Bool
+  := (decl_list.map (Decl.getIDs)).join.contains (Designator.getID designator)
+
+  let new_decl_init_list : (List Murϕ.Decl) × (List Murϕ.Statement)
   :=
-  match murphi_stmt with
-  | Murϕ.Statement.assignment designator_ _ =>
-    -- Check if the first part of the designator_ has
-    -- been previously declared in the Decl list
-    -- 1) If not, add it to the list; gen an init statement and return that
-    -- 2) If it has, we just return the original list...
+    if !assign_var_is_declared then
+      -- undeclared, so we declare and init it if necessary
+      /-
+      1. Declare the var.
+      How to determine the type?
+      a) If the var is a struct defined in a core_,
+      then it's the struct type
+      ex.
+      LQ.entries[i].value := 0
+      -- can check if the list is empty or not?
+      -- or just check if the name is a defined structure's
+      -- name.
+      -- This means we also carry around the list of structure names
+      b) Otherwise, we'd have to check if this has been defined somewhere
 
-    /- 1) -/
-    let desig_base_id : String :=
-    match designator_ with
-    | Murϕ.Designator.mk id _ => id
+      c) Or if there's no list in the Designator, can try to figure out
+      the expr's type, but this seems like a lot of work...
 
-    let assign_var_is_declared : Bool
-    := true
-    -- TODO: get this working?
-    -- decl_list.contains designator_
-
-    let new_decl_init_list : (List Murϕ.Decl) × (List Murϕ.Statement)
-    :=
-      if !assign_var_is_declared then
-        -- undeclared, so we declare and init it if necessary
-        /-
-        1. Declare the var.
-        How to determine the type?
-        a) If the var is a struct defined in a core_,
-        then it's the struct type
-        ex.
-        LQ.entries[i].value := 0
-        -- can check if the list is empty or not?
-        -- or just check if the name is a defined structure's
-        -- name.
-        -- This means we also carry around the list of structure names
-        b) Otherwise, we'd have to check if this has been defined somewhere
-
-        c) Or if there's no list in the Designator, can try to figure out
-        the expr's type, but this seems like a lot of work...
-        
-        So if we were to generate Decls for aribtrarily translated Murphi
-        code, how would be do so easily?
-        -/
-        /-
-        2. Init the var.
-        Init it if it's something we
-        directly reference..
-        -/
-        (decl_list, init_list)
-      else
-        -- declared, so we just return the original lists
-        -- and the fold which uses this func continues
-        -- to the next Murphi stmt
-        (decl_list, init_list)
-    new_decl_init_list
-  | _ => (decl_list, init_list)
-
-  {decl_list := [], init_list := []}  
+      So if we were to generate Decls for aribtrarily translated Murphi
+      code, how would be do so easily?
+      -/
+      /-
+      2. Init the var.
+      Init it if it's something we
+      directly reference..
+      -/
+      -- TODO: implement
+      let new_inits := []
+      let new_decls := []
+      (new_decls, new_inits)
+    else
+      -- declared, so we just return the original lists
+      -- and the fold which uses this func continues
+      -- to the next Murphi stmt
+      ([], [])
+  new_decl_init_list
+| _ => ([], [])
+modify λ { trans := trans, init_list := init_list, decl_list := decl_list } =>
+  { trans := trans, init_list := init_list ++ decl_init_tuple.2,
+    decl_list := decl_list ++ decl_init_tuple.1 }
 
 -- TODO:
 def murphi_stmts_to_murphi_decls
 -- use a monad, need a struct
 -- input is list of stmts
-( stmts_and_state : decls_and_init_record)
-: decls_and_init_record
+( stmts : List Murϕ.Statement)
+: DeclInitM Unit
 :=
   -- get relevant info
-  let stmts_to_translate := stmts_and_state.stmt_list
-  let decls_transd_so_far := stmts_and_state.decl_list
-  let init_stmts_so_far := stmts_and_state.init_list
+  --let stmts_to_translate := stmts_and_state.stmt_list
+  --let decls_transd_so_far := stmts_and_state.decl_list
+  --let init_stmts_so_far := stmts_and_state.init_list
 
   -- foldl thru the stmts list, match stmt with | case
   -- translate line by line
@@ -4985,7 +4984,8 @@ def murphi_stmts_to_murphi_decls
 
   -- List.foldl
 
-  {stmt_list := [], decl_list := [], init_list := []}
+  -- TODO: implement
+  return ()
 
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
@@ -5283,8 +5283,10 @@ def dsl_trans_descript_to_murphi_rule
   -- AZ TODO: Implement the AST Stmts => Murphi Stmts fn
     -- AZ TODO: Use the struct!
     ast_stmt_to_murphi_stmts stmt_trans_info
-
-  let lst_murphi_decls :=
+  let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
+  let murphi_stmts_decls := murphi_stmts_decls_monad.run
+    { trans := trans, init_list := [], decl_list := []} |>.run.2
+  let (lst_murphi_decls, murphi_inits) :=
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
   -- TODO NOTE: There are default vars to decl, like
   -- next_state of type (Sta or state)
@@ -5292,7 +5294,7 @@ def dsl_trans_descript_to_murphi_rule
   -- assignment stmts for the Decls
   -- TODO NOTE: Use a Monad if necessary
     -- murphi_stmts_to_murphi_decls lst_murphi_stmt
-    []
+    ([],[])
 
   dbg_trace "===== BEGIN TRANSLATION INFO ====="
   dbg_trace "=== ctrler ==="
