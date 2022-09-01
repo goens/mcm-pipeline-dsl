@@ -3444,7 +3444,7 @@ List Murϕ.Statement
             let set_core_mem_out_msg : Murϕ.Statement :=
             -- TODO: fix "ambiguous" here
             [murϕ|
-            £dest_ctrler_name .out_msg := insert_ld_in_mem_interface( ld_st , j)]
+            next_state .core_[ j ] .mem_interface_  .out_msg := insert_ld_in_mem_interface( ld_st , j)]
 
             let msg_out := "msg_out"
             let msg_out_designator : Murϕ.Designator := (
@@ -3516,6 +3516,141 @@ List Murϕ.Statement
 
             combined_stmts
           else
+          if (and (api_func_name == "send_store_request")
+          (dest_ctrler_name == "memory_interface"))
+          then
+            let this_ctrler : controller_info :=
+    dbg_trace "===== mem_interface api gen ====="
+              get_ctrler_matching_name ctrler_name ctrlers_lst
+            let ctrler_ordering :=
+              get_ctrler_elem_ordering this_ctrler
+
+            let is_fifo : Bool :=
+              ctrler_ordering == "FIFO"
+            
+            -- if it's fifo, then
+            -- index to this rule's entry j
+            -- else,
+            -- we need to access the entry info in some other way?
+            let ld_or_st_inst_info : List Murϕ.Statement :=
+            if is_fifo
+            then
+              -- get info by accessing
+              -- <structure>.entries[j]
+
+
+              let ld_st_entry_designator := (
+              Designator.mk (
+                -- Example in comments
+                -- core_
+                "next_state"
+              )
+              [
+                -- Example in comments
+                -- Sta.core_
+                Sum.inl "core_",
+                -- Sta.core_[j]
+                Sum.inr core_idx_designator,
+                -- Sta.core_[j].LQ
+                Sum.inl ctrler_name,
+                -- Sta.core_[j].LQ.entries
+                Sum.inl entries,
+                -- Sta.core_[j].LQ.entries[i]
+                Sum.inr entry_idx_designator
+              ]
+              )
+
+              let ld_st_entry_expr :=
+              Murϕ.Expr.designator ld_st_entry_designator
+
+              let ld_st_designator : Murϕ.Designator :=
+              Murϕ.Designator.mk "ld_st" []
+              let ld_st_entry_stmt : Murϕ.Statement :=
+              Murϕ.Statement.assignment ld_st_designator ld_st_entry_expr
+
+              [ld_st_entry_stmt]
+            else
+              -- TODO:
+              -- This case is for something like
+              -- the load exec unit in the NoSQ
+              []
+
+            let set_core_mem_out_msg : Murϕ.Statement :=
+            -- TODO: fix "ambiguous" here
+            [murϕ|
+            next_state .core_[ j ] .mem_interface_ .out_msg := insert_st_in_mem_interface( ld_st , j)]
+
+            let msg_out := "msg_out"
+            let msg_out_designator : Murϕ.Designator := (
+            Designator.mk (
+              -- Example in comments
+              -- core_
+              "next_state"
+            )
+            [
+              -- Example in comments
+              Sum.inl "core_",
+              -- core_[j]
+              Sum.inr core_idx_designator,
+              -- core_[j].LQ
+              Sum.inl ctrler_name,
+              -- core_[j].LQ.entries
+              Sum.inl msg_out
+            ])
+
+            let func_call_expr :=
+            Murϕ.Expr.call "insert_st_in_mem_interface" [
+              -- list of args
+              Murϕ.Expr.designator (Murϕ.Designator.mk "ld_st_entry" []),
+              Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
+            ]
+
+            -- assign the out_msg the func call
+            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
+            --                                       ld_entry,
+            --                                       j
+            --                                      );
+            let assn_msg_out_func_call_stmt : Murϕ.Statement :=
+            Murϕ.Statement.assignment msg_out_designator func_call_expr
+
+            let out_busy := "out_busy"
+            let out_busy_designator : Murϕ.Designator := (
+            Designator.mk (
+              -- Example in comments
+              -- core_
+              "next_state"
+            )
+            [
+              -- Example in comments
+              Sum.inl "core_",
+              -- core_[i]
+              Sum.inr core_idx_designator,
+              -- core_[i].LQ
+              Sum.inl ctrler_name,
+              -- core_[i].LQ.entries
+              Sum.inl out_busy
+            ])
+
+            let true_designator_expr :=
+            Murϕ.Expr.designator (Murϕ.Designator.mk "true" [])
+            -- assign the out_busy to true
+            --   £dest_ctrler_name .out_busy := false;
+            let assn_out_busy_true_stmt : Murϕ.Statement :=
+            Murϕ.Statement.assignment msg_out_designator true_designator_expr
+            -- let set_core_mem_out_busy :=
+            -- [murϕ|
+            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
+            --                                       ld_entry,
+            --                                       j
+            --                                      );
+            --   £dest_ctrler_name .out_busy := false;
+            -- ]
+            let combined_stmts :=
+            ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
+
+            combined_stmts
+
+          else
           if (and (api_func_name == "write")
           (dest_ctrler_name == "reg_file"))
           then
@@ -3529,7 +3664,7 @@ List Murϕ.Statement
               assn_stmt_to_expr_translation_info stmt_trans_info reg_idx_expr
             let reg_idx_murphi_expr := ast_expr_to_murphi_expr reg_idx_trans_expr
 
-            [murϕ| Sta .core[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
+            [murϕ| next_state .core[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
           else
           if (api_func_name == "head_search_squash")
           then
@@ -3943,21 +4078,9 @@ List Murϕ.Statement
 
             let write_val_expr := ast_expr_to_murphi_expr write_val_expr_trans_info
 
-            let murphi_designator := 
-              Murϕ.Designator.mk "core_" [
-                -- core_[i]
-                Sum.inr core_idx_designator,
-                -- core_[i].rf_
-                Sum.inl "rf_",
-                -- core_[i].rf_.rf
-                Sum.inl "rf",
-                -- core_[i].rf_.rf[dest_reg]
-                Sum.inr dest_reg_expr
-              ]
-
             let murphi_reg_file_assign :=
             [murϕ|
-            core_[i].rf_.rf[ £dest_reg_expr ] := £write_val_expr ]
+            next_state .core_[i] .rf_ .rf[ £dest_reg_expr ] := £write_val_expr ]
             -- Murϕ.Statement.assignment murphi_designator write_val_expr
 
             -- Then build the expr, maybe with the metaprogramming
@@ -4683,10 +4806,11 @@ partial def ast_stmt_to_murphi_stmts
           Designator.mk (
             -- Example in comments
             -- core_
-            "core_"
+            "next_state"
           )
           [
             -- Example in comments
+            Sum.inl "core_",
             -- core_[i]
             Sum.inr core_idx_designator,
             -- core_[i].LQ
@@ -4796,10 +4920,11 @@ def qualified_name_to_murphi_expr
         Designator.mk (
           -- Example in comments
           -- core_
-          "core_"
+          "next_state"
         )
         [
           -- Example in comments
+          Sum.inl "core_",
           -- core_[i]
           Sum.inr core_idx_designator,
           -- core_[i].LQ
@@ -4838,10 +4963,11 @@ def qualified_name_to_murphi_expr
         Designator.mk (
           -- Example in comments
           -- core_
-          "core_"
+          "next_state"
         )
         [
           -- Example in comments
+          Sum.inl "core_",
           -- core_[i]
           Sum.inr core_idx_designator,
           -- core_[i].mem_interface_
@@ -5199,7 +5325,7 @@ match murphi_stmt with
         let j_desig := Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
         let init_desig : Murϕ.Expr :=
         Murϕ.Expr.designator (
-          Murϕ.Designator.mk "Sta" [
+          Murϕ.Designator.mk "next_state" [
           Sum.inl "core_",
           Sum.inr j_desig,
           Sum.inl desig_id
@@ -5332,6 +5458,7 @@ def dsl_trans_descript_to_murphi_rule
 -- something like "insert" code
 
 -- (lst_ctrlers : List controller_info)
+: List Murϕ.Rule
 :=
   let ctrler_name := trans_info.ctrler_name
   let trans := trans_info.trans
@@ -5377,7 +5504,7 @@ def dsl_trans_descript_to_murphi_rule
   controller/unit
   -/
   -- Need a name for the ruleset elem idx
-  let ruleset_core_elem_idx := "i"
+  let ruleset_core_elem_idx := "j"
 
   -- Need to get the core number enum type
   let cores_t :=
@@ -5436,7 +5563,7 @@ def dsl_trans_descript_to_murphi_rule
 
   let entries := "entries"
 
-  let ruleset_entry_elem_idx := "j"
+  let ruleset_entry_elem_idx := "i"
   let entry_idx_designator :=
   Murϕ.Expr.designator (
     Designator.mk ruleset_entry_elem_idx []
@@ -5449,10 +5576,11 @@ def dsl_trans_descript_to_murphi_rule
       Designator.mk (
         -- Example in comments
         -- core_
-        "core_"
+        "next_state"
       )
       [
         -- Example in comments
+        Sum.inl "core_",
         -- core_[i]
         Sum.inr core_idx_designator,
         -- core_[i].LQ
@@ -5698,7 +5826,10 @@ def dsl_trans_descript_to_murphi_rule
     ]
     -- List of Rule
 
-  murphi_core_ruleset
+  if lst_murphi_stmt.length == 0 then
+    []
+  else
+    [murphi_core_ruleset]
 
 --- ==== AST tests =====
 

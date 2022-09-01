@@ -88,21 +88,33 @@ def main (args : List String): IO Unit := do
   -- let ctrler_list := List.replicate num_transitions ctrlers
 
   -- let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
-  let joined_transition_and_ctrlers :=
-  should_be_one_ctrler.transition_list.map
-    λ trans =>
-    {
-      ctrler_name := should_be_one_ctrler.name,
-      ctrler_lst := ctrlers,
-      trans := trans
-    }
+
+  -- let joined_transition_and_ctrlers : List dsl_trans_info :=
+  -- should_be_one_ctrler.transition_list.map
+  --   λ trans =>
+  --   {
+  --     ctrler_name := should_be_one_ctrler.name,
+  --     ctrler_lst := ctrlers,
+  --     trans := trans
+  --   }
+  let all_joined_ctrlers : List (List dsl_trans_info) :=
+  ctrlers.map (
+    λ ctrler =>
+      ctrler.transition_list.map
+        λ trans =>
+          {
+            ctrler_name := should_be_one_ctrler.name,
+            ctrler_lst := ctrlers,
+            trans := trans
+          }
+  )
 
 -- structure dsl_trans_info where
 -- ctrler_name: Identifier
 -- ctrler_lst : List controller_info
 -- trans : Description -- Description.transition
-  let dummy :=
-    joined_transition_and_ctrlers.map dsl_trans_descript_to_murphi_rule
+  let dummy := List.join (
+    (List.join all_joined_ctrlers).map dsl_trans_descript_to_murphi_rule)
   println! s!"Dummy:\n{dummy}"
 
   -- AZ TODO:
