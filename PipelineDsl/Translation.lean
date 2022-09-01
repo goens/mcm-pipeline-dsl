@@ -1816,10 +1816,13 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match tail_entry with
         | tail_or_entry.tail =>
           Murϕ.Expr.designator (
-          Murϕ.Designator.mk ctrler_name [
+          Murϕ.Designator.mk "next_state" [
             -- entries
             -- Assume the buffer entries are
             -- referred to as 'i'
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ctrler_name,
             Sum.inl idx
           ])
         | tail_or_entry.entry =>
@@ -1829,8 +1832,11 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           specific_murphi_dest_extracted
 
         let murphi_designator :=
-        Murϕ.Designator.mk ctrler_name [
+        Murϕ.Designator.mk "next_state" [
           -- entries
+          Sum.inl "core_",
+          Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+          Sum.inl ctrler_name,
           Sum.inl "entries",
           Sum.inr fifo_idx_expr,
           Sum.inl one_ident
@@ -1890,10 +1896,13 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match tail_entry with
         | tail_or_entry.tail =>
           Murϕ.Expr.designator (
-          Murϕ.Designator.mk ctrler_name [
+          Murϕ.Designator.mk "next_state" [
             -- entries
             -- Assume the buffer entries are
             -- referred to as 'i'
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ctrler_name,
             Sum.inl idx
           ])
         | tail_or_entry.entry =>
@@ -1905,13 +1914,16 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         let sum_list : List (String ⊕ Murϕ.Expr)
         := List.append [
           -- entries
+          Sum.inl "core_",
+          Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+          Sum.inl ctrler_name,
           Sum.inl "entries",
           Sum.inr fifo_tail_expr,
           Sum.inl h
         ] (list_ident_to_murphi_ID t)
 
         let murphi_designator :=
-        Murϕ.Designator.mk ctrler_name sum_list
+        Murϕ.Designator.mk "next_state" sum_list
         -- Murϕ.Designator.
 
         murphi_designator
@@ -1932,6 +1944,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       let sum_list : List (String ⊕ Murϕ.Expr)
       := List.append [
         -- entries
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl ctrler_name,
         Sum.inl entries,
         Sum.inr curr_idx_designator_expr
       ] (list_ident_to_murphi_ID t)
@@ -1940,7 +1955,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- TODO Tuesday, Aug 16, 2022
       let murphi_designator :=
       -- Murϕ.Designator.mk dest_ctrler sum_list
-      Murϕ.Designator.mk ctrler_name sum_list
+      Murϕ.Designator.mk "next_state" sum_list
       -- Murϕ.Designator.
 
       murphi_designator
@@ -3394,17 +3409,19 @@ List Murϕ.Statement
               Designator.mk (
                 -- Example in comments
                 -- core_
-                "core_"
+                "next_state"
               )
               [
                 -- Example in comments
-                -- core_[i]
+                -- Sta.core_
+                Sum.inl "core_",
+                -- Sta.core_[j]
                 Sum.inr core_idx_designator,
-                -- core_[i].LQ
+                -- Sta.core_[j].LQ
                 Sum.inl ctrler_name,
-                -- core_[i].LQ.entries
+                -- Sta.core_[j].LQ.entries
                 Sum.inl entries,
-                -- core_[i].LQ.entries[j]
+                -- Sta.core_[j].LQ.entries[i]
                 Sum.inr entry_idx_designator
               ]
               )
@@ -3434,15 +3451,16 @@ List Murϕ.Statement
             Designator.mk (
               -- Example in comments
               -- core_
-              "core_"
+              "next_state"
             )
             [
               -- Example in comments
-              -- core_[i]
+              Sum.inl "core_",
+              -- core_[j]
               Sum.inr core_idx_designator,
-              -- core_[i].LQ
+              -- core_[j].LQ
               Sum.inl ctrler_name,
-              -- core_[i].LQ.entries
+              -- core_[j].LQ.entries
               Sum.inl msg_out
             ])
 
@@ -3466,10 +3484,11 @@ List Murϕ.Statement
             Designator.mk (
               -- Example in comments
               -- core_
-              "core_"
+              "next_state"
             )
             [
               -- Example in comments
+              Sum.inl "core_",
               -- core_[i]
               Sum.inr core_idx_designator,
               -- core_[i].LQ
@@ -3633,15 +3652,15 @@ List Murϕ.Statement
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
             loop_break := false;
-            if £dest_ctrler_name .num_entries = 0 then
+            if next_state .core_[j] .£dest_ctrler_name .num_entries = 0 then
               loop_break := true;
             endif;
 
-            entry_idx := £dest_ctrler_name .head;
+            entry_idx := next_state .core_[j] .£dest_ctrler_name .head;
             --# (2) loop to tail searching for:
             --# if plus 1 is outside this range, this should be caught
             --# by difference check
-            difference := ( £dest_ctrler_name .tail + £dest_num_entries_const_name - entry_idx ) % £dest_num_entries_const_name;
+            difference := ( next_state .core_[j] .£dest_ctrler_name .tail + £dest_num_entries_const_name - entry_idx ) % £dest_num_entries_const_name;
             offset := 0;
             --#if (difference != 0) then
             while ( (offset <= difference) & (loop_break = false)
@@ -3651,7 +3670,7 @@ List Murϕ.Statement
               curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
               --# (3) a load entry that's in a state where it's
               --# already done a read AND has a matching phys addr
-              dest_ctrler_entry := £dest_ctrler_name .entries[curr_idx];
+              dest_ctrler_entry := next_state .core_[j] .£dest_ctrler_name .entries[curr_idx];
               -- AZ TODO:
               -- Need a way to translate it so we get a list of states which come
               -- after the memory read?
@@ -3864,7 +3883,7 @@ List Murϕ.Statement
                 --# Don't bother doing any sophisticated rollback
                 --# or squashing for now
                 --# UPDATE STATE
-                £dest_ctrler_name .entries[curr_idx] := dest_ctrler_entry;
+                next_state .core_[j] .£dest_ctrler_name .entries[curr_idx] := dest_ctrler_entry;
 
                 --# reset other entries after, checking the ROB
                 --# get this entry's index in the ROB,
@@ -3878,7 +3897,7 @@ List Murϕ.Statement
 
               if (offset != £dest_num_entries_const_name) then
                 offset := offset + 1;
-                if (( entry_idx + offset ) % £dest_num_entries_const_name) = £dest_ctrler_name .tail then
+                if (( entry_idx + offset ) % £dest_num_entries_const_name) = next_state .core_[j] .£dest_ctrler_name .tail then
                   --#
                   loop_break := true;
                 endif;
@@ -4171,7 +4190,7 @@ partial def api_term_func_to_murphi_func
     -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
     [murϕ|  while_break := false],
     [murϕ|  found_entry := false],
-    [murϕ|  if (£dest_struct_name .num_entries = 0) then
+    [murϕ|  if (next_state .core_[j] .£dest_struct_name .num_entries = 0) then
         while_break := true;
       endif],
       -- AZ TODO:
@@ -4183,8 +4202,8 @@ partial def api_term_func_to_murphi_func
     --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
     --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
     --   endif],
-    [murϕ|  entry_idx := (£dest_struct_name .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - £dest_struct_name .head ) % £dest_num_entries_const_name],
+    [murϕ|  entry_idx := (next_state .core_[j] .£dest_struct_name .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_struct_name .head ) % £dest_num_entries_const_name],
     [murϕ|  offset := 0],
     [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
         curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
@@ -4872,10 +4891,37 @@ def dsl_type_to_murphi_type
 
   murphi_type_expr
 
+-- structure decl_gen_info where
+-- stmt : Pipeline.Statement
+-- lst_ctrlers : List controller_info
+
+
+structure decl_and_init_list where
+decl_list : List Murϕ.Decl
+init_list : List Murϕ.Statement
+trans : Pipeline.Description
+ctrler_names : List Identifier
+lst_ctrlers : List controller_info
+curr_ctrler_name : Identifier
+
+abbrev DeclInitM := StateT decl_and_init_list Id
+
 partial def ast_decl_assn_decl_to_murphi_decl
-( stmt : Pipeline.Statement )
-: List Murϕ.Decl
-:=
+-- ( stmt_ctrlers : decl_gen_info)
+(stmt : Pipeline.Statement)
+: DeclInitM (List Murϕ.Decl)
+:= do
+  let lst_ctrlers : List controller_info := (← get).lst_ctrlers
+
+  -- The other stuff, but i don't use this here..
+  -- { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names}
+  let trans := (← get).trans
+  let init_list := (← get).init_list
+  let decl_list := (← get).decl_list
+  let ctrler_names := (← get).ctrler_names
+  let curr_ctrler_name := (← get).curr_ctrler_name
+
+  -- let stmt : Pipeline.Statement := stmt_ctrlers.stmt
   -- match stmt; check for decl & assn decl; convert to Murϕ.Decl
 -- inductive Statement
 -- | labelled_statement : Label → Statement → Statement
@@ -4890,6 +4936,8 @@ partial def ast_decl_assn_decl_to_murphi_decl
 -- | stray_expr : Expr → Statement
 -- | block : /- { -/ List Statement /- } -/ → Statement
 -- | return_stmt : Expr → Statement
+
+  -- let new_decls : List Murϕ.Decl :=
   match stmt with
   | Pipeline.Statement.variable_declaration typed_ident =>
     let (typed, ident) :=
@@ -4904,7 +4952,7 @@ partial def ast_decl_assn_decl_to_murphi_decl
 --   | var   : List ID → TypeExpr → Decl
     let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
     
-    [Murϕ.Decl.var [ident] murphi_type_expr]
+    return [Murϕ.Decl.var [ident] murphi_type_expr]
   | Pipeline.Statement.value_declaration typed_ident _ =>
     let (typed, ident) :=
     match typed_ident with
@@ -4912,20 +4960,46 @@ partial def ast_decl_assn_decl_to_murphi_decl
 
     let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
     
-    [Murϕ.Decl.var [ident] murphi_type_expr]
+    return [Murϕ.Decl.var [ident] murphi_type_expr]
   | .labelled_statement _ stmt =>
-    ast_decl_assn_decl_to_murphi_decl stmt
+  -- let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
+  -- let murphi_stmts_decls := murphi_stmts_decls_monad.run
+  --   { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names} |>.run.2
+  -- let (lst_murphi_decls, murphi_inits) := (murphi_stmts_decls.decl_list, murphi_stmts_decls.init_list)
+    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
+    let lst_decls := ast_decl_translation_monad.run
+      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+      |>.run.1
+    return lst_decls
   | .conditional_stmt condition =>
     match condition with
     | Pipeline.Conditional.if_else_statement _ stmt1 stmt2 =>
-      (ast_decl_assn_decl_to_murphi_decl stmt1) ++ (ast_decl_assn_decl_to_murphi_decl stmt2)
+      let ast_decl_translation_monad1 := ast_decl_assn_decl_to_murphi_decl stmt1
+      let lst_decls1 := ast_decl_translation_monad1.run
+        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+      let ast_decl_translation_monad2 := ast_decl_assn_decl_to_murphi_decl stmt2
+      let lst_decls2 := ast_decl_translation_monad2.run
+        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+      return (lst_decls1 ++ lst_decls2)
     | .if_statement _ stmt =>
-      (ast_decl_assn_decl_to_murphi_decl stmt)
+      let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
+      let lst_decls := ast_decl_translation_monad.run
+        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+      return lst_decls
   | .listen_handle stmt _ => ast_decl_assn_decl_to_murphi_decl stmt
-  | .await none _ => []
+  | .await none _ => return []
   | .await term stmt_list =>
-     let await_stmts_decls :=
-     List.join (stmt_list.map ast_decl_assn_decl_to_murphi_decl)
+    --  let await_stmts_decls :=
+    --  List.join (stmt_list.map ast_decl_assn_decl_to_murphi_decl)
+    let await_stmt_monads := stmt_list.map ast_decl_assn_decl_to_murphi_decl
+    let lst_lst_decls : List (List Murϕ.Decl) := await_stmt_monads.map
+      λ monad =>
+        monad.run {trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+    let lst_decls : (List Murϕ.Decl) := List.join lst_lst_decls
 
 -- inductive Term
 -- | negation: Term → Term
@@ -4939,35 +5013,93 @@ partial def ast_decl_assn_decl_to_murphi_decl
 
     --  let func_decls :=
 
-    -- let q_name :=
-    --  match term with
-    --  | Pipeline.Term.function_call q_name _ => q_name
-    --  | _ => dbg_trace "Throw!" -- throw! 
-    --    panic! "Shouldn't get here.."
+    let q_name :=
+     match term with
+     | Pipeline.Term.function_call q_name _ => q_name
+     | _ => dbg_trace "Throw!" -- throw! 
+       panic! "Shouldn't get here.."
+    let q_name_list :=
+    match q_name with
+    | QualifiedName.mk lst_ident => lst_ident
     
-    -- let func_ctrler_name := q_name[0]
-    -- let matching_ctrler := get_ctrler_matching_name ctrler_name
+    let func_ctrler_name : Identifier := q_name_list[0]!
+    let matching_ctrler : controller_info := get_ctrler_matching_name func_ctrler_name lst_ctrlers
       
-    -- I don't know if i want to try this right now...
-    -- Main thing TODO, there's this edge case of name collisions,
-    -- if the func dest ctrler has decls which use the same name...
-    -- then when translating we need to give the murphi code a new name..
-    -- But then we also need to translate Decls???
-    await_stmts_decls
+    let func_name := q_name_list[1]!
+    -- with the matching ctrler, search thru it's transitions for a matching
+    -- when stmt
+    let matching_when : Pipeline.Statement := find_when_from_transition matching_ctrler.transition_list func_name curr_ctrler_name
+    let when_stmts :=
+    match matching_when with
+    | Pipeline.Statement.when _ _ stmt => stmt
+    | _ => dbg_trace "should be a when stmt!?"
+      panic! "Should have just found a when stmt! why did we get something else?"
+
+    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl when_stmts
+    let lst_decls_from_dest_struct := ast_decl_translation_monad.run
+      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+      |>.run.1
+
+    -- await_stmts_decls
+    return (lst_decls ++ lst_decls_from_dest_struct)
        
-  | .when _ _ stmt => ast_decl_assn_decl_to_murphi_decl stmt
-  | .block stmt_lst => List.join (stmt_lst.map ast_decl_assn_decl_to_murphi_decl)
-  | _ => []
+  | .when _ _ stmt =>
+    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
+    let lst_decls := ast_decl_translation_monad.run
+      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+      |>.run.1
+    return lst_decls
+  -- ast_decl_assn_decl_to_murphi_decl stmt
+  | .stray_expr expr =>
+    let term_from_expr :=
+    match expr with
+    | Pipeline.Expr.some_term term => term
+    | _ => dbg_trace "This shouldn't happen, malformed AST. TODO: Throw?"
+      panic! "Shold Throw here..."
+
+    let q_name :=
+     match term_from_expr with
+     | Pipeline.Term.function_call q_name _ => q_name
+     | _ => dbg_trace "Throw!" -- throw! 
+       panic! "Shouldn't get here.."
+    let q_name_list :=
+    match q_name with
+    | QualifiedName.mk lst_ident => lst_ident
+    
+    let func_ctrler_name : Identifier := q_name_list[0]!
+    let matching_ctrler : controller_info := get_ctrler_matching_name func_ctrler_name lst_ctrlers
+      
+    let func_name := q_name_list[1]!
+    -- with the matching ctrler, search thru it's transitions for a matching
+    -- when stmt
+    let matching_when : Pipeline.Statement := find_when_from_transition matching_ctrler.transition_list func_name curr_ctrler_name
+    let when_stmts :=
+    match matching_when with
+    | Pipeline.Statement.when _ _ stmt => stmt
+    | _ => dbg_trace "should be a when stmt!?"
+      panic! "Should have just found a when stmt! why did we get something else?"
+
+    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl when_stmts
+    let lst_decls_from_dest_struct := ast_decl_translation_monad.run
+      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+      |>.run.1
+
+    return lst_decls_from_dest_struct
+  | .block stmt_lst =>
+    let await_stmt_monads := stmt_lst.map ast_decl_assn_decl_to_murphi_decl
+    let lst_lst_decls : List (List Murϕ.Decl) := await_stmt_monads.map
+      λ monad =>
+        monad.run {trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+    let lst_decls : (List Murϕ.Decl) := List.join lst_lst_decls
+
+    return lst_decls
+    -- List.join (stmt_lst.map ast_decl_assn_decl_to_murphi_decl)
+  | _ => return []
 
 --========= Convert Murphi Stmts to Decls =========
 
-structure decl_and_init_list where
-decl_list : List Murϕ.Decl
-init_list : List Murϕ.Statement
-trans : Pipeline.Description
-ctrler_names : List Identifier
-
-abbrev DeclInitM := StateT decl_and_init_list Id
+-- A func to check exprs for Designators in Murphi
 
 def Decl.getIDs : Decl → List ID
 | .const id _ => [id]
@@ -4978,6 +5110,7 @@ def Designator.getID : Designator → ID
 | .mk id _ => id
 
 def gen_decl_from_stmt_and_append
+(_ : Unit)
 (murphi_stmt : Murϕ.Statement)
 : DeclInitM Unit
 := do
@@ -5006,6 +5139,7 @@ let decl_list := (← get).decl_list
 --   | returnstmt : Option Expr → Statement
 --   deriving Inhabited
 -- process the murphi stmt
+let ctrler_names := (← get).ctrler_names
 let decl_init_tuple : (List Murϕ.Decl) × (List Murϕ.Statement)
 :=
 match murphi_stmt with
@@ -5052,17 +5186,47 @@ match murphi_stmt with
       -- 1. One case: it's a Ctrler!
       -- Check if it is a ctrler!,
       -- if it is, then create a new init & decl!
-      let is_ctrler := (← get).ctrler_names.contains Designator.getID
+      let desig_id := (Designator.getID designator)
+      let is_ctrler := ctrler_names.contains desig_id
 
-      -- 2. another case: it's a func var...
-      -- we should create a decl for this..
-      -- But the type requires us to search
-      -- in the stmts for any called ctrler funcs
-      -- and see if we can match the stmt/ctrler name there
+      if is_ctrler then
+        -- gen both new_init and decl
+        let decl_type := Murϕ.TypeExpr.previouslyDefined desig_id
+        let decl : Murϕ.Decl := Murϕ.Decl.var [desig_id] decl_type
 
-      let new_inits := []
-      let new_decls := []
-      (new_decls, new_inits)
+        -- Sta.core_[j].<ctrler_name>
+        -- Define j
+        let j_desig := Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
+        let init_desig : Murϕ.Expr :=
+        Murϕ.Expr.designator (
+          Murϕ.Designator.mk "Sta" [
+          Sum.inl "core_",
+          Sum.inr j_desig,
+          Sum.inl desig_id
+          ]
+        )
+        let desig_id_desig : Murϕ.Designator := Murϕ.Designator.mk desig_id []
+
+        let init : Murϕ.Statement := Murϕ.Statement.assignment desig_id_desig init_desig
+
+        let new_inits := [init]
+        let new_decls := [decl]
+        (new_decls, new_inits)
+      else
+        -- 2. another case: it's a func var...
+        -- we should create a decl for this..
+        -- But the type requires us to search
+        -- in the stmts for any called ctrler funcs
+        -- and see if we can match the stmt/ctrler name there
+        dbg_trace "TODO: HANDLE THIS CASE!"
+        dbg_trace "TODO: Either find the decl before hand, or after"
+        dbg_trace "Though the decl translation func used before this¬"
+        dbg_trace "Should have gotten them all..."
+        dbg_trace "This should catch any vars that weren't handled somehow"
+
+        let new_inits := []
+        let new_decls := []
+        (new_decls, new_inits)
     else
       -- declared, so we just return the original lists
       -- and the fold which uses this func continues
@@ -5082,9 +5246,10 @@ match murphi_stmt with
 --   | putstmtstr : String → Statement
 --   | returnstmt : Option Expr → Statement
 | _ => ([], [])
-modify λ { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names } =>
-  { trans := trans, init_list := init_list ++ decl_init_tuple.2,
+modify λ { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name } =>
+  { trans := trans, init_list := init_list ++ decl_init_tuple.2, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name,
     decl_list := decl_list ++ decl_init_tuple.1, ctrler_names := ctrler_names }
+return ()
 
 -- TODO:
 def murphi_stmts_to_murphi_decls
@@ -5092,11 +5257,17 @@ def murphi_stmts_to_murphi_decls
 -- input is list of stmts
 ( stmts : List Murϕ.Statement)
 : DeclInitM Unit
-:=
+:= do
   -- get relevant info
-  --let stmts_to_translate := stmts_and_state.stmt_list
-  --let decls_transd_so_far := stmts_and_state.decl_list
-  --let init_stmts_so_far := stmts_and_state.init_list
+  let lst_ctrlers : List controller_info := (← get).lst_ctrlers
+
+  -- The other stuff, but i don't use this here..
+  -- { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names}
+  let trans := (← get).trans
+  let init_list := (← get).init_list
+  let decl_list := (← get).decl_list
+  let ctrler_names := (← get).ctrler_names
+  let curr_ctrler_name := (← get).curr_ctrler_name
 
   -- foldl thru the stmts list, match stmt with | case
   -- translate line by line
@@ -5104,10 +5275,51 @@ def murphi_stmts_to_murphi_decls
   --   if recursive, then still same; add decls & init to list..
 
   -- α : Unit, β : List Pipeline.Statement
-  -- List.foldl
+  let _ := List.foldl (
+    λ _ stmt =>
+      let gen_decl_monad := gen_decl_from_stmt_and_append () stmt
+      let lst_decls := gen_decl_monad.run
+        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+        |>.run.1
+      -- modify λ
+      --   { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name } =>
+      --   { trans := trans, init_list := init_list ++ decl_init_tuple.2, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name, decl_list := decl_list ++ decl_init_tuple.1, ctrler_names := ctrler_names }
+      ()
+  ) () stmts
 
   -- TODO: implement
   return ()
+
+def gen_next_state_update
+(lst_decls : List Murϕ.Decl)
+(lst_ctrlers : List Identifier)
+: List Murϕ.Statement
+:=
+  -- if decl name in lst of decls matches a name of ctrler
+  -- then generate a next_state := <ctrler_name>
+  let lst_decl_ids := lst_decls.map (
+    λ decl =>
+      let lst_ids :=
+      match decl with
+      | Murϕ.Decl.var lst_id _ => lst_id
+      | _ => dbg_trace "Shouldn't be other decl.."
+        panic! "TODO: Throw"
+      
+      let id := lst_ids[0]!
+      id
+  )
+
+  let lst_ctrler_updates : List Murϕ.Statement :=
+  List.join (
+    lst_decl_ids.map (
+      λ id =>
+        if lst_ctrlers.contains id then
+          [[murϕ| next_state := £id]]
+        else
+          []
+    )
+  )
+  lst_ctrler_updates
 
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
@@ -5410,11 +5622,15 @@ def dsl_trans_descript_to_murphi_rule
   let lst_ctrler_names : List Identifier := 
   ctrler_lst.map λ ctrler => ctrler.name
 
-  let simple_ast_murphi_decls : List Murϕ.Decl := ast_decl_assn_decl_to_murphi_decl trans_stmt_blk
+  let ast_decl_to_murphi_decl_monad : DeclInitM (List Murϕ.Decl) := ast_decl_assn_decl_to_murphi_decl trans_stmt_blk
+  let simple_ast_murphi_decls : List Murϕ.Decl := ast_decl_to_murphi_decl_monad.run
+    { trans := trans, init_list := [], decl_list := [], ctrler_names := lst_ctrler_names,
+      lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.1
 
   let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
   let murphi_stmts_decls := murphi_stmts_decls_monad.run
-    { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names} |>.run.2
+    { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names,
+      lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.2
   let (lst_murphi_decls, murphi_inits) := (murphi_stmts_decls.decl_list, murphi_stmts_decls.init_list)
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
   -- TODO NOTE: There are default vars to decl, like
@@ -5424,6 +5640,23 @@ def dsl_trans_descript_to_murphi_rule
   -- TODO NOTE: Use a Monad if necessary
     -- murphi_stmts_to_murphi_decls lst_murphi_stmt
     -- ([],[])
+
+  -- TODO: Thursday Evening:
+  -- Pre-pend the murphi_inits to the lst_murphi_stmt
+  -- Post-pend next_state for all structures in the Decl list
+  -- Post-pend Sta := next_state
+
+  let prepared_murphi_decls : List Murϕ.Decl :=
+    -- add the next state, which is of type STATE...
+    lst_murphi_decls ++ [Murϕ.Decl.var ["next_state"] (Murϕ.TypeExpr.previouslyDefined "STATE")]
+
+  let update_next_state : List Murϕ.Statement := 
+    -- Convert any declared decls of ctrlers into update
+    -- Though I think i could have avoided this by simply generating next_state.core_[j].<ctrler>
+    gen_next_state_update prepared_murphi_decls lst_ctrler_names
+
+  let prepared_murphi_stmts : List Murϕ.Statement :=
+    [[murϕ| next_state := Sta]] ++ murphi_inits ++ lst_murphi_stmt ++ update_next_state ++ [[murϕ| Sta := next_state]]
 
   dbg_trace "===== BEGIN TRANSLATION INFO ====="
   dbg_trace "=== ctrler ==="
@@ -5458,9 +5691,9 @@ def dsl_trans_descript_to_murphi_rule
         -- Option Expr
         guard_cond
         -- List Decl
-        lst_murphi_decls
+        prepared_murphi_decls
         -- List Statement
-        lst_murphi_stmt
+        prepared_murphi_stmts
       )
     ]
     -- List of Rule
