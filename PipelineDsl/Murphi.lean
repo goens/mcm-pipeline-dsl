@@ -252,10 +252,10 @@ private partial def formalToString : Formal → String
 private partial def procDeclToString : ProcDecl → String
   | .procedure id formals decls statements => s!"procedure {id} (" ++ "; ".intercalate (formals.map formalToString) ++ ");\n"
     ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n" ++ ";\n".intercalate (statements.map statementToString)
-    ++ "\n end;"
+    ++ ";\n end;"
   | .function id formals type decls statements => s!"function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ")"
     ++ " : " ++ typeExprToString type ++ ";\n" ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n"
-    ++ ";\n".intercalate (statements.map statementToString) ++ "\n end;"
+    ++ ";\n".intercalate (statements.map statementToString) ++ ";\n end;"
 
 private partial def designatorToString : Designator → String
   | .mk id idorexps =>
