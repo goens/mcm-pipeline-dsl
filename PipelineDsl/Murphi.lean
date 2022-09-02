@@ -476,9 +476,10 @@ syntax (name := paramstr2) "£" ident : paramstr
 syntax (name := justparam1) "£" ident : justparam
 syntax (name := justparam2) "£(" ident ")" : justparam
 
-syntax ("var")? paramident (paramident),* ":" type_expr : formal
+syntax "var" paramident,+ ":" type_expr : formal
+syntax  paramident,+ ":" type_expr : formal
 syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
-syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")* statement* "end" ";" : proc_decl
+syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")? (statements)? "end" ";" : proc_decl
 -- TODO: this needs space for the ".", should fix it
 syntax paramident : designator
 syntax designator "." paramident : designator
@@ -538,7 +539,7 @@ syntax expr "?" expr ":" expr : expr
 syntax paramident : type_expr
 syntax expr ".." expr : type_expr
 syntax "enum" "{" paramident,+ "}" : type_expr
-syntax "record" decl* "end" : type_expr
+syntax "record" sepBy(var_decl,";",";",allowTrailingSep) "end" : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
 syntax (name := constdecl) paramident ":" expr : const_decl
@@ -548,7 +549,6 @@ syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
 syntax decl decl decl : program
 
-syntax "[murϕ|" formal "]" : term
 syntax "[murϕ|" proc_decl "]" : term
 syntax "[murϕ|" designator "]" : term
 syntax "[murϕ|" quantifier "]" : term
@@ -571,9 +571,9 @@ syntax "[murϕ_rule|" mur_rule "]" : term
 syntax "[murϕ_expr|" expr "]" : term
 syntax "[murϕ_type_expr|" type_expr "]" : term
 syntax "[murϕ_decl|" decl "]" : term
+syntax "[murϕ_var_decl|" var_decl "]" : term
 
 macro_rules
-  | `([murϕ| $x:formal     ]) => `(formal| $x)
   | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
   | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
   | `([murϕ| $x:statements ]) => `(statements| $x)
@@ -595,6 +595,7 @@ macro_rules
   | `([murϕ_expr| $x:expr]) => `(expr| $x)
   | `([murϕ_type_expr| $x:type_expr]) => `(type_expr| $x)
   | `([murϕ_decl| $x:decl]) => `(decl| $x)
+  | `([murϕ_var_decl| $x:var_decl]) => `(var_decl| $x)
   | `([murϕ_designator| $x:designator]) => `(designator| $x)
 
 abbrev TMacro α := TSyntax α → MacroM Term
@@ -715,7 +716,7 @@ macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
   | `(type_expr| $x:expr .. $y) => do `(TypeExpr.integerSubrange [murϕ_expr| $x] [murϕ_expr| $y])
   | `(type_expr| enum { $[$ids],*} ) => do `(TypeExpr.enum $(← mapSyntaxArray ids expandParamIdent))
-  | `(type_expr| record $[$decls]* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_decl| $d]) ) )
+  | `(type_expr| record $[$decls];* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_var_decl| $d]) ) )
   | `(type_expr| array[$t₁] of $t₂) => do `(TypeExpr.array [murϕ_type_expr| $t₁] [murϕ_type_expr| $t₂])
 
 
@@ -796,6 +797,60 @@ macro_rules
     | none => Lean.quote ""
   `(Statement.assertstmt [murϕ_expr| $e] $strSyn)
   | `(statement| error $msg) => `(Statement.errorstmt $msg)
+  | `(statement| return $[$exp]?) => match exp with | none => `(Statement.returnstmt none) | some e => `(Statement.returnstmt (some [murϕ_expr| $e]))
+
+macro_rules
+  | `(formal| var $[$pis],* : $te) => do
+    let ids ← mapSyntaxArray pis expandParamIdent
+    `(Formal.mk true $(ids) [murϕ_type_expr| $te])
+  | `(formal| $[$pis],* : $te) => do
+    let ids ← mapSyntaxArray pis expandParamIdent
+    `(Formal.mk false $(ids) [murϕ_type_expr| $te])
+
+macro_rules
+  | `(proc_decl| function $pi ($[$formals:formal];*) : $te; $[$decls:decl]* begin $[$opStmts:statements]? end;) => do
+    let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
+    let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
+    let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
+    let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
+    `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] $declsSyn $stmts)
+  | `(proc_decl| function $pi ($[$formals:formal];*) : $te;  $[$opStmts:statements]? end;) => do
+    let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
+    let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
+    `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] [] $stmts)
+
+
+#check [murϕ_formal| rename_q : RENAME ]
+#check [murϕ|
+function rename_read_head( rename_q : RENAME) : INST;
+  return rename_q.test_insts[rename_q.rename_head];
+end;
+]
+
+#check [murϕ| 
+function rename_pop_head(
+             -- head and tail
+             -- head : inst_idx_t;
+             -- tail : inst_idx_t;
+             -- the array
+                    rename_queue : RENAME
+           ) : RENAME;
+  var rename_q : RENAME;
+begin
+  rename_q := rename_queue;
+
+  rename_q.rename_head := ( rename_queue.rename_head + 1 ) % (CORE_INST_NUM + 1);
+  rename_q.num_entries := rename_queue.num_entries - 1;
+  -- assert num_entries not less than 0?
+  -- assert ( rename_q.num_entries > 0 ) "can't have neg entries";
+
+  -- use this to overwrite the old one
+  -- (immutable style)
+  return rename_q;
+end;
+]
+
+
 def foo := "bar"
 #eval [murϕ| var foo : baz]
 #eval [murϕ| var £foo : baz]
@@ -845,22 +900,5 @@ def onestmt := [murϕ| b := c ]
 #check [murϕ| if (true) then
   £somestmts
   endif]
-#check [murϕ| type
-  LD_ENTRY_STATE : enum {await_creation,
-                      await_scheduled,
-                      await_fwd_check,
-                      await_sb_fwd_check,
-                      await_translation,
-                      await_check_forwarding_or_load_response,
-                      await_sb_fwd_check_response,
-                      build_packet,
-                      send_memory_request,
-                      await_mem_response,
-                      squashed_await_mem_response,
-                      write_result,
-                      await_committed
-                     };
 
-  VAL_TYPE : enum {val_reg, val_imm};
-]
 end Murϕ
