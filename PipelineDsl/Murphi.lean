@@ -505,12 +505,12 @@ syntax justparam ";" : statements
 syntax statement ";" statements : statements
 syntax justparam ";" statements : statements
 syntax paramident ":" expr : mur_alias
-syntax (name := simplerule) "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
+syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
 syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
 syntax "invariant" (str)? expr : mur_rule
-syntax (name := rulesetsyn) "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule -- TODO: see if we need to add (";")?
+syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
 syntax justparam : expr
 syntax "(" expr ")" : expr
@@ -718,8 +718,8 @@ macro_rules
   | `(type_expr| record $[$decls]* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_decl| $d]) ) )
   | `(type_expr| array[$t₁] of $t₂) => do `(TypeExpr.array [murϕ_type_expr| $t₁] [murϕ_type_expr| $t₂])
 
-@[macro simplerule]
-def expandSimpleRule : Lean.Macro
+
+macro_rules
   | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) => do
     let xSyn <- match x with
       | none => `(none)
@@ -728,16 +728,13 @@ def expandSimpleRule : Lean.Macro
         `(some $expanded)
     let dsSyn ← mapSyntaxArray ds λ d => `([murϕ_decl| $d])
     `(Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn ) [murϕ_statements| $stmts])
-  | _ => Lean.Macro.throwUnsupported
-
-@[macro rulesetsyn]
-def expandRuleset : Lean.Macro
   | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset ) => do
     let qs <- mapSyntaxArray quantifiers λ q => `([murϕ_quantifier| $q])
     let rs <- mapSyntaxArray rules λ r => `([murϕ_rule| $r])
     `(Rule.ruleset $qs $rs)
-  | _ => do
-    Lean.Macro.throwUnsupported
+  | `(mur_rule| invariant $[$s]? $e) => match s with
+    | none => `(Rule.invariant none [murϕ_expr| $e])
+    | some str => `(Rule.invariant (some $str) [murϕ_expr| $e])
 
 macro_rules
   | `(statements| $stmt:justparam ;) => do `( [ $(← expandJustParam stmt) ])
