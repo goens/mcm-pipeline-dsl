@@ -541,8 +541,8 @@ syntax "enum" "{" paramident,+ "}" : type_expr
 syntax "record" decl* "end" : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
-syntax paramident ":" expr : const_decl
-syntax paramident ":" type_expr : type_decl
+syntax (name := constdecl) paramident ":" expr : const_decl
+syntax (name := typedecl) paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
@@ -665,11 +665,24 @@ def expandVarDecl : TMacro `var_decl
 def expandVarDeclMacro : Macro
  | `(var_decl| $v) => expandVarDecl v
 
-/-
-syntax (name := quantifier1) paramident ":" type_expr : quantifier
-syntax (name := quantifier2) paramident ":=" expr "to" expr ("by" expr)? : quantifier
--/
+-- syntax paramident ":" expr : const_decl
+def expandTypeDecl : TMacro `type_decl
+  | `(type_decl| $id:paramident : $t:type_expr ) => do
+    `(Decl.type $(← expandParamIdent id) [murϕ_type_expr| $t])
+  | _ => Lean.Macro.throwUnsupported
 
+@[macro typedecl]
+def expandTypeDeclMacro : Macro
+ | `(type_decl| $d) => expandTypeDecl d
+
+def expandConstDecl : TMacro `const_decl
+  | `(const_decl| $id:paramident : $e:expr ) => do
+    `(Decl.const $(← expandParamIdent id) [murϕ_expr| $e])
+  | _ => Lean.Macro.throwUnsupported
+
+@[macro constdecl]
+def expandConstDeclMacro : Macro
+  | `(const_decl| $d) => expandConstDecl d
 
 def expandSimpleQuantifier : TMacro `quantifier
   | `(quantifier| $x:paramident : $t) => do
@@ -693,6 +706,10 @@ def expandQuantifierAssign : Lean.Macro
 macro_rules
   | `(decl| var $[$vardecls];*) => do
    mapSyntaxArray vardecls expandVarDecl
+  | `(decl| type $[$typedecls];*) => do
+   mapSyntaxArray typedecls expandTypeDecl
+  | `(decl| const $[$constdecls];*) => do
+   mapSyntaxArray constdecls expandConstDecl
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
@@ -831,5 +848,22 @@ def onestmt := [murϕ| b := c ]
 #check [murϕ| if (true) then
   £somestmts
   endif]
+#check [murϕ| type
+  LD_ENTRY_STATE : enum {await_creation,
+                      await_scheduled,
+                      await_fwd_check,
+                      await_sb_fwd_check,
+                      await_translation,
+                      await_check_forwarding_or_load_response,
+                      await_sb_fwd_check_response,
+                      build_packet,
+                      send_memory_request,
+                      await_mem_response,
+                      squashed_await_mem_response,
+                      write_result,
+                      await_committed
+                     };
 
+  VAL_TYPE : enum {val_reg, val_imm};
+]
 end Murϕ

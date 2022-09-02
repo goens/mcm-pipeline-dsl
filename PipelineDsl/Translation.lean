@@ -5875,33 +5875,33 @@ const ---- Configuration parameters ----
 type ---- Type declarations ----
 
   --# for value types
-  val_t : 0..MAX_VALUE;
+  val_t : 0 .. MAX_VALUE;
 
   --# GEN NOTE: have index & count types
-  inst_idx_t : 0..CORE_INST_NUM;
-  inst_count_t : 0..(CORE_INST_NUM + 1);
+  inst_idx_t : 0 .. CORE_INST_NUM;
+  inst_count_t : 0 .. (CORE_INST_NUM + 1);
   --# NOTE: could define seq_num_t type later
   --# for more arbitrary seq_num lengths
 
-  ld_idx_t : 0..LD_ENTRY_NUM;
-  ld_count_t : 0..(LD_ENTRY_NUM + 1);
+  ld_idx_t : 0 .. LD_ENTRY_NUM;
+  ld_count_t : 0 .. (LD_ENTRY_NUM + 1);
 
   --# For memory array
-  addr_idx_t : 0..ADDR_NUM;
+  addr_idx_t : 0 .. ADDR_NUM;
 
   --# for reg file regs
-  reg_idx_t : 0..REG_NUM;
+  reg_idx_t : 0 .. REG_NUM;
 
-  sq_idx_t : 0..SQ_ENTRY_NUM;
-  sq_count_t : 0..(SQ_ENTRY_NUM + 1);
+  sq_idx_t : 0 .. SQ_ENTRY_NUM;
+  sq_count_t : 0 .. (SQ_ENTRY_NUM + 1);
 
-  sb_idx_t : 0..SB_ENTRY_NUM;
-  sb_count_t : 0..(SB_ENTRY_NUM + 1);
+  sb_idx_t : 0 .. SB_ENTRY_NUM;
+  sb_count_t : 0 .. (SB_ENTRY_NUM + 1);
 
-  ic_idx_t : 0..IC_ENTRY_NUM;
-  ic_count_t : 0..(IC_ENTRY_NUM + 1);
+  ic_idx_t : 0 .. IC_ENTRY_NUM;
+  ic_count_t : 0 .. (IC_ENTRY_NUM + 1);
 
-  cores_t : 0..CORE_NUM;
+  cores_t : 0 .. CORE_NUM;
 
   MSG_DEST : enum {core, mem};
 
@@ -5941,7 +5941,7 @@ type ---- Type declarations ----
   --# Might cause some potential "confusion"
   --# with fields being set and such,
   --# but should be ok for now...
-  INST : record
+  INST : record;
   --# Inst Type Info
   --# Ld, st, uses immediate, etc.
   op : INST_TYPE;
@@ -6379,7 +6379,7 @@ function lq_schedule(
   lq_iter := lq.ld_head;
   lq_count := lq.num_entries;
 
-  --#for i:0..lq_count Do
+  --#for i:0 .. lq_count Do
   --# actually interesting,
   --# since if there's a collision
   --# it'll likely be because we
@@ -6388,7 +6388,7 @@ function lq_schedule(
   --# or include condition on if
   --# so it must be in await state?
   --# Could use a while loop instead
-  for i:0..LD_ENTRY_NUM Do
+  for i:0 .. LD_ENTRY_NUM Do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6430,7 +6430,7 @@ function iq_insert(
   --#iq_new.iq_insts[iq.iq_tail] := inst;
   --#iq_new.iq_tail := ( iq.iq_tail + 1 ) % CORE_INST_NUM;
   iq_new.num_entries := iq.num_entries + 1;
-  --#for i:0..CORE_INST_NUM Do
+  --#for i:0 .. CORE_INST_NUM Do
   i := CORE_INST_NUM;
   --#while i <= CORE_INST_NUM Do
   while 0 <= i Do
@@ -6634,7 +6634,7 @@ function sq_schedule(
   sq_iter := sq.sq_head;
   sq_count := sq.num_entries;
 
-  --#for i:0..lq_count Do
+  --#for i:0 .. lq_count Do
   --# actually interesting,
   --# since if there's a collision
   --# it'll likely be because we
@@ -6643,7 +6643,7 @@ function sq_schedule(
   --# or include condition on if
   --# so it must be in await state?
   --# Could use a while loop instead
-  for i:0..SQ_ENTRY_NUM Do
+  for i:0 .. SQ_ENTRY_NUM Do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6857,7 +6857,7 @@ function associative_assign_lq(
   lq_count := lq.num_entries;
   seq_num := msg.seq_num;
 
-  for i:0..LD_ENTRY_NUM Do
+  for i:0 .. LD_ENTRY_NUM Do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6923,7 +6923,7 @@ function associative_ack_sb(
   sb_count := sb.num_entries;
   seq_num := msg.seq_num;
 
-  for i:0..SB_ENTRY_NUM Do
+  for i:0 .. SB_ENTRY_NUM Do
     curr_entry_id := ( sb_iter + i ) % ( SB_ENTRY_NUM + 1);
     curr_entry := sb_new.sb_entries[curr_entry_id];
     if (curr_entry.instruction.seq_num = seq_num)
@@ -7183,7 +7183,7 @@ begin
       lq.ld_seq_num := 0;
     end;
     alias rename:init_state.core_[core].rename_ do
-      for i : 0..CORE_INST_NUM do
+      for i : 0 .. CORE_INST_NUM do
         rename.test_insts[i].op := inval;
         rename.test_insts[i].seq_num := 0;
       end;
@@ -7192,7 +7192,7 @@ begin
       rename.num_entries := 0;
     end;
     alias iq:init_state.core_[core].iq_ do
-      for i : 0..CORE_INST_NUM do
+      for i : 0 .. CORE_INST_NUM do
         iq.iq_insts[i].op := inval;
         iq.iq_insts[i].seq_num := 0;
         iq.iq_valid[i] := invalid;
@@ -7209,7 +7209,7 @@ begin
       end;
     end;
     alias rob:init_state.core_[core].rob_ Do
-      for i : 0..CORE_INST_NUM Do
+      for i : 0 .. CORE_INST_NUM Do
         rob.rob_insts[i].op := inval;
         rob.rob_insts[i].seq_num := 0;
         rob.state[i] := commit_not_sent;
@@ -7270,7 +7270,7 @@ begin
 
   -- # set up litmus test
   alias rename_c0:init_state.core_[0].rename_ Do
-    --#for i : 0..CORE_INST_NUM Do
+    --#for i : 0 .. CORE_INST_NUM Do
     --#  rename.test_insts[i].op := inval;
     --#  rename.test_insts[i].seq_num := 0;
     --#end;
@@ -7306,7 +7306,7 @@ begin
     rename_c0.num_entries := 2;
   end;
   alias rename_c1:init_state.core_[1].rename_ Do
-    --#for i : 0..CORE_INST_NUM Do
+    --#for i : 0 .. CORE_INST_NUM Do
     --#  rename.test_insts[i].op := inval;
     --#  rename.test_insts[i].seq_num := 0;
     --#end;
