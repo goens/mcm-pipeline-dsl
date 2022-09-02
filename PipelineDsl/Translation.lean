@@ -4380,6 +4380,43 @@ partial def api_term_func_to_murphi_func
   overall_murphi_tail_search_template
   -- default
 
+partial def dsl_type_to_murphi_type_string
+( dsl_type : Identifier )
+: String
+:=
+  -- Types that one may use in the DSL.. & it's Murphi Test Harness "Equivalent" (for now that is)
+  -- DSL        |    Murphi Test Harness
+  -- -----------------------------------
+  -- address    |    addr_idx_t
+  -- u32        |    val_t
+  -- packet     |    N/A
+  -- seq_num    |    inst_idx_t
+  let murphi_type_name : ID :=
+  if dsl_type == "address" then
+    "addr_idx_t"
+  else if dsl_type == "u32" then
+    "val_t"
+  else if dsl_type == "seq_num" then
+    "inst_idx_t"
+  else
+    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+
+  murphi_type_name
+
+partial def murphi_type_to_null
+(murphi_type : String)
+: Murϕ.Expr
+:=
+  if murphi_type == "addr_idx_t" then
+    Murϕ.Expr.integerConst 0
+  else if murphi_type == "val_t" then
+    Murϕ.Expr.integerConst 0
+  else if murphi_type == "inst_idx_t" then
+    Murϕ.Expr.integerConst 0
+  else
+    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED Murphi TYPE ====="
+  
+
 -- AZ TODO: Implement these 2 functions!!!
 partial def ast_stmt_to_murphi_stmts
 (stmt_trans_info : stmt_translation_info)
@@ -4443,10 +4480,39 @@ partial def ast_stmt_to_murphi_stmts
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
     
-    let murphi_assignment_stmt :=
-    Murϕ.Statement.assignment designator murphi_expr
+    let is_null_expr : Bool := (
+      match expr with
+      | Pipeline.Expr.some_term term =>
+        match term with
+        | Term.var ident =>
+          -- I think this is marked as a Var, rather than a const 
+          if ident == "NULL" then
+            true
+          else false
+        | _ => false
+      | _ => false
+    )
 
-    [murphi_assignment_stmt]
+    if is_null_expr then
+      -- translate, identify the type
+      let dsl_type : Identifier := (
+        match typed_ident with
+        | TypedIdentifier.mk tiden ident => tiden
+      )
+
+      let murphi_type_expr := dsl_type_to_murphi_type_string dsl_type
+      let murphi_null := murphi_type_to_null murphi_type_expr
+
+      let murphi_assignment_stmt :=
+      Murϕ.Statement.assignment designator murphi_null
+
+      [murphi_assignment_stmt]
+    else
+
+      let murphi_assignment_stmt :=
+      Murϕ.Statement.assignment designator murphi_expr
+
+      [murphi_assignment_stmt]
 
   | Statement.return_stmt expr =>
     let expr_trans_info :=
@@ -4746,7 +4812,28 @@ partial def ast_stmt_to_murphi_stmts
       assn_stmt_to_expr_translation_info stmt_trans_info expr
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
+    
+    -- let is_null_expr : Bool := (
+    --   match expr with
+    --   | Pipeline.Expr.some_term term =>
+    --     match term with
+    --     | Term.var ident =>
+    --       -- I think this is marked as a Var, rather than a const 
+    --       if ident == "NULL" then
+    --         true
+    --       else false
+    --     | _ => false
+    --   | _ => false
+    -- )
 
+    -- if is_null_expr then
+    --   -- match the var's type with an AST type, then get
+    --   -- the Murphi type, the get the Murphi type's NULL value (like 0, or "")
+    --   let murphi_assn_expr :=
+    --     Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
+    
+    --   [murphi_assn_expr]
+    -- else
     let murphi_assn_expr :=
       Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
     
@@ -5016,6 +5103,7 @@ def dsl_type_to_murphi_type
   Murϕ.TypeExpr.previouslyDefined murphi_type_name
 
   murphi_type_expr
+
 
 -- structure decl_gen_info where
 -- stmt : Pipeline.Statement
