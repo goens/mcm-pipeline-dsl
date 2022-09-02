@@ -8560,7 +8560,7 @@ begin
   if (rob_q.num_entries <= CORE_INST_NUM)
     then
     if (iq_q.num_entries <= CORE_INST_NUM)
-      Then
+      then
 
       inst := rename_read_head(rename_q);
       if (inst.op = ld) then
@@ -8622,7 +8622,7 @@ begin
   --          &
   --          (iq_q.iq_valid[1] = ready)
   --         ) "both iq entries won't be assigned";
-endif;
+end;
 endruleset;
 
 -- # NOTE: Create rule for pop from IQ, tell LQ
@@ -8698,7 +8698,7 @@ begin
   next_state.core_[j].iq_.num_entries := num_entries-1;
   Sta := next_state;
   -- error "trace";
-endif;
+end;
 endruleset;
 endruleset;
 
@@ -8813,7 +8813,7 @@ begin
   endif;
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 
 -- # TODO then model the store queue?
@@ -8874,7 +8874,7 @@ begin
   NxtSta.core_[j].lsq_.lq_ := lq_q;
 --
   Sta := NxtSta;
-endif;
+end;
 endruleset;
 
 --# TODO make copy for STORE
@@ -8929,7 +8929,7 @@ begin
   NxtSta.core_[j].sb_ := sb_q;
 --
   Sta := NxtSta;
-endif;
+end;
 endruleset;
 
 --#NOTE: Marking this transition as the mem access one!
@@ -8989,7 +8989,7 @@ begin
   assert ( sb.sb_entries[sb.sb_head].instruction.seq_num != 0 ) "invalid st";
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 
 --# NOTE: don't need to do this, the associative_ack
@@ -9081,7 +9081,7 @@ begin
 
   --#Sta := next_state;
   Sta := init_state_fn();
-endif;
+end;
 
 
 --#invariant "amd1_verif"
@@ -9138,6 +9138,7 @@ invariant "iwp23b1"
   ( Sta.core_[1].rf_.rf[1] = 1 )
 )
   ]
+  murphi_file
 
 --- ==== AST tests =====
 

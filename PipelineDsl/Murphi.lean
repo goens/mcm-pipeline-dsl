@@ -512,7 +512,7 @@ syntax paramident ":" expr : mur_alias
 syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
-syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate") : mur_rule
+syntax  "startstate" (str)? (decl* "begin")? statements ("end" <|> "endstartstate") : mur_rule
 syntax "invariant" (str)? expr : mur_rule
 syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) ("end" <|> "endruleset") : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") ("end" <|> "endalias"): mur_rule
@@ -740,6 +740,19 @@ macro_rules
   | `(mur_rule| invariant $[$s]? $e) => match s with
     | none => `(Rule.invariant none [murϕ_expr| $e])
     | some str => `(Rule.invariant (some $str) [murϕ_expr| $e])
+  | `(mur_rule| startstate $[$name]? $[$decls]* begin $stmts end) => do
+    let dsSyn ← mapSyntaxArray decls λ d => `([murϕ_decl| $d])
+    let nameSyn ← match name with
+      | none => `(none)
+      | some str => `(some $str)
+     `(Rule.startstate $nameSyn $dsSyn [murϕ_statements| $stmts])
+  | `(mur_rule| startstate $[$name:str]? $stmts:statements end) => do
+    let nameSyn ← match name with
+      | none => `(none)
+      | some str => `(some $str)
+    `(Rule.startstate $nameSyn [] [murϕ_statements| $stmts])
+
+syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate") : mur_rule
 
 macro_rules
   | `(statements| $stmt:justparam ;) => do `( [ $(← expandJustParam stmt) ])
@@ -830,9 +843,13 @@ macro_rules
 macro_rules
   | `(mur_alias|  $pi:paramident : $expr ) => do `(Alias.mk $(← expandParamIdent pi) [murϕ_expr| $expr])
 
-
-#check [murϕ_formal| rename_q : RENAME ]
-
+macro_rules
+  | `(program|  $[$decls]* $[$procdecls];* $[$rules];*) => do
+    let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
+    let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
+    let procdeclsSyn ← mapSyntaxArray procdecls λ d => `([murϕ_proc_decl| $d])
+    let rulesSyn ← mapSyntaxArray rules λ r => `([murϕ_rule| $r])
+    `({ decls := $declsSyn, procdecls := $procdeclsSyn, rules := $rulesSyn : Program})
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
@@ -902,4 +919,7 @@ def onestmt := [murϕ| b := c ]
     --#mem.msg 
   endalias;
 ]
+
+
+
 end Murϕ
