@@ -391,6 +391,62 @@ def Expr.appendCallArg : Expr → Expr → Expr
   | .call id args, newArg => .call id (args ++ [newArg])
   | expr, _ => expr
 
+mutual
+
+partial def Expr.beq : Expr → Expr → Bool
+  | .designator d₁, .designator d₂ => d₁.beq d₂
+  | .integerConst n₁, .integerConst n₂ => n₁ == n₂
+  | .call id₁ exprs₁, .call id₂ exprs₂ =>
+      id₁ == id₂ && exprs₁.length == exprs₂.length &&
+      (exprs₁.zip exprs₂).foldl (init := true)
+        λ res (e₁, e₂) => res && e₁.beq e₂
+  | .universal q₁ e₁, .universal q₂ e₂ => q₁.beq q₂ && e₁.beq e₂
+  | .existential q₁ e₁, .existential q₂ e₂ => q₁.beq q₂ && e₁.beq e₂
+  | .binop op₁ e₁₁ e₁₂, .binop op₂ e₂₁ e₂₂ => op₁ == op₂ && e₁₁.beq e₂₁ && e₁₂.beq e₂₂
+  | .negation e₁, .negation e₂ => e₁.beq e₂
+  | .conditional c₁ t₁ e₁, .conditional c₂ t₂ e₂ => c₁.beq c₂ && t₁.beq t₂ && e₁.beq e₂
+  | _, _ => false
+
+partial def Quantifier.beq : Quantifier → Quantifier → Bool
+  | .simple id₁ te₁, .simple id₂ te₂ => id₁ == id₂ && te₁.beq te₂
+  | .assign id₁ e₁₁ e₁₂ oe₁, .assign id₂ e₂₁ e₂₂ oe₂ =>
+    id₁ == id₂ && e₁₁.beq e₂₁ && e₁₂.beq e₂₂ &&
+    match oe₁, oe₂ with
+      | none, none => true
+      | some exp₁, some exp₂ => Expr.beq exp₁ exp₂
+      | _, _ => false
+  | _, _ => false
+
+partial def Designator.beq : Designator → Designator → Bool
+  | .mk id₁ rest₁, .mk id₂ rest₂ => and (id₁ == id₂) $
+    rest₁.zip rest₂ |>.map (λ (sum₁,sum₂) => match sum₁, sum₂ with
+    | .inl id'₁, .inl id'₂ => id'₁ == id'₂
+    | .inr exp₁, .inr exp₂ => Expr.beq exp₁ exp₂
+    | _, _ => false)
+      |>.all id
+
+partial def TypeExpr.beq : TypeExpr → TypeExpr → Bool
+  | .previouslyDefined id₁, .previouslyDefined id₂ => id₁ == id₂
+  | .integerSubrange e₁ te₁, .integerSubrange e₂ te₂ => e₁.beq e₂ && te₁.beq te₂
+  | .enum ids₁, .enum ids₂ => ids₁ == ids₂
+  | .record decls₁, .record decls₂ => decls₁.zip decls₂ |>.all λ (d₁, d₂) => d₁.beq d₂
+  | .array te₁₁ te₁₂, .array te₂₁ te₂₂ => te₁₁.beq te₂₁ && te₁₂.beq te₂₂
+  | _, _ => false
+
+partial def Decl.beq : Decl → Decl → Bool
+  | .const id₁ e₁, .const id₂ e₂ => id₁ == id₂ && e₁.beq e₂
+  | .type id₁ te₁, .type id₂ te₂ => id₁ == id₂ && te₁.beq te₂
+  | .var  ids₁ te₁, .var ids₂ te₂ => ids₁ == ids₂ && te₁.beq te₂
+  | _, _ => false
+
+end
+
+instance : BEq Designator where beq := Designator.beq
+instance : BEq Decl where beq := Decl.beq
+instance : BEq Expr where beq := Expr.beq
+instance : BEq Quantifier where beq := Quantifier.beq
+instance : BEq TypeExpr where beq := TypeExpr.beq
+
 declare_syntax_cat formal
 declare_syntax_cat proc_decl
 declare_syntax_cat designator
@@ -463,8 +519,20 @@ syntax num : expr
 syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
 syntax "forall" quantifier "do" expr "endforall" : expr
 syntax "exists" quantifier "do" expr "endexists" : expr
-syntax expr ("+" <|> "-" <|> "*" <|> "/" <|> "%" <|> "|" <|> "&" <|>
-             "->" <|> "<" <|> "<=" <|> ">" <|> ">=" <|> "=" <|> "!=") expr : expr
+syntax expr "+" expr : expr
+syntax expr "-" expr : expr
+syntax expr "*" expr : expr
+syntax expr "/" expr : expr
+syntax expr "%" expr : expr
+syntax expr "|" expr : expr
+syntax expr "&" expr : expr
+syntax expr "->" expr : expr
+syntax expr "<" expr : expr
+syntax expr "<=" expr : expr
+syntax expr ">" expr : expr
+syntax expr ">=" expr : expr
+syntax expr "=" expr : expr
+syntax expr "!=" expr : expr
 syntax "!" expr : expr
 syntax expr "?" expr ":" expr : expr
 syntax paramident : type_expr
@@ -549,12 +617,10 @@ def expandJustParam : TMacro `justparam
 @[macro paramident1]
 def expandJustParamMacro1 : Macro
   | `(justparam| $p) => expandJustParam p
-  | _ => Lean.Macro.throwUnsupported
 
 @[macro paramident2]
 def expandJustParamMacro2 : Macro
   | `(justparam| $p) => expandJustParam p
-  | _ => Lean.Macro.throwUnsupported
 
 def expandParamIdent : TMacro `paramident
   |  `(paramident| $x:ident) => `($(Lean.quote x.getId.toString))
@@ -566,17 +632,14 @@ def expandParamIdent : TMacro `paramident
 @[macro paramident1]
 def expandParamIdentMacro1 : Macro
   | `(paramident| $p) => expandParamIdent p
-  | _ => Lean.Macro.throwUnsupported
 
 @[macro paramident2]
 def expandParamIdentMacro2 : Macro
   | `(paramident| $p) => expandParamIdent p
-  | _ => Lean.Macro.throwUnsupported
 
 @[macro paramident3]
 def expandParamIdentMacro3 : Macro
   | `(paramident| $p) => expandParamIdent p
-  | _ => Lean.Macro.throwUnsupported
 
 def expandParamStr : TMacro `paramstr
   |  `(paramstr| $x:str) => `($x)
@@ -586,12 +649,10 @@ def expandParamStr : TMacro `paramstr
 @[macro paramstr1]
 def expandParamStrMacro1 : Macro
   | `(paramstr| $p) => expandParamStr p
-  | _ => Lean.Macro.throwUnsupported
 
 @[macro paramstr2]
 def expandParamStrMacro2 : Macro
   | `(paramstr| $p) => expandParamStr p
-  | _ => Lean.Macro.throwUnsupported
 
 def expandVarDecl : TMacro `var_decl
   | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
@@ -603,8 +664,6 @@ def expandVarDecl : TMacro `var_decl
 @[macro vardecl]
 def expandVarDeclMacro : Macro
  | `(var_decl| $v) => expandVarDecl v
- | _ => Lean.Macro.throwUnsupported
-
 
 /-
 syntax (name := quantifier1) paramident ":" type_expr : quantifier
@@ -620,7 +679,6 @@ def expandSimpleQuantifier : TMacro `quantifier
 @[macro simplequantifier]
 def  expandSimpleQuantifierMacro : Lean.Macro
   | `(quantifier| $v) => expandSimpleQuantifier v
-  | _ => Lean.Macro.throwUnsupported
 
 @[macro quantifierassign]
 def expandQuantifierAssign : Lean.Macro
@@ -696,7 +754,6 @@ macro_rules
     let args <- mapSyntaxArray es.getElems λ e => `([murϕ_expr|$e])
     `(Murϕ.Expr.call $(← expandParamIdent x) $args)
 --  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
-
 
 macro_rules
   | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
