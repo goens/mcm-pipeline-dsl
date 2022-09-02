@@ -7456,18 +7456,18 @@ begin
       --# contention stuff...
       --# Try again when resource free.
       ld_entry.ld_state := await_fwd_check;
-    end;
+    endif;
   else
     --# go to build_packet!
     --#ld_entry.ld_state := build_packet;
     --# NOTE: No! go to check SB!
     ld_entry.ld_state := await_sb_fwd_check;
-  end;
+  endif;
 
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 ------# NOTE: SQ TRANSITION, MOVE to SQ SECTION LATER ------
@@ -7508,7 +7508,7 @@ begin
     lq := set_load_state_to_state(lq,
                                   Sta.core_[j].lsq_.sq_.ld_seq_num,
                                   await_sb_fwd_check);
-  end;
+  endif;
   st_idx := find_st_idx_of_seq_num(sq,
                                    sq.st_seq_num);
   --# put st_idx;
@@ -7560,7 +7560,7 @@ begin
       --# Break out of the while loop
       --#offset := difference + 1;
       while_break := true;
-    end;
+    endif;
 
     --#if (while_break = true) then
     --#  offset := difference + 1;
@@ -7569,8 +7569,8 @@ begin
       offset := offset + 1;
     else
       while_break := true;
-    end;
-  end;
+    endif;
+  endif;
   --#end;
 
   --# NOTE:
@@ -7585,7 +7585,7 @@ begin
     lq := set_load_state_to_state(lq,
                                   Sta.core_[j].lsq_.sq_.ld_seq_num,
                                   await_sb_fwd_check);
-  end;
+  endif;
 
   --# whether it was found or not, the request has been
   --# completed
@@ -7605,7 +7605,7 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-end; --#end;
+endif; --#end;
 endruleset;
 
 ruleset j : cores_t Do
@@ -7645,12 +7645,12 @@ begin
     --# search busy boolean flag
     --# which is more efficient...
     ld_entry.ld_state := await_sb_fwd_check;
-  end;
+  endif;
 
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 ------# NOTE: SB TRANSITION, MOVE to SB SECTION LATER ------
@@ -7696,7 +7696,7 @@ begin
     lq := set_load_state_to_state(lq,
                                   Sta.core_[j].sb_.ld_seq_num,
                                   build_packet);
-  end;
+  endif;
 
   difference := ( st_idx + ( SB_ENTRY_NUM + 1) - sb.sb_head ) % ( SB_ENTRY_NUM + 1);
   offset := 0;
@@ -7741,20 +7741,20 @@ begin
       --# Break out of the while loop
       --#offset := difference + 1;
       while_break := true;
-    end;
+    endif;
     if ( offset != SB_ENTRY_NUM ) then
       offset := offset + 1;
     else
       while_break := true;
-    end;
-  end;
+    endif;
+  endif;
 
   --# Change this check to if offset = SB_ENTRY_NUM
   if (while_break = false) then
     lq := set_load_state_to_state(lq,
                                   Sta.core_[j].sb_.ld_seq_num,
                                   build_packet);
-  end;
+  endif;
 
   --# whether sth was found or not, the request has
   --# been completed
@@ -7767,7 +7767,7 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-end; --#end;
+endif; --#end;
 endruleset;
 
 
@@ -7792,7 +7792,7 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 
@@ -7814,7 +7814,7 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 --#NOTE: Marking this transition as the mem access one!
@@ -7900,7 +7900,7 @@ begin
   next_state.core_[j].mem_interface_ := mem_inter;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 -- # ====== Shortcut/Testing States =====
@@ -7946,7 +7946,7 @@ begin
   next_state.core_[j].rf_ := rf;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 -- change the state of await states
@@ -8001,7 +8001,7 @@ begin
   next_state.ic_ := ic;
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 
 --# Choose an IC msg to perform it's access operation
@@ -8035,7 +8035,7 @@ begin
   elsif (ic.buffer[i].r_w = write)
     then
     mem.arr[addr] := ic.buffer[i].value;
-  end;
+  endif;
 
   --# Reverse direction for acknowledgement
   ic.buffer[i].dest := core;
@@ -8044,7 +8044,7 @@ begin
   next_state.mem_ := mem;
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 
 --# Choose an IC msg to return it's acknowledgement
@@ -8092,7 +8092,7 @@ begin
   next_state.core_[j].mem_interface_ := mem_interface;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 --# Core checks input msgs to notify dest structure
@@ -8119,7 +8119,7 @@ begin
     --# advance SB state to ack'd
     --# basically clear'd
     sb := associative_ack_sb(sb, mem_interface.in_msg);
-  end;
+  endif;
 
   mem_interface.in_busy := false;
 
@@ -8128,7 +8128,7 @@ begin
   next_state.core_[j].mem_interface_ := mem_interface;
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 
 ------------- END MEMORY TRANSITIONS -----------------
@@ -8200,7 +8200,7 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 --#============ LQ Transition =================
@@ -8250,7 +8250,7 @@ begin
   loop_break := false;
   if lq.num_entries = 0 then
     loop_break := true;
-  end;
+  endif;
 
   --# (1) get matching LQ index num
   if (sq.sq_entries[st_idx].ld_seq_num = 0) then
@@ -8265,8 +8265,8 @@ begin
       ld_idx := ld_idx + 1;
     else
       loop_break := true;
-    end;
-  end;
+    endif;
+  endif;
   --# (2) loop to tail searching for:
   --# if plus 1 is outside this range, this should be caught
   --# by difference check
@@ -8296,13 +8296,13 @@ begin
         if (sq.ld_seq_num = ld_entry.instruction.seq_num) then
           sq.search_busy := false;
           --# I should probably clear the other fields...
-        end;
+        endif;
       elsif ( ld_entry.ld_state = await_sb_fwd_check_response ) then
         if (sb.ld_seq_num = ld_entry.instruction.seq_num) then
           sb.search_busy := false;
           --# I should probably clear the other fields...
-        end;
-      end;
+        endif;
+      endif;
 
       --#put "=== BEGIN ===\n";
       --#put ld_entry.ld_state;
@@ -8313,7 +8313,7 @@ begin
       else
         ld_entry.ld_state := await_fwd_check;
         --#put "just reset\n";
-      end;
+      endif;
       --#put "==== END ====\n";
       --# Don't bother doing any sophisticated rollback
       --# or squashing for now
@@ -8322,14 +8322,14 @@ begin
 
       --# NOTE IMPORTANT! exit from loop!
       loop_break := true;
-    end;
+    endif;
 
     if (offset != LD_ENTRY_NUM) then
       offset := offset + 1;
     else
       loop_break := true;
-    end;
-  end;
+    endif;
+  endif;
   --#end;
 
   --# set it's state fwd to st_build_packet
@@ -8342,7 +8342,7 @@ begin
   next_state.core_[j].sb_ := sb;
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 --#============ LQ Transition =================
 
@@ -8361,7 +8361,7 @@ begin
   next_state.core_[j].lsq_.sq_.sq_entries[i] := sq_entry;
 
   Sta := next_state;
-end; end;
+endif; endif;
 endruleset;
 
 --# TODO: Comment this out for the Load
@@ -8577,7 +8577,7 @@ begin
           lq_q := lq_insert(lq_q, sq_q, inst);
           iq_q := iq_insert(iq_q, inst);
           rob_q := rob_insert(rob_q, inst);
-        end;
+        endif;
       elsif (inst.op = st) then
         -- #remove inst from rename,
         -- rename_q := rename_pop_head(rename_q);
@@ -8590,14 +8590,14 @@ begin
           sq_q := sq_insert(lq_q, sq_q, inst);
           iq_q := iq_insert(iq_q, inst);
           rob_q := rob_insert(rob_q, inst);
-        end;
+        endif;
       elsif (inst.op = inval) then
         -- #remove inst from rename,
         -- rename_q := rename_pop_head(rename_q);
         error "shouldn't reach this??";
-      end;
-    end;
-  end;
+      endif;
+    endif;
+  endif;
 
   -- # also insert into IQ...
 
@@ -8622,7 +8622,7 @@ begin
   --          &
   --          (iq_q.iq_valid[1] = ready)
   --         ) "both iq entries won't be assigned";
-end;
+endif;
 endruleset;
 
 -- # NOTE: Create rule for pop from IQ, tell LQ
@@ -8676,7 +8676,7 @@ begin
     sq := sq_schedule(sq, seq_num);
   elsif (inst.op = inval) then
     error "shouldn't have an inval inst in IQ?";
-  end;
+  endif;
 
   -- 2. de-alloc it
   --#next_state.core_[j].iq_.iq_valid[i] := invalid;
@@ -8692,13 +8692,13 @@ begin
     next_state.core_[j].lsq_.lq_ := lq;
   elsif Sta.core_[j].iq_.iq_insts[i].op = st then
     next_state.core_[j].lsq_.sq_ := sq;
-  end;
+  endif;
   next_state.core_[j].iq_.iq_insts[i] := inst;
   next_state.core_[j].iq_.iq_valid[i] := invalid;
   next_state.core_[j].iq_.num_entries := num_entries-1;
   Sta := next_state;
   -- error "trace";
-end;
+endif;
 endruleset;
 endruleset;
 
@@ -8763,7 +8763,7 @@ begin
       --# If inst wasn't directly committed
       -- # set state to commit sig sent
       rob.state[rob.rob_head] := commit_sig_sent;
-    end;
+    endif;
 
     -- # should be the head load...
     --# commit if in await commit, otherwise set
@@ -8788,7 +8788,7 @@ begin
         --# If inst wasn't directly committed
         -- # set state to commit sig sent
         rob.state[rob.rob_head] := commit_sig_sent;
-      end;
+      endif;
 
       -- # should be the head load...
       -- # sq will insert head_inst into SB
@@ -8797,11 +8797,11 @@ begin
       --# remove sq head if at await commit
       --# otherwise, set saw commit sig flag to true
       sq_q := sq_commit_head(sq_q);
-    end;
+    endif;
 
   elsif (head_inst.op = inval) then
     error "shouldn't have an inval head inst??";
-  end;
+  endif;
 
   next_state.core_[j].rob_ := rob;
 
@@ -8810,10 +8810,10 @@ begin
   elsif (head_inst.op = st) then
     next_state.core_[j].lsq_.sq_ := sq_q;
     next_state.core_[j].sb_ := sb_q;
-  end;
+  endif;
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 
 -- # TODO then model the store queue?
@@ -8874,7 +8874,7 @@ begin
   NxtSta.core_[j].lsq_.lq_ := lq_q;
 --
   Sta := NxtSta;
-end;
+endif;
 endruleset;
 
 --# TODO make copy for STORE
@@ -8922,14 +8922,14 @@ begin
 
     --# "signal back" to rob & remove the head
     rob := rob_remove(rob);
-  end;
+  endif;
 
   NxtSta.core_[j].rob_ := rob;
   NxtSta.core_[j].lsq_.sq_ := sq_q;
   NxtSta.core_[j].sb_ := sb_q;
 --
   Sta := NxtSta;
-end;
+endif;
 endruleset;
 
 --#NOTE: Marking this transition as the mem access one!
@@ -8989,7 +8989,7 @@ begin
   assert ( sb.sb_entries[sb.sb_head].instruction.seq_num != 0 ) "invalid st";
 
   Sta := next_state;
-end;
+endif;
 endruleset;
 
 --# NOTE: Don't need to do this, the associative_ack
@@ -9081,7 +9081,7 @@ begin
 
   --#Sta := next_state;
   Sta := init_state_fn();
-end;
+endif;
 
 
 --#invariant "amd1_verif"

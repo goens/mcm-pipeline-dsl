@@ -478,8 +478,8 @@ syntax (name := justparam2) "£(" ident ")" : justparam
 
 syntax "var" paramident,+ ":" type_expr : formal
 syntax  paramident,+ ":" type_expr : formal
-syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* "end" ";" : proc_decl
-syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")? (statements)? "end" ";" : proc_decl
+syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* ("end" <|> "endprocedure") ";" : proc_decl
+syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")? (statements)? ("end" <|> "endfunction") ";" : proc_decl
 -- TODO: this needs space for the ".", should fix it
 syntax paramident : designator
 syntax designator "." paramident : designator
@@ -489,11 +489,11 @@ syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : 
 syntax designator ":=" expr : statement
 syntax "if" expr "then" statements
        ("elsif" expr "then" statements)*
-       ("else" sepBy(statement,";",";",allowTrailingSep))? "endif" : statement
-syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? "endswitch" : statement
-syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) "endfor" : statement
-syntax "while" expr "do" sepBy(statement,";",";",allowTrailingSep) "end" : statement
-syntax "alias" sepBy(mur_alias,";") "do" statement* "end" : statement
+       ("else" sepBy(statement,";",";",allowTrailingSep))? ("endif" <|> "end") : statement
+syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? ("end" <|> "endswitch") : statement
+syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) ("end" <|> "endfor") : statement
+syntax "while" expr "do" sepBy(statement,";",";",allowTrailingSep) ("end" <|> "endwhile") : statement
+syntax "alias" sepBy(mur_alias,";") "do" statement* ("end" <|> "endalias") : statement
 syntax paramident "(" expr,+ ")" : statement
 syntax "clear" designator : statement
 syntax "error" str : statement
@@ -506,20 +506,20 @@ syntax justparam ";" : statements
 syntax statement ";" statements : statements
 syntax justparam ";" statements : statements
 syntax paramident ":" expr : mur_alias
-syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements "end" : mur_rule
+syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
-syntax  "startstate" (str)? (decl "begin")? statement* "end" : mur_rule
+syntax  "startstate" (str)? (decl "begin")? statement* ("end" <|> "endstartstate") : mur_rule
 syntax "invariant" (str)? expr : mur_rule
-syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) "endruleset" : mur_rule -- TODO: see if we need to add (";")?
-syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") "end" : mur_rule
+syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) ("end" <|> "endruleset") : mur_rule -- TODO: see if we need to add (";")?
+syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") ("end" <|> "endalias"): mur_rule
 syntax justparam : expr
 syntax "(" expr ")" : expr
 syntax designator : expr
 syntax num : expr
 syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
-syntax "forall" quantifier "do" expr "endforall" : expr
-syntax "exists" quantifier "do" expr "endexists" : expr
+syntax "forall" quantifier "do" expr ("end" <|> "endforall") : expr
+syntax "exists" quantifier "do" expr ("end" <|> "endexists") : expr
 syntax expr "+" expr : expr
 syntax expr "-" expr : expr
 syntax expr "*" expr : expr
@@ -539,7 +539,7 @@ syntax expr "?" expr ":" expr : expr
 syntax paramident : type_expr
 syntax expr ".." expr : type_expr
 syntax "enum" "{" paramident,+ "}" : type_expr
-syntax "record" sepBy(var_decl,";",";",allowTrailingSep) "end" : type_expr
+syntax "record" sepBy(var_decl,";",";",allowTrailingSep) ("endrecord" <|> "end") : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
 syntax (name := constdecl) paramident ":" expr : const_decl
@@ -900,5 +900,4 @@ def onestmt := [murϕ| b := c ]
 #check [murϕ| if (true) then
   £somestmts
   endif]
-
 end Murϕ
