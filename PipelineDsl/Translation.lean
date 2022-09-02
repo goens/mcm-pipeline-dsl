@@ -5941,7 +5941,7 @@ type ---- Type declarations ----
   --# Might cause some potential "confusion"
   --# with fields being set and such,
   --# but should be ok for now...
-  INST : record;
+  INST : record
   --# Inst Type Info
   --# Ld, st, uses immediate, etc.
   op : INST_TYPE;
