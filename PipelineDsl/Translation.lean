@@ -573,7 +573,7 @@ def ast0015_entry_name (entry_list : List Description) :=
 def ast0013_map_entries (entry_list : List Description) :=
   --dbg_trace "Workin' through dem' entries"
   List.join (entry_list.map ast0014_map_statements)
-  -- Don't join list, for each one we try to find transitions
+  -- don't join list, for each one we try to find transitions
   -- connected to each list
   -- (entry_list.map ast0014_map_statements)
 
@@ -874,7 +874,7 @@ def ast0041_list_ctrl_find_trans
 --               -- call this function ast0043 on it
 --       )
 
--- Do a BB traversal
+-- do a BB traversal
 -- def ast0047_traverse_stmt_ast
 -- ()
 -- ()
@@ -1142,7 +1142,7 @@ def create_transition_from_lst_stmts
 --       -- nesting info in the
 --       -- checked var
 
---       -- Do the recursive call by
+--       -- do the recursive call by
 --       -- matching into the stmts list
 --       -- i.e. we don't have an if
 --       -- case here in this lambda func
@@ -1192,7 +1192,7 @@ def create_transition_from_lst_stmts
 --   -- check if it's an await, and there are statements ahead of this!
 --     -- if it's an await, and we aren't nested, we can split this block
 --       -- How do we handle nested awaits?
---         -- Do we recursively call this fn?
+--         -- do we recursively call this fn?
 --         -- Or do we do "iteration to a fixed point"?
 --       -- i think we'll recursively call this
 --       -- Not important either way
@@ -1479,7 +1479,7 @@ def ast0048_generate_controller_murphi_record
           TypeExpr.previouslyDefined
           ctrler_entries_count_decl_name
           )
-        -- NOTE: Don't do msg buffers!
+        -- NOTE: don't do msg buffers!
       ]
     )
 
@@ -2721,7 +2721,7 @@ List (Murϕ.Expr × List Murϕ.Statement)
 
   match how_many_listen_handle_blks with
   | how_many_found.nothing =>
-  -- Don't need to make anything,
+  -- don't need to make anything,
   -- This will just result in going to
   -- the else case for the state;
   -- which will do nothing
@@ -2849,7 +2849,7 @@ List (Murϕ.Expr × List Murϕ.Statement)
         lst_src_args := args,
         func := expected_func,
         is_await := trans_and_func.stmt_trans_info.is_await,
-        -- Don't think we need this here, but...
+        -- don't think we need this here, but...
         entry_keyword_dest := trans_and_func.dest_ctrler_name,
         trans_obj := trans_and_func.trans,
         specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr
@@ -3050,7 +3050,7 @@ List Murϕ.Statement
   match stmt with
   | Statement.stray_expr expr =>
     match expr with
-    -- I Don't want to bother with nested scopes
+    -- I don't want to bother with nested scopes
     -- where "insert" -> When -> "insert/API"
     -- scopes need to be considered
     -- Thus, flatten things
@@ -3801,7 +3801,7 @@ List Murϕ.Statement
             while ( (offset <= difference) & (loop_break = false)
                     & (difference > 0)
                   ) do
-              --# Do the search
+              --# do the search
               curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
               --# (3) a load entry that's in a state where it's
               --# already done a read AND has a matching phys addr
@@ -4015,7 +4015,7 @@ List Murϕ.Statement
                 -- endif;
 
                 --#put "==== END ====\n";
-                --# Don't bother doing any sophisticated rollback
+                --# don't bother doing any sophisticated rollback
                 --# or squashing for now
                 --# UPDATE STATE
                 next_state .core_[j] .£dest_ctrler_name .entries[curr_idx] := dest_ctrler_entry;
@@ -4090,14 +4090,14 @@ List Murϕ.Statement
         else
         if len_1_qual_name
         then
-        dbg_trace "Doesn't make sense.. replace this with Except throw"
+        dbg_trace "doesn't make sense.. replace this with Except throw"
         []
         else
           -- len more than 2 qual name...
           -- we don't have that at the moment?
           -- should throw error
           -- just return default
-        dbg_trace "Doesn't make sense.. replace this with Except throw"
+        dbg_trace "doesn't make sense.. replace this with Except throw"
           []
          
 
@@ -4372,7 +4372,7 @@ partial def api_term_func_to_murphi_func
 
 -- AZ NOTE: Move this to the func call, instead of
 -- in this await-when func call block
--- since the squash func here for the first LSQ Doesn't
+-- since the squash func here for the first LSQ doesn't
 -- check for the return when cases...
 -- update this to work generically..?
 
@@ -4605,7 +4605,7 @@ partial def ast_stmt_to_murphi_stmts
 
   /-
   Listen & Handle...
-  Do we really need this at the moment?
+  do we really need this at the moment?
   I can't imagine it at the moment...
 
   Either way, first just recursively call this
@@ -5607,7 +5607,7 @@ def dsl_trans_descript_to_murphi_rule
   ) current_structure_entry_state current_state_expr
 
   /-
-  2. Do a check on the transition, if we insert into
+  2. do a check on the transition, if we insert into
   another structure
   (ex. SQ -> SB after commit signal)
   -/
@@ -5852,7 +5852,7 @@ invariants, which also doesn't have a section heading
 
 def construct_murphi_output_file
 :=
-  let murphi_file := [murϕ|
+  let murphi_file := [murϕ_program|
 const ---- Configuration parameters ----
 
   LD_ENTRY_NUM : 1;
@@ -6112,7 +6112,7 @@ type ---- Type declarations ----
   rob_insts : array [inst_idx_t] of INST;
   rob_head : inst_idx_t;
   rob_tail : inst_idx_t;
-  -- Do we also include is_executed state?
+  -- do we also include is_executed state?
   num_entries : inst_count_t;
   state : array [inst_idx_t] of ROB_STATE;
   end;
@@ -6158,7 +6158,7 @@ type ---- Type declarations ----
 
   MEM_ARRAY : record
   arr : array [addr_idx_t] of val_t;
-  --# Don't need to model this...
+  --# don't need to model this...
   --#msg : MEM_REQ;
   end;
 
@@ -6379,7 +6379,7 @@ function lq_schedule(
   lq_iter := lq.ld_head;
   lq_count := lq.num_entries;
 
-  --#for i:0 .. lq_count Do
+  --#for i:0 .. lq_count do
   --# actually interesting,
   --# since if there's a collision
   --# it'll likely be because we
@@ -6388,7 +6388,7 @@ function lq_schedule(
   --# or include condition on if
   --# so it must be in await state?
   --# Could use a while loop instead
-  for i:0 .. LD_ENTRY_NUM Do
+  for i:0 .. LD_ENTRY_NUM do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6430,10 +6430,10 @@ function iq_insert(
   --#iq_new.iq_insts[iq.iq_tail] := inst;
   --#iq_new.iq_tail := ( iq.iq_tail + 1 ) % CORE_INST_NUM;
   iq_new.num_entries := iq.num_entries + 1;
-  --#for i:0 .. CORE_INST_NUM Do
+  --#for i:0 .. CORE_INST_NUM do
   i := CORE_INST_NUM;
-  --#while i <= CORE_INST_NUM Do
-  while 0 <= i Do
+  --#while i <= CORE_INST_NUM do
+  while 0 <= i do
     -- find an entry to insert into
     if ( iq_new.iq_valid[i] = invalid )
       then
@@ -6445,9 +6445,9 @@ function iq_insert(
       --# Finish, leave fn
       --# assert (i = 0) "always 0 check?";
       return iq_new;
-    end;
+    endif;
     i := i - 1;
-  end;
+  endwhile;
   --
   -- error "should have inserted inst into IQ?";
   return iq_new;
@@ -6559,7 +6559,7 @@ function search_lq_seq_num_idx(
   var lq_idx : ld_idx_t;
 begin
 
-  for i : ld_idx_t Do
+  for i : ld_idx_t do
     if (lq.ld_entries[i].instruction.seq_num = seq_num)
       then
       return i;
@@ -6576,7 +6576,7 @@ function search_sq_seq_num_idx(
   var sq_idx : sq_idx_t;
   begin
 
-  for i : sq_idx_t Do
+  for i : sq_idx_t do
     if (sq.sq_entries[i].instruction.seq_num = seq_num)
       then
       return i;
@@ -6634,7 +6634,7 @@ function sq_schedule(
   sq_iter := sq.sq_head;
   sq_count := sq.num_entries;
 
-  --#for i:0 .. lq_count Do
+  --#for i:0 .. lq_count do
   --# actually interesting,
   --# since if there's a collision
   --# it'll likely be because we
@@ -6643,7 +6643,7 @@ function sq_schedule(
   --# or include condition on if
   --# so it must be in await state?
   --# Could use a while loop instead
-  for i:0 .. SQ_ENTRY_NUM Do
+  for i:0 .. SQ_ENTRY_NUM do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6829,7 +6829,7 @@ function insert_msg_into_ic(
   var ic_new : IC;
 begin
   ic_new := ic;
-  for i : ic_idx_t Do
+  for i : ic_idx_t do
     if ic_new.valid[i] = false
       then
       ic_new.buffer[i] := msg;
@@ -6857,7 +6857,7 @@ function associative_assign_lq(
   lq_count := lq.num_entries;
   seq_num := msg.seq_num;
 
-  for i:0 .. LD_ENTRY_NUM Do
+  for i:0 .. LD_ENTRY_NUM do
     -- error "trace load schedule?";
     -- Use i
 
@@ -6923,7 +6923,7 @@ function associative_ack_sb(
   sb_count := sb.num_entries;
   seq_num := msg.seq_num;
 
-  for i:0 .. SB_ENTRY_NUM Do
+  for i:0 .. SB_ENTRY_NUM do
     curr_entry_id := ( sb_iter + i ) % ( SB_ENTRY_NUM + 1);
     curr_entry := sb_new.sb_entries[curr_entry_id];
     if (curr_entry.instruction.seq_num = seq_num)
@@ -6995,7 +6995,7 @@ function find_st_idx_of_seq_num
   ) : sq_count_t;
   var sq_entry : SQ_ENTRY_VALUES;
 begin
-  for i : sq_idx_t Do
+  for i : sq_idx_t do
     sq_entry := sq.sq_entries[i];
     if (sq_entry.instruction.seq_num = seq_num) then
       return i;
@@ -7017,7 +7017,7 @@ function set_load_seq_num_entry_read
 begin
   lq_new := lq;
   --# write the val to the ld entry
-  for i : ld_idx_t Do
+  for i : ld_idx_t do
     --# find matching st_num
     ld_entry := lq.ld_entries[i];
     if (ld_entry.instruction.seq_num = seq_num) then
@@ -7050,7 +7050,7 @@ function set_load_state_to_state
 begin
   lq_new := lq;
   --# write the val to the ld entry
-  for i : ld_idx_t Do
+  for i : ld_idx_t do
     ld_entry := lq.ld_entries[i];
     if (ld_entry.instruction.seq_num = seq_num) then
       lq_new.ld_entries[i].ld_state := state;
@@ -7073,7 +7073,7 @@ function assert_load_state_is_state
 begin
   lq_new := lq;
   --# write the val to the ld entry
-  for i : ld_idx_t Do
+  for i : ld_idx_t do
     --# find matching st_num
     ld_entry := lq.ld_entries[i];
     if (ld_entry.instruction.seq_num = seq_num) then
@@ -7094,15 +7094,15 @@ begin
   undefine init_state;
 
   --# Memory & Interconnect
-  alias mem:init_state.mem_ Do
-    for i : addr_idx_t Do
+  alias mem:init_state.mem_ do
+    for i : addr_idx_t do
       mem.arr[i] := 0;
     end;
     --#mem.msg 
-  end;
+  endalias;
 
-  alias ic: init_state.ic_ Do
-    for i : ic_idx_t Do
+  alias ic: init_state.ic_ do
+    for i : ic_idx_t do
       --# init message entries
       ic.buffer[i].addr := 0;
       ic.buffer[i].r_w := read;
@@ -7125,9 +7125,9 @@ begin
     ic.num_entries := 0;
   end;
 
-  for core : cores_t Do
+  for core : cores_t do
     --# Mem Interface
-    alias mem_int:init_state.core_[core].mem_interface_ Do
+    alias mem_int:init_state.core_[core].mem_interface_ do
       --#init the mem interfaces
       mem_int.out_msg.addr := 0;
       mem_int.out_msg.r_w := read;
@@ -7155,8 +7155,8 @@ begin
     end;
 
     -- #Load Queue
-    alias lq:init_state.core_[core].lsq_.lq_ Do
-      for i : LD_ENTRY Do
+    alias lq:init_state.core_[core].lsq_.lq_ do
+      for i : LD_ENTRY do
         -- assume imm insts for now in litmus tests
         lq.ld_entries[i].instruction.seq_num := 0;
         lq.ld_entries[i].instruction.op := inval;
@@ -7203,13 +7203,13 @@ begin
       -- iq.iq_valid[CORE_INST_NUM] := ready;
       -- iq.iq_valid[CORE_INST_NUM-1] := ready;
     end;
-    alias rf:init_state.core_[core].rf_ Do
-      for i : reg_idx_t Do
+    alias rf:init_state.core_[core].rf_ do
+      for i : reg_idx_t do
         rf.rf[i] := 0;
       end;
     end;
-    alias rob:init_state.core_[core].rob_ Do
-      for i : 0 .. CORE_INST_NUM Do
+    alias rob:init_state.core_[core].rob_ do
+      for i : 0 .. CORE_INST_NUM do
         rob.rob_insts[i].op := inval;
         rob.rob_insts[i].seq_num := 0;
         rob.state[i] := commit_not_sent;
@@ -7218,8 +7218,8 @@ begin
       rob.rob_tail := 0;
       rob.num_entries := 0;
     end;
-    alias sq:init_state.core_[core].lsq_.sq_ Do
-      for i : sq_idx_t Do
+    alias sq:init_state.core_[core].lsq_.sq_ do
+      for i : sq_idx_t do
         --# assume imm insts for now in litmus tests
         sq.sq_entries[i].instruction.seq_num := 0;
         sq.sq_entries[i].instruction.op := inval;
@@ -7242,8 +7242,8 @@ begin
       --# stuff for searching for fwding
       sq.search_busy := false;
     end;
-    alias sb:init_state.core_[core].sb_ Do
-      for i : sb_idx_t Do
+    alias sb:init_state.core_[core].sb_ do
+      for i : sb_idx_t do
         --# assume imm insts for now in litmus tests
         sb.sb_entries[i].instruction.seq_num := 0;
         sb.sb_entries[i].instruction.op := inval;
@@ -7269,8 +7269,8 @@ begin
   end;
 
   -- # set up litmus test
-  alias rename_c0:init_state.core_[0].rename_ Do
-    --#for i : 0 .. CORE_INST_NUM Do
+  alias rename_c0:init_state.core_[0].rename_ do
+    --#for i : 0 .. CORE_INST_NUM do
     --#  rename.test_insts[i].op := inval;
     --#  rename.test_insts[i].seq_num := 0;
     --#end;
@@ -7305,8 +7305,8 @@ begin
     rename_c0.rename_tail := 0;
     rename_c0.num_entries := 2;
   end;
-  alias rename_c1:init_state.core_[1].rename_ Do
-    --#for i : 0 .. CORE_INST_NUM Do
+  alias rename_c1:init_state.core_[1].rename_ do
+    --#for i : 0 .. CORE_INST_NUM do
     --#  rename.test_insts[i].op := inval;
     --#  rename.test_insts[i].seq_num := 0;
     --#end;
@@ -7411,8 +7411,8 @@ end;
 --# end; end;
 
 --------------------- LQ TRANSITIONS -----------------
-ruleset j : cores_t Do
-ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+ruleset i : LD_ENTRY do
 rule "await_fwd_check_to_await_store_queue_response"
   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_fwd_check
 ==>
@@ -7467,12 +7467,12 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 ------# NOTE: SQ TRANSITION, MOVE to SQ SECTION LATER ------
-ruleset j : cores_t Do
---#ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+--#ruleset i : LD_ENTRY do
 rule "sq_process_search_request"
 --# Condition if there's a search request made
 Sta.core_[j].lsq_.sq_.search_busy = true
@@ -7495,7 +7495,7 @@ begin
   while_break := false;
 
   --# TODO:
-  --# Do the search in the SQ
+  --# do the search in the SQ
   --# and return the value to the load
   --# Move the load into the next state
 
@@ -7524,7 +7524,7 @@ begin
   --#put "difference: ";
   --#put difference;
   --#put "\n";
-  while ( (offset <= difference) & (while_break = false) ) Do
+  while ( (offset <= difference) & (while_break = false) ) do
     --#put "offset: ";
     --#put offset;
     --#put "\n";
@@ -7570,7 +7570,7 @@ begin
     else
       while_break := true;
     endif;
-  endif;
+  end;
   --#end;
 
   --# NOTE:
@@ -7605,11 +7605,11 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-endif; --#end;
+end; --#end;
 endruleset;
 
-ruleset j : cores_t Do
-ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+ruleset i : LD_ENTRY do
 rule "await_sb_fwd_check_to_await_sb_response"
   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_sb_fwd_check
 ==>
@@ -7622,7 +7622,7 @@ begin
   ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
   sb := Sta.core_[j].sb_;
 
-  --# TODO NOTE Don't send request if buffer is empty!
+  --# TODO NOTE don't send request if buffer is empty!
   --# Since the transition changes this load's state
   --# This can mess with the load later..
   if (sb.search_busy = false) then
@@ -7639,7 +7639,7 @@ begin
     --# NOTE: This is more auto-generated
     --# contention stuff...
     --# Try again when resource free.
-    --# NOTE: Doesn't need to be here,
+    --# NOTE: doesn't need to be here,
     --# Transition could have a guard
     --# condition on the core # j's SB
     --# search busy boolean flag
@@ -7650,12 +7650,12 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 ------# NOTE: SB TRANSITION, MOVE to SB SECTION LATER ------
-ruleset j : cores_t Do
---#ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+--#ruleset i : LD_ENTRY do
 rule "sb_process_search_request"
 --# Condition if there's a search request made
 Sta.core_[j].sb_.search_busy = true
@@ -7677,7 +7677,7 @@ begin
   lq := Sta.core_[j].lsq_.lq_;
 
   --# TODO:
-  --# Do the search in the SB
+  --# do the search in the SB
   --# and return the value to the load
   --# Move the load into the next state
 
@@ -7700,7 +7700,7 @@ begin
 
   difference := ( st_idx + ( SB_ENTRY_NUM + 1) - sb.sb_head ) % ( SB_ENTRY_NUM + 1);
   offset := 0;
-  while ( (offset <= difference) & (while_break = false) )  Do
+  while ( (offset <= difference) & (while_break = false) )  do
     curr_idx := ( st_idx + ( SB_ENTRY_NUM + 1 ) - offset ) % ( SB_ENTRY_NUM + 1);
     if (sb.sb_entries[curr_idx].phys_addr
         =
@@ -7747,7 +7747,7 @@ begin
     else
       while_break := true;
     endif;
-  endif;
+  end;
 
   --# Change this check to if offset = SB_ENTRY_NUM
   if (while_break = false) then
@@ -7767,12 +7767,12 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-endif; --#end;
+end; --#end;
 endruleset;
 
 
-ruleset j : cores_t Do
-ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+ruleset i : LD_ENTRY do
 rule "await_translation_to_build_packet"
   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
 ==>
@@ -7792,12 +7792,12 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 
-ruleset j : cores_t Do
-ruleset i : LD_ENTRY Do
+ruleset j : cores_t do
+ruleset i : LD_ENTRY do
 rule "build_packet_to_send_mem_req"
 (
   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = build_packet
@@ -7814,11 +7814,11 @@ begin
   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 --#NOTE: Marking this transition as the mem access one!
-ruleset j : cores_t Do
+ruleset j : cores_t do
 ruleset i : LD_ENTRY do
   rule "send_mem_req_to_await_mem_resp"
   ( Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = send_memory_request )
@@ -7900,12 +7900,12 @@ begin
   next_state.core_[j].mem_interface_ := mem_inter;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 -- # ====== Shortcut/Testing States =====
 --# NOTE: Receive mem response?
---# ruleset j : cores_t Do
+--# ruleset j : cores_t do
 --# ruleset i : LD_ENTRY do
 --# rule "await_mem_resp_to_writeback"
 --#   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_mem_response
@@ -7923,7 +7923,7 @@ endruleset;
 --# end; end;
 --# endruleset;
 
-ruleset j : cores_t Do
+ruleset j : cores_t do
 ruleset i : LD_ENTRY do
 rule "writeback_to_await_committed"
   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = write_result
@@ -7946,7 +7946,7 @@ begin
   next_state.core_[j].rf_ := rf;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 -- change the state of await states
@@ -7976,7 +7976,7 @@ endruleset;
 --# Write the memory interface stuff
 
 --# Insert from a mem interface into the IC
-ruleset j : cores_t Do
+ruleset j : cores_t do
 rule "move_msg_from_mem_interface_to_ic"
   ( Sta.core_[j].mem_interface_.out_busy = true )
   &
@@ -8001,11 +8001,11 @@ begin
   next_state.ic_ := ic;
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 
 --# Choose an IC msg to perform it's access operation
-ruleset i : ic_idx_t Do
+ruleset i : ic_idx_t do
 rule "perform_ic_msg"
   --# have some ic entries
   ( Sta.ic_.num_entries > 0 )
@@ -8044,12 +8044,12 @@ begin
   next_state.mem_ := mem;
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 
 --# Choose an IC msg to return it's acknowledgement
-ruleset j : cores_t Do
-ruleset i : ic_idx_t Do
+ruleset j : cores_t do
+ruleset i : ic_idx_t do
 rule "acknowledge_ic_msg"
   --# have some ic entries
   ( Sta.ic_.num_entries > 0 )
@@ -8092,11 +8092,11 @@ begin
   next_state.core_[j].mem_interface_ := mem_interface;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 --# Core checks input msgs to notify dest structure
-ruleset j : cores_t Do
+ruleset j : cores_t do
   rule "core_sends_in_msg_ack_to_structures"
   ( Sta.core_[j].mem_interface_.in_busy = true )
 ==>
@@ -8128,14 +8128,14 @@ begin
   next_state.core_[j].mem_interface_ := mem_interface;
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 
 ------------- END MEMORY TRANSITIONS -----------------
 
 ------------------ SQ STATE TRANSITIONS -----------------
-ruleset j : cores_t Do
-ruleset i : sq_idx_t Do
+ruleset j : cores_t do
+ruleset i : sq_idx_t do
 rule "st_await_translation_to_await_squash"
   ( Sta.core_[j].lsq_.sq_.sq_entries[i].st_state = st_await_translation )
   &
@@ -8200,12 +8200,12 @@ begin
   next_state.core_[j].lsq_.lq_ := lq;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 --#============ LQ Transition =================
-ruleset j : cores_t Do
---#ruleset i : sq_idx_t Do
+ruleset j : cores_t do
+--#ruleset i : sq_idx_t do
 rule "lq_process_search_request"
 --# Rule sq_process_search_request, j:0 fired.
   Sta.core_[j].lsq_.lq_.search_busy = true
@@ -8273,8 +8273,8 @@ begin
   difference := ( lq.ld_tail + (LD_ENTRY_NUM + 1) - ld_idx ) % ( LD_ENTRY_NUM + 1);
   offset := 0;
   --#if (difference != 0) then
-  while ( (offset <= difference) & (loop_break = false) ) Do
-    --# Do the search
+  while ( (offset <= difference) & (loop_break = false) ) do
+    --# do the search
     curr_idx := ( ld_idx + offset ) % LD_ENTRY_NUM;
     --# (3) a load entry that's in a state where it's
     --# already done a read AND has a matching phys addr
@@ -8315,7 +8315,7 @@ begin
         --#put "just reset\n";
       endif;
       --#put "==== END ====\n";
-      --# Don't bother doing any sophisticated rollback
+      --# don't bother doing any sophisticated rollback
       --# or squashing for now
       --# UPDATE STATE
       lq.ld_entries[curr_idx] := ld_entry;
@@ -8329,7 +8329,7 @@ begin
     else
       loop_break := true;
     endif;
-  endif;
+  end;
   --#end;
 
   --# set it's state fwd to st_build_packet
@@ -8342,12 +8342,12 @@ begin
   next_state.core_[j].sb_ := sb;
 
   Sta := next_state;
-endif;
+end;
 endruleset;
 --#============ LQ Transition =================
 
-ruleset j : cores_t Do
-ruleset i : sq_idx_t Do
+ruleset j : cores_t do
+ruleset i : sq_idx_t do
 rule "st_build_packet_to_send_mem_req"
   Sta.core_[j].lsq_.sq_.sq_entries[i].st_state = st_build_packet
 ==>
@@ -8361,7 +8361,7 @@ begin
   next_state.core_[j].lsq_.sq_.sq_entries[i] := sq_entry;
 
   Sta := next_state;
-endif; endif;
+end; end;
 endruleset;
 
 --# TODO: Comment this out for the Load
@@ -8440,7 +8440,7 @@ endruleset;
 -- write_value in INST to initiate with for litmus
 -- testing, or "random" litmus testing
 
---#ruleset j : cores_t Do
+--#ruleset j : cores_t do
 --#rule "insert_ld_into_rename"
 --#  -- # If not full, add another instruction!
 --#  -- # Use less than, since if equal, it's full
@@ -8460,7 +8460,7 @@ endruleset;
 --#  curr_tail := Sta.core_[j].rename_.rename_tail;
 --#--
 --#  -- #NxtSta.core_[j].rename_.test_insts[curr_tail].seq_num := 3;
---#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] Do
+--#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] do
 --#    test_inst.op := ld;
 --#    test_inst.dest_reg := 0;
 --#    test_inst.imm := 0;
@@ -8488,7 +8488,7 @@ endruleset;
 -- write_value in INST to initiate with for litmus
 -- testing, or "random" litmus testing
 
---#ruleset j : cores_t Do
+--#ruleset j : cores_t do
 --#rule "insert_st_into_rename"
 --#  -- # If not full, add another instruction!
 --#  -- # Use less than, since if equal, it's full
@@ -8508,7 +8508,7 @@ endruleset;
 --#  curr_tail := Sta.core_[j].rename_.rename_tail;
 --#--
 --#  -- #NxtSta.core_[j].rename_.test_insts[curr_tail].seq_num := 3;
---#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] Do
+--#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] do
 --#    test_inst.op := st;
 --#    test_inst.dest_reg := 0;
 --#    test_inst.imm := 0;
@@ -8531,7 +8531,7 @@ endruleset;
 --   end;
 
 
-ruleset j : cores_t Do
+ruleset j : cores_t do
 rule "inject_inst_from_rename"
   (Sta.core_[j].rename_.num_entries > 0)
 ==>
@@ -8630,8 +8630,8 @@ endruleset;
 -- # Require helper fn for IQ pop
 -- # Ruleset, any inst can be scheduled
 
-ruleset j : cores_t Do
-ruleset i : IQ_MAX_INSTS Do
+ruleset j : cores_t do
+ruleset i : IQ_MAX_INSTS do
 rule "schedule_iq_inst"
 -- # if IQ not empty, and entry i is valid
   !( Sta.core_[j].iq_.num_entries = 0 )
@@ -8657,7 +8657,7 @@ begin
   -- logic
   -- 1. read this instruction
   -- put it in var or alias For convenience
-  -- #alias inst:Sta.core_[j].iq_.iq_insts[i] Do
+  -- #alias inst:Sta.core_[j].iq_.iq_insts[i] do
   -- #End;
   -- 3. find it in LQ, and advance it's state
   if ( inst.op = ld ) then
@@ -8716,7 +8716,7 @@ endruleset;
 
 -- # TODO then model commit stage to retire the load
 -- # 
-ruleset j : cores_t Do
+ruleset j : cores_t do
 rule "rob_commit_head"
   -- pre cond
   -- have entries to commit
@@ -8830,7 +8830,7 @@ endruleset;
 --# Reuse this as
 --# "remove from lq if commit
 --# signal given in advance"
-ruleset j : cores_t Do
+ruleset j : cores_t do
 rule "remove_ld_entry_already_got_commit_signal"
   -- # there are lq entries
   ( Sta.core_[j].lsq_.lq_.num_entries > 0 )
@@ -8878,7 +8878,7 @@ endif;
 endruleset;
 
 --# TODO make copy for STORE
-ruleset j : cores_t Do
+ruleset j : cores_t do
 rule "remove_st_entry_already_got_commit_signal"
   -- # there are lq entries
   ( Sta.core_[j].lsq_.sq_.num_entries > 0 )
@@ -8933,8 +8933,8 @@ endif;
 endruleset;
 
 --#NOTE: Marking this transition as the mem access one!
---#ruleset i : sb_idx_t Do
-ruleset j : cores_t Do
+--#ruleset i : sb_idx_t do
+ruleset j : cores_t do
 rule "sb_await_send_mem_req_to_await_mem_resp"
   --# when head SB entry is waiting to send out it's request
   ( Sta.core_[j].sb_.sb_entries[Sta.core_[j].sb_.sb_head].sb_state = sb_await_send_mem_req )
@@ -8992,13 +8992,13 @@ begin
 endif;
 endruleset;
 
---# NOTE: Don't need to do this, the associative_ack
+--# NOTE: don't need to do this, the associative_ack
 --# will clear the head in the SB
 
 --#--# NOTE: lazily implemented, don't actually
 --#--# have another transition from mem to reply
 --#--# to request, just got wrote the mem value immediately
---#ruleset j : cores_t Do
+--#ruleset j : cores_t do
 --#rule "sb_await_mem_resp_to_await_creation"
 --#--# when head SB entry is waiting to send out it's request
 --#  ( Sta.core_[j].sb_.sb_entries[Sta.core_[j].sb_.sb_head].sb_state = sb_await_mem_response )
@@ -9037,7 +9037,7 @@ endruleset;
 --#end;
 --#endruleset;
 
-ruleset j : cores_t Do
+ruleset j : cores_t do
 invariant "test_invariant"
   Sta.core_[j].lsq_.lq_.num_entries = 1
   ->

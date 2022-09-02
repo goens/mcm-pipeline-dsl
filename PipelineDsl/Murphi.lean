@@ -179,6 +179,7 @@ inductive Statement
   | putstmtexp : Expr → Statement
   | putstmtstr : String → Statement
   | returnstmt : Option Expr → Statement
+  | undefine : ID → Statement
   deriving Inhabited
 
 -- <alias> ::= <ID> : <expr>
@@ -308,6 +309,7 @@ private partial def statementToString : Statement → String
   | .putstmtexp exp => s!"put {exprToString exp}"
   | .putstmtstr str => s!"put {str}"
   | .returnstmt opExp => "return " ++ (match opExp with | none => "" | some exp => exprToString exp)
+  | .undefine id => s!"undefine {id}"
 
 private partial def aliasToString : Alias → String
   | .mk id exp => s!"{id} : {exprToString exp}"
@@ -478,8 +480,8 @@ syntax (name := justparam2) "£(" ident ")" : justparam
 
 syntax "var" paramident,+ ":" type_expr : formal
 syntax  paramident,+ ":" type_expr : formal
-syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* ("end" <|> "endprocedure") ";" : proc_decl
-syntax "function" paramident "(" sepBy(formal,";") ")" ":" type_expr ";" (decl* "begin")? (statements)? ("end" <|> "endfunction") ";" : proc_decl
+syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* ("end" <|> "endprocedure") : proc_decl
+syntax "function" paramident "(" sepBy(formal,";",";",allowTrailingSep) ")" ":" type_expr ";" (decl* "begin")? (statements)? ("end" <|> "endfunction") : proc_decl
 -- TODO: this needs space for the ".", should fix it
 syntax paramident : designator
 syntax designator "." paramident : designator
@@ -493,13 +495,14 @@ syntax "if" expr "then" statements
 syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? ("end" <|> "endswitch") : statement
 syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) ("end" <|> "endfor") : statement
 syntax "while" expr "do" sepBy(statement,";",";",allowTrailingSep) ("end" <|> "endwhile") : statement
-syntax "alias" sepBy(mur_alias,";") "do" statement* ("end" <|> "endalias") : statement
+syntax "alias" sepBy(mur_alias,";",";",allowTrailingSep) "do" statements ("end" <|> "endalias") : statement
 syntax paramident "(" expr,+ ")" : statement
 syntax "clear" designator : statement
 syntax "error" str : statement
 syntax "assert" expr (str)? : statement
 syntax "put" (expr <|> str) : statement
 syntax "return" (expr)? : statement
+syntax "undefine" ident : statement
 syntax justparam : statements
 syntax statement ";" : statements
 syntax justparam ";" : statements
@@ -509,7 +512,7 @@ syntax paramident ":" expr : mur_alias
 syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
-syntax  "startstate" (str)? (decl "begin")? statement* ("end" <|> "endstartstate") : mur_rule
+syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate") : mur_rule
 syntax "invariant" (str)? expr : mur_rule
 syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) ("end" <|> "endruleset") : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") ("end" <|> "endalias"): mur_rule
@@ -547,7 +550,7 @@ syntax (name := typedecl) paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
-syntax decl decl decl : program
+syntax decl* sepBy(proc_decl,";",";",allowTrailingSep) sepBy(mur_rule,";",";",allowTrailingSep) : program
 
 syntax "[murϕ|" proc_decl "]" : term
 syntax "[murϕ|" designator "]" : term
@@ -559,7 +562,7 @@ syntax "[murϕ|" mur_rule "]" : term
 syntax "[murϕ|" expr "]" : term
 syntax "[murϕ|" type_expr "]" : term
 syntax "[murϕ|" decl "]" : term
-syntax "[murϕ|" program "]" : term
+syntax "[murϕ_program|" program "]" : term
 syntax "[murϕ_formal|" formal "]" : term
 syntax "[murϕ_proc_decl|" proc_decl "]" : term
 syntax "[murϕ_designator|" designator "]" : term
@@ -583,7 +586,6 @@ macro_rules
   | `([murϕ| $x:expr       ]) => `(expr| $x)
   | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
   | `([murϕ| $x:decl       ]) => `(decl| $x)
-  | `([murϕ| $x:program    ]) => `(program| $x)
  -- | `([murϕ| $x:designator]) => `(designator| $x)
   | `([murϕ_formal| $x:formal]) => `(formal| $x)
   | `([murϕ_proc_decl| $x:proc_decl]) => `(proc_decl| $x)
@@ -597,6 +599,8 @@ macro_rules
   | `([murϕ_decl| $x:decl]) => `(decl| $x)
   | `([murϕ_var_decl| $x:var_decl]) => `(var_decl| $x)
   | `([murϕ_designator| $x:designator]) => `(designator| $x)
+  | `([murϕ_program| $x:program    ]) => `(program| $x)
+
 
 abbrev TMacro α := TSyntax α → MacroM Term
 
@@ -798,6 +802,10 @@ macro_rules
   `(Statement.assertstmt [murϕ_expr| $e] $strSyn)
   | `(statement| error $msg) => `(Statement.errorstmt $msg)
   | `(statement| return $[$exp]?) => match exp with | none => `(Statement.returnstmt none) | some e => `(Statement.returnstmt (some [murϕ_expr| $e]))
+  | `(statement| undefine $id ) => `(Statement.undefine $(quote id.getId.toString))
+  | `(statement| alias $[$aliases];* do $stmts end) => do
+    let aliasesSyn ← mapSyntaxArray aliases λ a => `([murϕ_alias| $a ])
+    `(Statement.aliasstmt $aliasesSyn [murϕ_statements| $stmts])
 
 macro_rules
   | `(formal| var $[$pis],* : $te) => do
@@ -808,47 +816,22 @@ macro_rules
     `(Formal.mk false $(ids) [murϕ_type_expr| $te])
 
 macro_rules
-  | `(proc_decl| function $pi ($[$formals:formal];*) : $te; $[$decls:decl]* begin $[$opStmts:statements]? end;) => do
+  | `(proc_decl| function $pi ($[$formals:formal];*) : $te; $[$decls:decl]* begin $[$opStmts:statements]? end) => do
     let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
     let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
     let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
     `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] $declsSyn $stmts)
-  | `(proc_decl| function $pi ($[$formals:formal];*) : $te;  $[$opStmts:statements]? end;) => do
+  | `(proc_decl| function $pi ($[$formals:formal];*) : $te;  $[$opStmts:statements]? end) => do
     let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
     `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] [] $stmts)
 
+macro_rules
+  | `(mur_alias|  $pi:paramident : $expr ) => do `(Alias.mk $(← expandParamIdent pi) [murϕ_expr| $expr])
+
 
 #check [murϕ_formal| rename_q : RENAME ]
-#check [murϕ|
-function rename_read_head( rename_q : RENAME) : INST;
-  return rename_q.test_insts[rename_q.rename_head];
-end;
-]
-
-#check [murϕ| 
-function rename_pop_head(
-             -- head and tail
-             -- head : inst_idx_t;
-             -- tail : inst_idx_t;
-             -- the array
-                    rename_queue : RENAME
-           ) : RENAME;
-  var rename_q : RENAME;
-begin
-  rename_q := rename_queue;
-
-  rename_q.rename_head := ( rename_queue.rename_head + 1 ) % (CORE_INST_NUM + 1);
-  rename_q.num_entries := rename_queue.num_entries - 1;
-  -- assert num_entries not less than 0?
-  -- assert ( rename_q.num_entries > 0 ) "can't have neg entries";
-
-  -- use this to overwrite the old one
-  -- (immutable style)
-  return rename_q;
-end;
-]
 
 
 def foo := "bar"
@@ -900,4 +883,23 @@ def onestmt := [murϕ| b := c ]
 #check [murϕ| if (true) then
   £somestmts
   endif]
+#check [murϕ_statement|
+  alias mem:init_state.mem_ do
+    for i : addr_idx_t do
+      mem.arr[i] := 0;
+    end;
+    --#mem.msg 
+  endalias
+]
+
+#check [murϕ_statement| undefine init_state]
+#check [murϕ_statements|
+  undefine init_state;
+  alias mem:init_state.mem_ do
+    for i : addr_idx_t do
+      mem.arr[i] := 0;
+    end;
+    --#mem.msg 
+  endalias;
+]
 end Murϕ
