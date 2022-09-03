@@ -1,9 +1,5 @@
 import PipelineDsl
 import Lean
-import PipelineDsl.Preprocess
-import PipelineDsl.Translation
-import PipelineDsl.Transformation
--- import PipelineDsl.MurphiTests
 open Lean Pipeline
 
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -13,7 +9,7 @@ def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-henn
 def main (args : List String): IO Unit := do
   let filename := match args.get? 0 with
    | some fn => fn
-   | nothing => default_filename
+   | _ => default_filename
   let lines <- IO.FS.lines filename
   let preprocessed := preprocess lines
   let fileStr := preprocessed.foldl (λ s₁ s₂ => s₁ ++ "\n" ++ s₂) ""
