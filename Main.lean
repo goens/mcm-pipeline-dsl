@@ -1,10 +1,10 @@
 import PipelineDsl
 import Lean
-import PipelineDsl.Preprocess
-import PipelineDsl.AnalysisHelpers
-import PipelineDsl.Translation
-import PipelineDsl.Transformation
--- import PipelineDsl.MurphiTests
+-- import PipelineDsl.Preprocess
+-- import PipelineDsl.AnalysisHelpers
+-- import PipelineDsl.Translation
+-- import PipelineDsl.Transformation
+-- -- import PipelineDsl.MurphiTests
 open Lean Pipeline
 
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
