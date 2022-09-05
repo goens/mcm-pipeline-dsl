@@ -1513,7 +1513,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
             -- referred to as 'i'
             Sum.inl "core_",
             Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-            Sum.inl ctrler_name,
+            Sum.inl (ctrler_name.append "_"),
             Sum.inl idx
           ])
         | tail_or_entry.entry =>
@@ -1527,7 +1527,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           -- entries
           Sum.inl "core_",
           Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-          Sum.inl ctrler_name,
+          Sum.inl (ctrler_name.append "_"),
           Sum.inl "entries",
           Sum.inr fifo_idx_expr,
           Sum.inl one_ident
@@ -1593,7 +1593,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
             -- referred to as 'i'
             Sum.inl "core_",
             Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-            Sum.inl ctrler_name,
+            Sum.inl (ctrler_name.append "_"),
             Sum.inl idx
           ])
         | tail_or_entry.entry =>
@@ -1607,7 +1607,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           -- entries
           Sum.inl "core_",
           Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-          Sum.inl ctrler_name,
+          Sum.inl (ctrler_name.append "_"),
           Sum.inl "entries",
           Sum.inr fifo_tail_expr,
           Sum.inl h
@@ -1637,7 +1637,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         -- entries
         Sum.inl "core_",
         Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-        Sum.inl ctrler_name,
+        Sum.inl (ctrler_name.append "_"),
         Sum.inl entries,
         Sum.inr curr_idx_designator_expr
       ] (list_ident_to_murphi_ID t)
@@ -3485,7 +3485,7 @@ List Murϕ.Statement
             let search_load_ctrler_func_call : Identifier := "search_" ++ speculative_ld_unit_name ++ "_seq_num_idx"
             let search_store_ctrler_func_call : Identifier := "search_" ++ speculative_st_unit_name ++ "_seq_num_idx"
 
-            let dest_ctrler_name_ := dest_ctrler_name.append "_"
+            let dest_ctrler_name_ := String.join [dest_ctrler_name, "_"]
 
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
@@ -3878,7 +3878,7 @@ partial def api_term_func_to_murphi_func
   -- dbg_trace "== trying to get list of api names out of a func call Qual name =="
   let api_name : Identifier := lst_names[1]!
 
-  let dest_struct_name : Identifier := lst_names[0]!
+  let dest_ctrler_name : Identifier := lst_names[0]!
   let lst_exprs : List Pipeline.Expr := dsl_func_info.2
 
   -- Extract info, gen the murphi func code
@@ -3905,7 +3905,7 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := Option.some dest_struct_name,
+    entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr :=  curr_idx
   }
@@ -3977,7 +3977,7 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := Option.some dest_struct_name,
+    entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := curr_idx
   }
@@ -3989,7 +3989,7 @@ partial def api_term_func_to_murphi_func
     lst_src_args := term_trans_info.lst_src_args,
     func := term_trans_info.func,
     is_await := term_trans_info.is_await,
-    entry_keyword_dest := Option.some dest_struct_name,
+    entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := curr_idx
   }
@@ -4004,13 +4004,14 @@ partial def api_term_func_to_murphi_func
   dbg_trace "&&&&& END Murϕ when_fail &&&&&"
 
   -- ex. SQ_NUM_ETNRIES_CONST
-  let dest_num_entries_const_name := (String.join [dest_struct_name, "_NUM_ENTRIES_CONST"])
+  let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
 
   -- AZ NOTE: Use this point to build a different template
   -- based on the specific API call...
   -- Or maybe earlier, but i'm not 100% sure
   -- what the "common code" segments are just yet...
 
+  let dest_ctrler_name_ := dest_ctrler_name.append "_"
   let overall_murphi_tail_search_template : List Murϕ.Statement :=
   [
     -- AZ TODO: introduce a type for the ACCESS_HASH
@@ -4021,7 +4022,7 @@ partial def api_term_func_to_murphi_func
     -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
     [murϕ|  while_break := false],
     [murϕ|  found_entry := false],
-    [murϕ|  if (next_state .core_[j] .£dest_struct_name .num_entries = 0) then
+    [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
         while_break := true;
       endif],
       -- AZ TODO:
@@ -4033,8 +4034,8 @@ partial def api_term_func_to_murphi_func
     --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
     --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
     --   endif],
-    [murϕ|  entry_idx := (next_state .core_[j] .£dest_struct_name .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_struct_name .head ) % £dest_num_entries_const_name],
+    [murϕ|  entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
     [murϕ|  offset := 0],
     [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
         curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
@@ -4155,6 +4156,7 @@ partial def ast_stmt_to_murphi_stmts
     -- and not the stmt list
     []
   | Statement.value_declaration typed_ident expr =>
+    -- dbg_trace "$$$$$$$ CHECK FOR NULL $$$$$$$"
   -- AZ NOTE: In this case there's no way this is
   -- a controller state var, leave the code as-is
 
@@ -4195,6 +4197,7 @@ partial def ast_stmt_to_murphi_stmts
         | Term.var ident =>
           -- I think this is marked as a Var, rather than a const 
           if ident == "NULL" then
+            dbg_trace "$$$$$$$ FOUND NULL VAR $$$$$$$"
             true
           else false
         | _ => false
@@ -4508,6 +4511,9 @@ partial def ast_stmt_to_murphi_stmts
         false
         else
         true
+    let lst_idents := match qual_name with
+    | Pipeline.QualifiedName.mk lst_idents => lst_idents
+
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
@@ -4521,31 +4527,62 @@ partial def ast_stmt_to_murphi_stmts
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
     
-    -- let is_null_expr : Bool := (
-    --   match expr with
-    --   | Pipeline.Expr.some_term term =>
-    --     match term with
-    --     | Term.var ident =>
-    --       -- I think this is marked as a Var, rather than a const 
-    --       if ident == "NULL" then
-    --         true
-    --       else false
-    --     | _ => false
-    --   | _ => false
-    -- )
+    let is_null_expr : Bool := (
+      match expr with
+      | Pipeline.Expr.some_term term =>
+        match term with
+        | Term.var ident =>
+          -- I think this is marked as a Var, rather than a const 
+          if ident == "NULL" then
+            true
+          else false
+        | _ => false
+      | _ => false
+    )
 
-    -- if is_null_expr then
-    --   -- match the var's type with an AST type, then get
-    --   -- the Murphi type, the get the Murphi type's NULL value (like 0, or "")
-    --   let murphi_assn_expr :=
-    --     Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
+    if is_null_expr then
+      -- match the var's type with an AST type, then get
+      -- the Murphi type, the get the Murphi type's NULL value (like 0, or "")
+      let this_ctrler : controller_info :=
+        get_ctrler_matching_name ctrler_name ctrlers_lst
+
+      let lst_state_var_idents : List (String × String) := this_ctrler.state_vars.map (
+        λ t_ident =>
+          match t_ident with
+          | TypedIdentifier.mk tident ident => (tident, ident)
+      )
+
+      let match_state_var : List String := List.join (
+      lst_state_var_idents.map (
+        λ idents_lst =>
+          if idents_lst.2 == lst_idents[0]! then
+            let ident_type : String := idents_lst.1
+            [ident_type, idents_lst.2]
+          else
+            []
+        )
+      )
+
+
+      if match_state_var.length > 0 then
+        let dsl_type := match_state_var[0]!
+        let murphi_type_expr := dsl_type_to_murphi_type_string dsl_type
+        let murphi_null := murphi_type_to_null murphi_type_expr
+
+        let murphi_assn_stmt :=
+        Murϕ.Statement.assignment murphi_var_name_designator murphi_null
     
-    --   [murphi_assn_expr]
-    -- else
-    let murphi_assn_expr :=
-      Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
+        [murphi_assn_stmt]
+      else
+        let murphi_assn_stmt :=
+          Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
     
-    [murphi_assn_expr]
+        [murphi_assn_stmt]
+    else
+      let murphi_assn_stmt :=
+        Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
+    
+      [murphi_assn_stmt]
 
   -- 0
 
@@ -5124,7 +5161,7 @@ match murphi_stmt with
           Murϕ.Designator.mk "next_state" [
           Sum.inl "core_",
           Sum.inr j_desig,
-          Sum.inl desig_id
+          Sum.inl (desig_id.append "_")
           ]
         )
         let desig_id_desig : Murϕ.Designator := Murϕ.Designator.mk desig_id []
@@ -5383,7 +5420,7 @@ def dsl_trans_descript_to_murphi_rule
         -- core_[i]
         Sum.inr core_idx_designator,
         -- core_[i].LQ
-        Sum.inl ctrler_id,
+        Sum.inl (ctrler_id.append "_"),
         -- core_[i].LQ.entries
         Sum.inl entries,
         -- core_[i].LQ.entries[j]

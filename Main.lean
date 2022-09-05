@@ -1,7 +1,7 @@
 import PipelineDsl
 import Lean
 -- import PipelineDsl.Preprocess
--- import PipelineDsl.AnalysisHelpers
+import PipelineDsl.AnalysisHelpers
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
@@ -104,7 +104,7 @@ def main (args : List String): IO Unit := do
       ctrler.transition_list.map
         λ trans =>
           {
-            ctrler_name := should_be_one_ctrler.name,
+            ctrler_name := ctrler.name,
             ctrler_lst := ctrlers,
             trans := trans
           }
@@ -114,9 +114,24 @@ def main (args : List String): IO Unit := do
 -- ctrler_name: Identifier
 -- ctrler_lst : List controller_info
 -- trans : Description -- Description.transition
-  let dummy := List.join (
+  let all_rules : List Murϕ.Rule := List.join (
     (List.join all_joined_ctrlers).map dsl_trans_descript_to_murphi_rule)
-  println! s!"Dummy:\n{dummy}"
+  println! s!"All Rules:\n{all_rules}"
+
+  -- translate other parts, and get the murphi file..
+  let ctrler_names : List Identifier := ctrlers.map λ ctrler => ctrler.name
+  let buffer_idx_seq_num_search_funcs := gen_buffer_ctrler_seq_num_search_func ctrler_names
+  let (const_decls, ctrler_decls) := gen_murphi_file_decls ctrlers
+
+-- def compose_murphi_file_components
+-- -- Consts, like num entries per buffer-type ctrler
+-- ( const_decls : List Murϕ.Decl)
+-- -- Types, like ctrler defns
+-- ( type_decls : List Murϕ.Decl)
+-- ( func_decls : List Murϕ.ProcDecl)
+-- ( rules : List Murϕ.Rule)
+-- : Murϕ.Program
+  let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules
 
   -- AZ TODO:
   -- add code to filter for certain controllers (LSQ ctrlers)
