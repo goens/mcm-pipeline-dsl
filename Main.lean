@@ -1,6 +1,7 @@
 import PipelineDsl
 import Lean
 import PipelineDsl.Preprocess
+import PipelineDsl.AnalysisHelpers
 import PipelineDsl.Translation
 import PipelineDsl.Transformation
 -- import PipelineDsl.MurphiTests
