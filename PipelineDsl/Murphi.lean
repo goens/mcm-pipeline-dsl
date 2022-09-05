@@ -453,11 +453,11 @@ declare_syntax_cat formal
 declare_syntax_cat proc_decl
 declare_syntax_cat designator
 declare_syntax_cat quantifier
-declare_syntax_cat statement
+declare_syntax_cat mur_statement
 declare_syntax_cat statements
 declare_syntax_cat mur_alias
 declare_syntax_cat mur_rule
-declare_syntax_cat expr
+declare_syntax_cat mur_expr
 declare_syntax_cat type_expr
 declare_syntax_cat decl
 declare_syntax_cat var_decl
@@ -480,72 +480,72 @@ syntax (name := justparam2) "£(" ident ")" : justparam
 
 syntax "var" paramident,+ ":" type_expr : formal
 syntax  paramident,+ ":" type_expr : formal
-syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* statement* ("end" <|> "endprocedure") : proc_decl
+syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* mur_statement* ("end" <|> "endprocedure") : proc_decl
 syntax "function" paramident "(" sepBy(formal,";",";",allowTrailingSep) ")" ":" type_expr ";" (decl* "begin")? (statements)? ("end" <|> "endfunction") : proc_decl
 -- TODO: this needs space for the ".", should fix it
 syntax paramident : designator
 syntax designator "." paramident : designator
-syntax designator "[" expr "]" : designator
+syntax designator "[" mur_expr "]" : designator
 syntax (name := simplequantifier) paramident ":" type_expr : quantifier
-syntax (name := quantifierassign) paramident ":=" expr "to" expr ("by" expr)? : quantifier
-syntax designator ":=" expr : statement
-syntax "if" expr "then" statements
-       ("elsif" expr "then" statements)*
-       ("else" sepBy(statement,";",";",allowTrailingSep))? ("endif" <|> "end") : statement
-syntax "switch" expr ("case" expr,+ ":" statement*)* ("else" statement*)? ("end" <|> "endswitch") : statement
-syntax "for" quantifier "do" sepBy(statement,";","; ",allowTrailingSep) ("end" <|> "endfor") : statement
-syntax "while" expr "do" sepBy(statement,";",";",allowTrailingSep) ("end" <|> "endwhile") : statement
-syntax "alias" sepBy(mur_alias,";",";",allowTrailingSep) "do" statements ("end" <|> "endalias") : statement
-syntax paramident "(" expr,+ ")" : statement
-syntax "clear" designator : statement
-syntax "error" str : statement
-syntax "assert" expr (str)? : statement
-syntax "put" (expr <|> str) : statement
-syntax "return" (expr)? : statement
-syntax "undefine" ident : statement
+syntax (name := quantifierassign) paramident ":=" mur_expr "to" mur_expr ("by" mur_expr)? : quantifier
+syntax designator ":=" mur_expr : mur_statement
+syntax "if" mur_expr "then" statements
+       ("elsif" mur_expr "then" statements)*
+       ("else" sepBy(mur_statement,";",";",allowTrailingSep))? ("endif" <|> "end") : mur_statement
+syntax "switch" mur_expr ("case" mur_expr,+ ":" mur_statement*)* ("else" mur_statement*)? ("end" <|> "endswitch") : mur_statement
+syntax "for" quantifier "do" sepBy(mur_statement,";","; ",allowTrailingSep) ("end" <|> "endfor") : mur_statement
+syntax "while" mur_expr "do" sepBy(mur_statement,";",";",allowTrailingSep) ("end" <|> "endwhile") : mur_statement
+syntax "alias" sepBy(mur_alias,";",";",allowTrailingSep) "do" statements ("end" <|> "endalias") : mur_statement
+syntax paramident "(" mur_expr,+ ")" : mur_statement
+syntax "clear" designator : mur_statement
+syntax "error" str : mur_statement
+syntax "assert" mur_expr (str)? : mur_statement
+syntax "put" (mur_expr <|> str) : mur_statement
+syntax "return" (mur_expr)? : mur_statement
+syntax "undefine" ident : mur_statement
 syntax justparam : statements
-syntax statement ";" : statements
+syntax mur_statement ";" : statements
 syntax justparam ";" : statements
-syntax statement ";" statements : statements
+syntax mur_statement ";" statements : statements
 syntax justparam ";" statements : statements
-syntax paramident ":" expr : mur_alias
-syntax "rule" (paramstr)? (expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
+syntax paramident ":" mur_expr : mur_alias
+syntax "rule" (paramstr)? (mur_expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
 syntax  "startstate" (str)? (decl* "begin")? statements ("end" <|> "endstartstate") : mur_rule
-syntax "invariant" (str)? expr : mur_rule
+syntax "invariant" (str)? mur_expr : mur_rule
 syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) ("end" <|> "endruleset") : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") ("end" <|> "endalias"): mur_rule
-syntax justparam : expr
-syntax "(" expr ")" : expr
-syntax designator : expr
-syntax num : expr
-syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
-syntax "forall" quantifier "do" expr ("end" <|> "endforall") : expr
-syntax "exists" quantifier "do" expr ("end" <|> "endexists") : expr
-syntax expr "+" expr : expr
-syntax expr "-" expr : expr
-syntax expr "*" expr : expr
-syntax expr "/" expr : expr
-syntax expr "%" expr : expr
-syntax expr "|" expr : expr
-syntax expr "&" expr : expr
-syntax expr "->" expr : expr
-syntax expr "<" expr : expr
-syntax expr "<=" expr : expr
-syntax expr ">" expr : expr
-syntax expr ">=" expr : expr
-syntax expr "=" expr : expr
-syntax expr "!=" expr : expr
-syntax "!" expr : expr
-syntax expr "?" expr ":" expr : expr
+syntax justparam : mur_expr
+syntax "(" mur_expr ")" : mur_expr
+syntax designator : mur_expr
+syntax num : mur_expr
+syntax paramident "(" mur_expr,* ")" : mur_expr -- still don't know what "actuals" are
+syntax "forall" quantifier "do" mur_expr ("end" <|> "endforall") : mur_expr
+syntax "exists" quantifier "do" mur_expr ("end" <|> "endexists") : mur_expr
+syntax mur_expr "+" mur_expr : mur_expr
+syntax mur_expr "-" mur_expr : mur_expr
+syntax mur_expr "*" mur_expr : mur_expr
+syntax mur_expr "/" mur_expr : mur_expr
+syntax mur_expr "%" mur_expr : mur_expr
+syntax mur_expr "|" mur_expr : mur_expr
+syntax mur_expr "&" mur_expr : mur_expr
+syntax mur_expr "->" mur_expr : mur_expr
+syntax mur_expr "<" mur_expr : mur_expr
+syntax mur_expr "<=" mur_expr : mur_expr
+syntax mur_expr ">" mur_expr : mur_expr
+syntax mur_expr ">=" mur_expr : mur_expr
+syntax mur_expr "=" mur_expr : mur_expr
+syntax mur_expr "!=" mur_expr : mur_expr
+syntax "!" mur_expr : mur_expr
+syntax mur_expr "?" mur_expr ":" mur_expr : mur_expr
 syntax paramident : type_expr
-syntax expr ".." expr : type_expr
+syntax mur_expr ".." mur_expr : type_expr
 syntax "enum" "{" paramident,+ "}" : type_expr
 syntax "record" sepBy(var_decl,";",";",allowTrailingSep) ("endrecord" <|> "end") : type_expr
 syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
-syntax (name := constdecl) paramident ":" expr : const_decl
+syntax (name := constdecl) paramident ":" mur_expr : const_decl
 syntax (name := typedecl) paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
@@ -555,11 +555,11 @@ syntax decl* sepBy(proc_decl,";",";",allowTrailingSep) sepBy(mur_rule,";",";",al
 syntax "[murϕ|" proc_decl "]" : term
 syntax "[murϕ|" designator "]" : term
 syntax "[murϕ|" quantifier "]" : term
-syntax "[murϕ|" statement "]" : term
+syntax "[murϕ|" mur_statement "]" : term
 syntax "[murϕ|" statements "]" : term
 syntax "[murϕ|" mur_alias "]" : term
 syntax "[murϕ|" mur_rule "]" : term
-syntax "[murϕ|" expr "]" : term
+syntax "[murϕ|" mur_expr "]" : term
 syntax "[murϕ|" type_expr "]" : term
 syntax "[murϕ|" decl "]" : term
 syntax "[murϕ_program|" program "]" : term
@@ -567,11 +567,11 @@ syntax "[murϕ_formal|" formal "]" : term
 syntax "[murϕ_proc_decl|" proc_decl "]" : term
 syntax "[murϕ_designator|" designator "]" : term
 syntax "[murϕ_quantifier|" quantifier "]" : term
-syntax "[murϕ_statement|" statement "]" : term
+syntax "[murϕ_statement|" mur_statement "]" : term
 syntax "[murϕ_statements|" statements "]" : term
 syntax "[murϕ_alias|" mur_alias "]" : term
 syntax "[murϕ_rule|" mur_rule "]" : term
-syntax "[murϕ_expr|" expr "]" : term
+syntax "[murϕ_expr|" mur_expr "]" : term
 syntax "[murϕ_type_expr|" type_expr "]" : term
 syntax "[murϕ_decl|" decl "]" : term
 syntax "[murϕ_var_decl|" var_decl "]" : term
@@ -580,21 +580,21 @@ macro_rules
   | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
   | `([murϕ| $x:quantifier ]) => `(quantifier| $x)
   | `([murϕ| $x:statements ]) => `(statements| $x)
-  | `([murϕ| $x:statement  ]) => `(statement| $x)
+  | `([murϕ| $x:mur_statement  ]) => `(mur_statement| $x)
   | `([murϕ| $x:mur_alias  ]) => `(mur_alias| $x)
   | `([murϕ| $x:mur_rule   ]) => `(mur_rule| $x)
-  | `([murϕ| $x:expr       ]) => `(expr| $x)
+  | `([murϕ| $x:mur_expr       ]) => `(mur_expr| $x)
   | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
   | `([murϕ| $x:decl       ]) => `(decl| $x)
  -- | `([murϕ| $x:designator]) => `(designator| $x)
   | `([murϕ_formal| $x:formal]) => `(formal| $x)
   | `([murϕ_proc_decl| $x:proc_decl]) => `(proc_decl| $x)
   | `([murϕ_quantifier| $x:quantifier]) => `(quantifier| $x)
-  | `([murϕ_statement| $x:statement]) => `(statement| $x)
+  | `([murϕ_statement| $x:mur_statement]) => `(mur_statement| $x)
   | `([murϕ_statements| $x:statements]) => `(statements| $x)
   | `([murϕ_alias| $x:mur_alias]) => `(mur_alias| $x)
   | `([murϕ_rule| $x:mur_rule]) => `(mur_rule| $x)
-  | `([murϕ_expr| $x:expr]) => `(expr| $x)
+  | `([murϕ_expr| $x:mur_expr]) => `(mur_expr| $x)
   | `([murϕ_type_expr| $x:type_expr]) => `(type_expr| $x)
   | `([murϕ_decl| $x:decl]) => `(decl| $x)
   | `([murϕ_var_decl| $x:var_decl]) => `(var_decl| $x)
@@ -681,7 +681,7 @@ def expandTypeDeclMacro : Macro
  | `(type_decl| $d) => expandTypeDecl d
 
 def expandConstDecl : TMacro `const_decl
-  | `(const_decl| $id:paramident : $e:expr ) => do
+  | `(const_decl| $id:paramident : $e:mur_expr ) => do
     `(Decl.const $(← expandParamIdent id) [murϕ_expr| $e])
   | _ => Lean.Macro.throwUnsupported
 
@@ -718,7 +718,7 @@ macro_rules
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
-  | `(type_expr| $x:expr .. $y) => do `(TypeExpr.integerSubrange [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(type_expr| $x:mur_expr .. $y) => do `(TypeExpr.integerSubrange [murϕ_expr| $x] [murϕ_expr| $y])
   | `(type_expr| enum { $[$ids],*} ) => do `(TypeExpr.enum $(← mapSyntaxArray ids expandParamIdent))
   | `(type_expr| record $[$decls];* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_var_decl| $d]) ) )
   | `(type_expr| array[$t₁] of $t₂) => do `(TypeExpr.array [murϕ_type_expr| $t₁] [murϕ_type_expr| $t₂])
@@ -757,50 +757,49 @@ syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate
 macro_rules
   | `(statements| $stmt:justparam ;) => do `( [ $(← expandJustParam stmt) ])
   | `(statements| $stmts:justparam ) => do `( $(← expandJustParam stmts))
-  | `(statements| $stmt:statement ;) => `( [ [murϕ_statement| $stmt] ])
+  | `(statements| $stmt:mur_statement ;) => `( [ [murϕ_statement| $stmt] ])
   | `(statements| $stmt:justparam ; $stmts:statements) => do `( $(← expandJustParam stmt) ++ [murϕ_statements| $stmts])
-  | `(statements| $stmt:statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
+  | `(statements| $stmt:mur_statement ; $stmts:statements) => `([murϕ_statement| $stmt] :: [murϕ_statements| $stmts])
 
-#check Murϕ.Expr
 macro_rules
-  | `(expr| $p:justparam) => do do `( $(← expandJustParam p))
-  | `(expr| $x + $y) => `(Murϕ.Expr.binop "+" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x - $y) => `(Murϕ.Expr.binop "-" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x * $y) => `(Murϕ.Expr.binop "*" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x / $y) => `(Murϕ.Expr.binop "/" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x % $y) => `(Murϕ.Expr.binop "%" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x | $y) => `(Murϕ.Expr.binop "|" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x & $y) => `(Murϕ.Expr.binop "&" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x -> $y) => `(Murϕ.Expr.binop "->" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x < $y) => `(Murϕ.Expr.binop "<" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x <= $y) => `(Murϕ.Expr.binop "<=" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x > $y) => `(Murϕ.Expr.binop ">" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x >= $y) => `(Murϕ.Expr.binop ">=" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x = $y) => `(Murϕ.Expr.binop "=" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| $x != $y) => `(Murϕ.Expr.binop "!=" [murϕ_expr| $x] [murϕ_expr| $y])
-  | `(expr| !$x) => `(Murϕ.Expr.negation [murϕ_expr| $x])
-  | `(expr| ($e:expr)) => `([murϕ_expr| $e])
-  | `(expr| $x:designator ) => `(Murϕ.Expr.designator [murϕ_designator| $x])
-  | `(expr| $x:num ) => `(Murϕ.Expr.integerConst $x)
-  | `(expr| $x:paramident($es:expr,*) ) => do
+  | `(mur_expr| $p:justparam) => do do `( $(← expandJustParam p))
+  | `(mur_expr| $x + $y) => `(Murϕ.Expr.binop "+" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x - $y) => `(Murϕ.Expr.binop "-" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x * $y) => `(Murϕ.Expr.binop "*" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x / $y) => `(Murϕ.Expr.binop "/" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x % $y) => `(Murϕ.Expr.binop "%" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x | $y) => `(Murϕ.Expr.binop "|" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x & $y) => `(Murϕ.Expr.binop "&" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x -> $y) => `(Murϕ.Expr.binop "->" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x < $y) => `(Murϕ.Expr.binop "<" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x <= $y) => `(Murϕ.Expr.binop "<=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x > $y) => `(Murϕ.Expr.binop ">" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x >= $y) => `(Murϕ.Expr.binop ">=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x = $y) => `(Murϕ.Expr.binop "=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| $x != $y) => `(Murϕ.Expr.binop "!=" [murϕ_expr| $x] [murϕ_expr| $y])
+  | `(mur_expr| !$x) => `(Murϕ.Expr.negation [murϕ_expr| $x])
+  | `(mur_expr| ($e:mur_expr)) => `([murϕ_expr| $e])
+  | `(mur_expr| $x:designator ) => `(Murϕ.Expr.designator [murϕ_designator| $x])
+  | `(mur_expr| $x:num ) => `(Murϕ.Expr.integerConst $x)
+  | `(mur_expr| $x:paramident($es:mur_expr,*) ) => do
     let args <- mapSyntaxArray es.getElems λ e => `([murϕ_expr|$e])
     `(Murϕ.Expr.call $(← expandParamIdent x) $args)
 --  syntax paramident "(" expr,* ")" : expr -- still don't know what "actuals" are
 
 macro_rules
   | `(designator| $x:paramident ) => do `(Designator.mk $(← expandParamIdent x) [])
-  | `(designator| $d:designator [$e:expr] ) => `(Designator.cons [murϕ_designator| $d] $ Sum.inr [murϕ_expr| $e])
+  | `(designator| $d:designator [$e:mur_expr] ) => `(Designator.cons [murϕ_designator| $d] $ Sum.inr [murϕ_expr| $e])
   | `(designator| $d:designator . $x:paramident ) => do `(Designator.cons [murϕ_designator| $d] $ Sum.inl $(← expandParamIdent x))
 
 macro_rules
-  | `(statement| $x:designator := $y ) => `(Statement.assignment [murϕ_designator| $x] [murϕ_expr| $y])
-  | `(statement| for $q do $[$stmts];* endfor) => do
+  | `(mur_statement| $x:designator := $y ) => `(Statement.assignment [murϕ_designator| $x] [murϕ_expr| $y])
+  | `(mur_statement| for $q do $[$stmts];* endfor) => do
   let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
   `(Statement.forstmt [murϕ_quantifier| $q] $stmtsSyntax)
-  | `(statement| while $expr do $[$stmts];* end) => do
+  | `(mur_statement| while $expr do $[$stmts];* end) => do
   let stmtsSyntax ← mapSyntaxArray stmts λ s => `([murϕ_statement| $s])
   `(Statement.whilestmt [murϕ_expr| $expr] $stmtsSyntax)
-  | `(statement| if $e then $thens:statements $[elsif $es then $elsifs:statements]* $[else $[$opElses];*]? endif) => do
+  | `(mur_statement| if $e then $thens:statements $[elsif $es then $elsifs:statements]* $[else $[$opElses];*]? endif) => do
   let thensSyntax ← `([murϕ_statements| $thens])
   let elseifsSyntax ← es.toList.zip elsifs.toList |>.mapM λ (exp, stmts) => `(([murϕ_expr| $exp],[murϕ_statements| $stmts]))
   let elses := match opElses with
@@ -808,15 +807,15 @@ macro_rules
     | some es => es
   let elsesSyntax ← mapSyntaxArray elses λ s => `([murϕ_statement| $s])
   `(Statement.ifstmt [murϕ_expr| $e] $thensSyntax $(Lean.quote elseifsSyntax) $elsesSyntax)
-  | `(statement| assert $e $[$s]?) =>
+  | `(mur_statement| assert $e $[$s]?) =>
   let strSyn := match s with
     | some strSyn => strSyn
     | none => Lean.quote ""
   `(Statement.assertstmt [murϕ_expr| $e] $strSyn)
-  | `(statement| error $msg) => `(Statement.errorstmt $msg)
-  | `(statement| return $[$exp]?) => match exp with | none => `(Statement.returnstmt none) | some e => `(Statement.returnstmt (some [murϕ_expr| $e]))
-  | `(statement| undefine $id ) => `(Statement.undefine $(quote id.getId.toString))
-  | `(statement| alias $[$aliases];* do $stmts end) => do
+  | `(mur_statement| error $msg) => `(Statement.errorstmt $msg)
+  | `(mur_statement| return $[$exp]?) => match exp with | none => `(Statement.returnstmt none) | some e => `(Statement.returnstmt (some [murϕ_expr| $e]))
+  | `(mur_statement| undefine $id ) => `(Statement.undefine $(quote id.getId.toString))
+  | `(mur_statement| alias $[$aliases];* do $stmts end) => do
     let aliasesSyn ← mapSyntaxArray aliases λ a => `([murϕ_alias| $a ])
     `(Statement.aliasstmt $aliasesSyn [murϕ_statements| $stmts])
 
