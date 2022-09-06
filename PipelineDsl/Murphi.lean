@@ -550,6 +550,9 @@ syntax (name := typedecl) paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
+syntax (name := constdeclp) justparam : const_decl
+syntax (name := vardeclp) justparam : var_decl
+syntax (name := typedeclp) justparam : type_decl
 syntax justparam : decl
 syntax justparam : proc_decl
 syntax justparam : mur_rule
@@ -606,6 +609,19 @@ macro_rules
 
 
 abbrev TMacro α := TSyntax α → MacroM Term
+
+private def foldlSyntaxArrayJoinAux
+  {α : SyntaxNodeKinds}
+  (expandFun : TSyntax α → MacroM Term)
+  (rest : Term)
+  (val : TSyntax α) : MacroM Term := do
+  `($rest ++ $(← expandFun val))
+
+def foldlSyntaxArrayJoin {α : SyntaxNodeKinds} :
+TSyntaxArray α → (TSyntax α → MacroM Term) → MacroM Term
+  | es, expandFun => do
+    let folded : Term ← es.foldlM (foldlSyntaxArrayJoinAux expandFun) (← `([]))
+    return Lean.quote folded
 
 def mapSyntaxArray {α : SyntaxNodeKinds} :
 TSyntaxArray α → (TSyntax α → MacroM Term) → MacroM Term
@@ -665,7 +681,8 @@ def expandParamStrMacro2 : Macro
 def expandVarDecl : TMacro `var_decl
   | `(var_decl| $[$ids:paramident],* : $t:type_expr ) => do
     let idsList : Term ← mapSyntaxArray ids expandParamIdent
-    `(Decl.var $idsList [murϕ_type_expr| $t])
+    `([Decl.var $idsList [murϕ_type_expr| $t]])
+  | `(var_decl| $p:justparam) => do `($(← expandJustParam p))
   | _ => Lean.Macro.throwUnsupported
 
 -- Hack to lift expandVarDecl to the untyped macro world
@@ -673,23 +690,38 @@ def expandVarDecl : TMacro `var_decl
 def expandVarDeclMacro : Macro
  | `(var_decl| $v) => expandVarDecl v
 
+@[macro vardeclp]
+def expandVarDeclPMacro : Macro
+ | `(var_decl| $v) => expandVarDecl v
+
 -- syntax paramident ":" expr : const_decl
 def expandTypeDecl : TMacro `type_decl
   | `(type_decl| $id:paramident : $t:type_expr ) => do
-    `(Decl.type $(← expandParamIdent id) [murϕ_type_expr| $t])
+    `([Decl.type $(← expandParamIdent id) [murϕ_type_expr| $t]])
+  | `(type_decl| $p:justparam) => do `($(← expandJustParam p))
   | _ => Lean.Macro.throwUnsupported
+
+
+@[macro typedeclp]
+def expandTypeDeclPMacro : Macro
+ | `(type_decl| $d:type_decl) => expandTypeDecl d
 
 @[macro typedecl]
 def expandTypeDeclMacro : Macro
- | `(type_decl| $d) => expandTypeDecl d
+ | `(type_decl| $d:type_decl) => expandTypeDecl d
 
 def expandConstDecl : TMacro `const_decl
   | `(const_decl| $id:paramident : $e:mur_expr ) => do
-    `(Decl.const $(← expandParamIdent id) [murϕ_expr| $e])
+    `([Decl.const $(← expandParamIdent id) [murϕ_expr| $e]])
+  | `(const_decl| $p:justparam) => do `($(← expandJustParam p))
   | _ => Lean.Macro.throwUnsupported
 
 @[macro constdecl]
 def expandConstDeclMacro : Macro
+  | `(const_decl| $d) => expandConstDecl d
+
+@[macro constdeclp]
+def expandConstDeclPMacro : Macro
   | `(const_decl| $d) => expandConstDecl d
 
 def expandSimpleQuantifier : TMacro `quantifier
@@ -713,18 +745,18 @@ def expandQuantifierAssign : Lean.Macro
 
 macro_rules
   | `(decl| var $[$vardecls];*) => do
-   mapSyntaxArray vardecls expandVarDecl
+   foldlSyntaxArrayJoin vardecls expandVarDecl
   | `(decl| type $[$typedecls];*) => do
-   mapSyntaxArray typedecls expandTypeDecl
+   foldlSyntaxArrayJoin typedecls expandTypeDecl
   | `(decl| const $[$constdecls];*) => do
-   mapSyntaxArray constdecls expandConstDecl
+   foldlSyntaxArrayJoin constdecls expandConstDecl
   | `(decl| $p:justparam) => do `($(← expandJustParam p))
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
   | `(type_expr| $x:mur_expr .. $y) => do `(TypeExpr.integerSubrange [murϕ_expr| $x] [murϕ_expr| $y])
   | `(type_expr| enum { $[$ids],*} ) => do `(TypeExpr.enum $(← mapSyntaxArray ids expandParamIdent))
-  | `(type_expr| record $[$decls];* end ) => do `(TypeExpr.record $(← mapSyntaxArray decls λ d => `([murϕ_var_decl| $d]) ) )
+  | `(type_expr| record $[$decls];* end ) => do `(TypeExpr.record $(← foldlSyntaxArrayJoin decls λ d => `([murϕ_var_decl| $d]) ) )
   | `(type_expr| array[$t₁] of $t₂) => do `(TypeExpr.array [murϕ_type_expr| $t₁] [murϕ_type_expr| $t₂])
 
 
@@ -736,25 +768,25 @@ macro_rules
         let expanded <- expandParamStr x'
         `(some $expanded)
     let dsSyn ← mapSyntaxArray ds λ d => `([murϕ_decl| $d])
-    `(Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn ) [murϕ_statements| $stmts])
+    `([Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn ) [murϕ_statements| $stmts]])
   | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset ) => do
     let qs <- mapSyntaxArray quantifiers λ q => `([murϕ_quantifier| $q])
-    let rs <- mapSyntaxArray rules λ r => `([murϕ_rule| $r])
-    `(Rule.ruleset $qs $rs)
+    let rs <- foldlSyntaxArrayJoin rules λ r => `([murϕ_rule| $r])
+    `([Rule.ruleset $qs $rs])
   | `(mur_rule| invariant $[$s]? $e) => match s with
     | none => `(Rule.invariant none [murϕ_expr| $e])
-    | some str => `(Rule.invariant (some $str) [murϕ_expr| $e])
+    | some str => `([Rule.invariant (some $str) [murϕ_expr| $e]])
   | `(mur_rule| startstate $[$name]? $[$decls]* begin $stmts end) => do
     let dsSyn ← mapSyntaxArray decls λ d => `([murϕ_decl| $d])
     let nameSyn ← match name with
       | none => `(none)
       | some str => `(some $str)
-     `(Rule.startstate $nameSyn $dsSyn [murϕ_statements| $stmts])
+     `([Rule.startstate $nameSyn $dsSyn [murϕ_statements| $stmts]])
   | `(mur_rule| startstate $[$name:str]? $stmts:statements end) => do
     let nameSyn ← match name with
       | none => `(none)
       | some str => `(some $str)
-    `(Rule.startstate $nameSyn [] [murϕ_statements| $stmts])
+    `([Rule.startstate $nameSyn [] [murϕ_statements| $stmts]])
   | `(mur_rule| $p:justparam) => do `($(← expandJustParam p))
 
 syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate") : mur_rule
@@ -838,11 +870,11 @@ macro_rules
     let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
     let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
-    `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] $declsSyn $stmts)
+    `([ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] $declsSyn $stmts])
   | `(proc_decl| function $pi ($[$formals:formal];*) : $te;  $[$opStmts:statements]? end) => do
     let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
-    `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] [] $stmts)
+    `([ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] [] $stmts])
   | `(proc_decl| $p:justparam) => do `($(← expandJustParam p))
 
 macro_rules
@@ -852,8 +884,8 @@ macro_rules
   | `(program|  $[$decls]* $[$procdecls];* $[$rules];*) => do
     let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
     let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
-    let procdeclsSyn ← mapSyntaxArray procdecls λ d => `([murϕ_proc_decl| $d])
-    let rulesSyn ← mapSyntaxArray rules λ r => `([murϕ_rule| $r])
+    let procdeclsSyn ← foldlSyntaxArrayJoin procdecls λ d => `([murϕ_proc_decl| $d])
+    let rulesSyn ← foldlSyntaxArrayJoin rules λ r => `([murϕ_rule| $r])
     `({ decls := $declsSyn, procdecls := $procdeclsSyn, rules := $rulesSyn : Program})
 
 def foo := "bar"
@@ -924,5 +956,6 @@ def onestmt := [murϕ| b := c ]
     --#mem.msg 
   endalias;
 ]
+
 
 end Murϕ

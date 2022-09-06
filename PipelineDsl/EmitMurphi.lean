@@ -4,7 +4,7 @@ import PipelineDsl.Murphi
 import PipelineDsl.AST
 
 import PipelineDsl.Translation
-
+set_option maxHeartbeats 500000
 open Pipeline
 open Murϕ
 
@@ -42,7 +42,7 @@ def ctrler_to_record
   let murphi_decls : List Murϕ.Decl :=
   state_vars.map (
     λ typedident =>
-      let (tident, ident) :=
+     let (tident, ident) :=
       match typedident with
       | TypedIdentifier.mk tident ident => (tident, ident)
 
@@ -61,7 +61,7 @@ def ctrler_to_record
 
 def gen_search_buffer_seq_num_idx
 (ctrler_name : Identifier)
-: Murϕ.ProcDecl
+: List Murϕ.ProcDecl
 :=
 
   -- TODO: Rename var instances of ctrler_name to ctrler_name_
@@ -75,7 +75,7 @@ def gen_search_buffer_seq_num_idx
   -- ex. SQ_idx_t
   let ctrler_idx_name := String.join [ctrler_name, "_idx_t"]
 
-  let murphi_func_prog : Murϕ.ProcDecl :=
+  let murphi_func_prog : List Murϕ.ProcDecl :=
   [murϕ_proc_decl|
 function £search_func_name(
              £ctrler_var_name : £ctrler_name;
@@ -103,7 +103,8 @@ def gen_buffer_ctrler_seq_num_search_func
 (lst_ctrler_names : List Identifier)
 : List Murϕ.ProcDecl
 :=
-  lst_ctrler_names.map gen_search_buffer_seq_num_idx
+  lst_ctrler_names.foldl (init := [])
+    λ ctrlers name => ctrlers ++ (gen_search_buffer_seq_num_idx name)
 
 def gen_murphi_file_decls
 (lst_ctrlers : List controller_info)
@@ -171,7 +172,7 @@ const ---- Configuration parameters ----
   REG_NUM : 1;
   --# max value
   MAX_VALUE : 1;
-  £const_decls
+  £const_decls;
 
 type ---- Type declarations ----
 
@@ -209,7 +210,7 @@ type ---- Type declarations ----
   --# So far haven't found use case for
   --# symmetry stuff
   -- LD_ENTRY : scalarset(LD_ENTRY_NUM);
-  £type_decls
+  £type_decls;
 
   -- LD_ENTRY : ld_idx_t;
   IQ_MAX_INSTS : inst_idx_t;
@@ -584,11 +585,9 @@ type ---- Type declarations ----
 
 var -- state vars - explicit overall state --
 
-  Sta :STATE;
+  Sta :STATE
 
 -- # ------------ HELPER FUNCTIONS --------------------
-
-£func_decls
 
 function rename_read_head( rename_q : RENAME) : INST;
   return rename_q.test_insts[rename_q.rename_head];
@@ -1663,8 +1662,9 @@ end;
 
 -- function iq_
 
+£func_decls
+
 -- # ------------ RULES --------------------
-£rules
 -- init state --
 
 -- #symmetry for scalar set checks
@@ -3440,9 +3440,11 @@ invariant "iwp23b1"
   ( Sta.core_[1].rf_.rf[0] = 0 )
   &
   ( Sta.core_[1].rf_.rf[1] = 1 )
-)
+);
+
+£rules
   ]
 
 -- )
 --   ]
---   murphi_file
+  murphi_file
