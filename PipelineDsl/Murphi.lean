@@ -387,7 +387,7 @@ def Program.toString : Program → String
 instance : ToString Program where toString := Program.toString
 
 def Designator.cons : Designator → (ID ⊕ Expr) → Designator
-  | .mk id rest, new => Designator.mk id (new::rest)
+  | .mk id rest, new => Designator.mk id (rest ++ [new])
 
 def Expr.appendCallArg : Expr → Expr → Expr
   | .call id args, newArg => .call id (args ++ [newArg])
