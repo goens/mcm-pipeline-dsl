@@ -219,7 +219,9 @@ inductive Rule
 end -- mutual
 
 structure Program where
-  decls : List Decl
+  constdecls : List Decl
+  typedecls : List Decl
+  vardecls : List Decl
   procdecls  : List ProcDecl
   rules   : List Rule
 
@@ -380,7 +382,10 @@ instance : ToString Decl where toString := Decl.toString
 
 def Program.toString : Program → String
   | prog =>
-    let decls := String.intercalate ";\n" $ prog.decls.map Decl.toString
+    let constdecls := String.intercalate ";\n" $ prog.constdecls.map Decl.toString
+    let vardecls := String.intercalate ";\n" $ prog.vardecls.map Decl.toString
+    let typedecls := String.intercalate ";\n" $ prog.typedecls.map Decl.toString
+    let decls := s!"const{constdecls}\ntype\n{typedecls}\nvar\n{vardecls}\n"
     let procdecls := String.intercalate ";\n" $ prog.procdecls.map ProcDecl.toString
     let rules := String.intercalate ";\n" $ prog.rules.map Rule.toString
   s!"{decls} \n {procdecls} \n {rules}"
@@ -460,6 +465,9 @@ declare_syntax_cat mur_rule
 declare_syntax_cat mur_expr
 declare_syntax_cat type_expr
 declare_syntax_cat decl
+declare_syntax_cat var_decls
+declare_syntax_cat const_decls
+declare_syntax_cat type_decls
 declare_syntax_cat var_decl
 declare_syntax_cat const_decl
 declare_syntax_cat type_decl
@@ -480,8 +488,8 @@ syntax (name := justparam2) "£(" ident ")" : justparam
 
 syntax "var" paramident,+ ":" type_expr : formal
 syntax  paramident,+ ":" type_expr : formal
-syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (decl* "begin")* mur_statement* ("end" <|> "endprocedure") : proc_decl
-syntax "function" paramident "(" sepBy(formal,";",";",allowTrailingSep) ")" ":" type_expr ";" (decl* "begin")? (statements)? ("end" <|> "endfunction") : proc_decl
+syntax "procedure" paramident "(" sepBy(formal,";") ")" ";" (var_decls* "begin")* mur_statement* ("end" <|> "endprocedure") : proc_decl
+syntax "function" paramident "(" sepBy(formal,";",";",allowTrailingSep) ")" ":" type_expr ";" (var_decls* "begin")? (statements)? ("end" <|> "endfunction") : proc_decl
 -- TODO: this needs space for the ".", should fix it
 syntax paramident : designator
 syntax designator "." paramident : designator
@@ -509,10 +517,10 @@ syntax justparam ";" : statements
 syntax mur_statement ";" statements : statements
 syntax justparam ";" statements : statements
 syntax paramident ":" mur_expr : mur_alias
-syntax "rule" (paramstr)? (mur_expr "==>")? (decl* "begin")? statements ("end" <|> "endrule") : mur_rule
+syntax "rule" (paramstr)? (mur_expr "==>")? (var_decls* "begin")? statements ("end" <|> "endrule") : mur_rule
 -- commenting this out with the above removes the errors on individual statements, which makes no sense to me
 -- syntax  "rule" (str)? (expr "==>")? (decl* "begin")? statement* "end" : mur_rule
-syntax  "startstate" (str)? (decl* "begin")? statements ("end" <|> "endstartstate") : mur_rule
+syntax  "startstate" (str)? (var_decls* "begin")? statements ("end" <|> "endstartstate") : mur_rule
 syntax "invariant" (str)? mur_expr : mur_rule
 syntax "ruleset" sepBy1(quantifier,";") "do" sepBy(mur_rule,";",";",allowTrailingSep) ("end" <|> "endruleset") : mur_rule -- TODO: see if we need to add (";")?
 syntax "alias" sepBy1(mur_alias,";") "do" sepBy(mur_rule,";") ("end" <|> "endalias"): mur_rule
@@ -547,16 +555,16 @@ syntax "array" "[" type_expr "]" "of" type_expr : type_expr
 syntax (name := vardecl) paramident,+ ":" type_expr : var_decl
 syntax (name := constdecl) paramident ":" mur_expr : const_decl
 syntax (name := typedecl) paramident ":" type_expr : type_decl
-syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
-syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
-syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
+syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : const_decls
+syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : type_decls
+syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : var_decls
 syntax (name := constdeclp) justparam : const_decl
 syntax (name := vardeclp) justparam : var_decl
 syntax (name := typedeclp) justparam : type_decl
 syntax justparam : decl
 syntax justparam : proc_decl
 syntax justparam : mur_rule
-syntax decl* sepBy(proc_decl,";",";",allowTrailingSep) sepBy(mur_rule,";",";",allowTrailingSep) : program
+syntax const_decls type_decls var_decls sepBy(proc_decl,";",";",allowTrailingSep) sepBy(mur_rule,";",";",allowTrailingSep) : program
 
 syntax "[murϕ|" proc_decl "]" : term
 syntax "[murϕ|" designator "]" : term
@@ -567,6 +575,9 @@ syntax "[murϕ|" mur_alias "]" : term
 syntax "[murϕ|" mur_rule "]" : term
 syntax "[murϕ|" mur_expr "]" : term
 syntax "[murϕ|" type_expr "]" : term
+syntax "[murϕ|" var_decls "]" : term
+syntax "[murϕ|" const_decls "]" : term
+syntax "[murϕ|" type_decls "]" : term
 syntax "[murϕ|" decl "]" : term
 syntax "[murϕ_program|" program "]" : term
 syntax "[murϕ_formal|" formal "]" : term
@@ -581,6 +592,9 @@ syntax "[murϕ_expr|" mur_expr "]" : term
 syntax "[murϕ_type_expr|" type_expr "]" : term
 syntax "[murϕ_decl|" decl "]" : term
 syntax "[murϕ_var_decl|" var_decl "]" : term
+syntax "[murϕ_var_decls|" var_decls "]" : term
+syntax "[murϕ_type_decls|" type_decls "]" : term
+syntax "[murϕ_const_decls|" const_decls "]" : term
 
 macro_rules
   | `([murϕ| $x:proc_decl  ]) => `(proc_decl| $x)
@@ -592,6 +606,9 @@ macro_rules
   | `([murϕ| $x:mur_expr       ]) => `(mur_expr| $x)
   | `([murϕ| $x:type_expr  ]) => `(type_expr| $x)
   | `([murϕ| $x:decl       ]) => `(decl| $x)
+  | `([murϕ| $x:var_decls]) => `(var_decls| $x)
+  | `([murϕ| $x:const_decls]) => `(const_decls| $x)
+  | `([murϕ| $x:type_decls]) => `(type_decls| $x)
  -- | `([murϕ| $x:designator]) => `(designator| $x)
   | `([murϕ_formal| $x:formal]) => `(formal| $x)
   | `([murϕ_proc_decl| $x:proc_decl]) => `(proc_decl| $x)
@@ -606,6 +623,9 @@ macro_rules
   | `([murϕ_var_decl| $x:var_decl]) => `(var_decl| $x)
   | `([murϕ_designator| $x:designator]) => `(designator| $x)
   | `([murϕ_program| $x:program    ]) => `(program| $x)
+  | `([murϕ_var_decls| $x:var_decls]) => `(var_decls| $x)
+  | `([murϕ_const_decls| $x:const_decls]) => `(const_decls| $x)
+  | `([murϕ_type_decls| $x:type_decls]) => `(type_decls| $x)
 
 
 abbrev TMacro α := TSyntax α → MacroM Term
@@ -744,11 +764,11 @@ def expandQuantifierAssign : Lean.Macro
 --def expandQuantifier := expandSimpleQuantifier >=> expandQuantifierAssign
 
 macro_rules
-  | `(decl| var $[$vardecls];*) => do
+  | `(var_decls| var $[$vardecls];*) => do
    foldlSyntaxArrayJoin vardecls expandVarDecl
-  | `(decl| type $[$typedecls];*) => do
+  | `(type_decls| type $[$typedecls];*) => do
    foldlSyntaxArrayJoin typedecls expandTypeDecl
-  | `(decl| const $[$constdecls];*) => do
+  | `(const_decls| const $[$constdecls];*) => do
    foldlSyntaxArrayJoin constdecls expandConstDecl
   | `(decl| $p:justparam) => do `($(← expandJustParam p))
 
@@ -761,14 +781,14 @@ macro_rules
 
 
 macro_rules
-  | `(mur_rule| rule $(x)? $e ==> $(ds)* begin $stmts end) => do
+  | `(mur_rule| rule $(x)? $e ==> $(vds)* begin $stmts end) => do
     let xSyn <- match x with
       | none => `(none)
       | some x' =>
         let expanded <- expandParamStr x'
         `(some $expanded)
-    let dsSyn ← mapSyntaxArray ds λ d => `([murϕ_decl| $d])
-    `([Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn ) [murϕ_statements| $stmts]])
+    let dsSyn ← mapSyntaxArray vds λ d => `([murϕ_var_decls| $d])
+    `([Rule.simplerule $xSyn [murϕ_expr| $e] (List.join $dsSyn) [murϕ_statements| $stmts]])
   | `(mur_rule| ruleset $[$quantifiers];* do $[$rules];* endruleset ) => do
     let qs <- mapSyntaxArray quantifiers λ q => `([murϕ_quantifier| $q])
     let rs <- foldlSyntaxArrayJoin rules λ r => `([murϕ_rule| $r])
@@ -777,7 +797,7 @@ macro_rules
     | none => `(Rule.invariant none [murϕ_expr| $e])
     | some str => `([Rule.invariant (some $str) [murϕ_expr| $e]])
   | `(mur_rule| startstate $[$name]? $[$decls]* begin $stmts end) => do
-    let dsSyn ← mapSyntaxArray decls λ d => `([murϕ_decl| $d])
+    let dsSyn ← mapSyntaxArray decls λ d => `([murϕ_var_decls| $d])
     let nameSyn ← match name with
       | none => `(none)
       | some str => `(some $str)
@@ -865,9 +885,9 @@ macro_rules
     `(Formal.mk false $(ids) [murϕ_type_expr| $te])
 
 macro_rules
-  | `(proc_decl| function $pi ($[$formals:formal];*) : $te; $[$decls:decl]* begin $[$opStmts:statements]? end) => do
+  | `(proc_decl| function $pi ($[$formals:formal];*) : $te; $[$decls:var_decls]* begin $[$opStmts:statements]? end) => do
     let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
-    let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
+    let declsArray : Array Term ← decls.mapM λ d => `([murϕ_var_decls| $d])
     let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
     `([ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] $declsSyn $stmts])
@@ -881,12 +901,12 @@ macro_rules
   | `(mur_alias|  $pi:paramident : $expr ) => do `(Alias.mk $(← expandParamIdent pi) [murϕ_expr| $expr])
 
 macro_rules
-  | `(program|  $[$decls]* $[$procdecls];* $[$rules];*) => do
-    let declsArray : Array Term ← decls.mapM λ d => `([murϕ_decl| $d])
-    let declsSyn : Term ← `(List.join $(Lean.quote declsArray.toList))
+  | `(program|  $cdecls:const_decls $tdecls:type_decls $vdecls:var_decls $[$procdecls];* $[$rules];*) => do
     let procdeclsSyn ← foldlSyntaxArrayJoin procdecls λ d => `([murϕ_proc_decl| $d])
     let rulesSyn ← foldlSyntaxArrayJoin rules λ r => `([murϕ_rule| $r])
-    `({ decls := $declsSyn, procdecls := $procdeclsSyn, rules := $rulesSyn : Program})
+    `({ vardecls := [murϕ_var_decls| $vdecls], typedecls := [murϕ_type_decls| $tdecls],
+        constdecls := [murϕ_const_decls| $cdecls],
+        procdecls := $procdeclsSyn, rules := $rulesSyn : Program})
 
 def foo := "bar"
 #eval [murϕ| var foo : baz]
