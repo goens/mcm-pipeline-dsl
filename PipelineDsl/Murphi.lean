@@ -550,6 +550,9 @@ syntax (name := typedecl) paramident ":" type_expr : type_decl
 syntax "const" sepBy(const_decl,";",";",allowTrailingSep) : decl
 syntax "type" sepBy(type_decl,";",";",allowTrailingSep) : decl
 syntax "var" sepBy(var_decl,";",";",allowTrailingSep) : decl
+syntax justparam : decl
+syntax justparam : proc_decl
+syntax justparam : mur_rule
 syntax decl* sepBy(proc_decl,";",";",allowTrailingSep) sepBy(mur_rule,";",";",allowTrailingSep) : program
 
 syntax "[murϕ|" proc_decl "]" : term
@@ -715,6 +718,7 @@ macro_rules
    mapSyntaxArray typedecls expandTypeDecl
   | `(decl| const $[$constdecls];*) => do
    mapSyntaxArray constdecls expandConstDecl
+  | `(decl| $p:justparam) => do `($(← expandJustParam p))
 
 macro_rules
   | `(type_expr| $x:paramident) => do `(TypeExpr.previouslyDefined $(← expandParamIdent x))
@@ -751,6 +755,7 @@ macro_rules
       | none => `(none)
       | some str => `(some $str)
     `(Rule.startstate $nameSyn [] [murϕ_statements| $stmts])
+  | `(mur_rule| $p:justparam) => do `($(← expandJustParam p))
 
 syntax  "startstate" (str)? (decl "begin")? statements ("end" <|> "endstartstate") : mur_rule
 
@@ -838,6 +843,7 @@ macro_rules
     let formalsSyn ← mapSyntaxArray formals λ f => `([murϕ_formal| $f])
     let stmts ← match opStmts with | none => `([]) | some ss => `([murϕ_statements| $ss])
     `(ProcDecl.function $(← expandParamIdent pi) $formalsSyn [murϕ_type_expr| $te] [] $stmts)
+  | `(proc_decl| $p:justparam) => do `($(← expandJustParam p))
 
 macro_rules
   | `(mur_alias|  $pi:paramident : $expr ) => do `(Alias.mk $(← expandParamIdent pi) [murϕ_expr| $expr])
@@ -918,7 +924,5 @@ def onestmt := [murϕ| b := c ]
     --#mem.msg 
   endalias;
 ]
-
-
 
 end Murϕ
