@@ -153,13 +153,12 @@ def compose_murphi_file_components
 ( rules : List Murϕ.Rule)
 : Murϕ.Program
 :=
-  let murphi_file := [murϕ_program|
-const ---- Configuration parameters ----
-
+  let list_const_decls := [murϕ_const_decls|
+  const ---- Configuration parameters ----
   -- LD_ENTRY_NUM : 1;
   -- SQ_ENTRY_NUM : 1;
   -- SB_ENTRY_NUM : 1;
-  -- DATA_NUM : 2;
+  DATA_NUM : 2;
   CORE_INST_NUM : 1;
 
   IC_ENTRY_NUM : 1;
@@ -172,8 +171,9 @@ const ---- Configuration parameters ----
   REG_NUM : 1;
   --# max value
   MAX_VALUE : 1;
-  £const_decls;
-
+  -- £const_decls;
+  ]
+  let list_type_decls := [murϕ_type_decls|
 type ---- Type declarations ----
 
   --# for value types
@@ -219,20 +219,21 @@ type ---- Type declarations ----
   -- can I simply not just model
   -- it similar to the DSL as well?
   -- instead of as a state machine?
-  LD_ENTRY_STATE : enum {await_creation,
-                      await_scheduled,
-                      await_fwd_check,
-                      await_sb_fwd_check,
-                      await_translation,
-                      await_check_forwarding_or_load_response,
-                      await_sb_fwd_check_response,
-                      build_packet,
-                      send_memory_request,
-                      await_mem_response,
-                      squashed_await_mem_response,
-                      write_result,
-                      await_committed
-                     };
+
+  -- LD_ENTRY_STATE : enum {await_creation,
+  --                     await_scheduled,
+  --                     await_fwd_check,
+  --                     await_sb_fwd_check,
+  --                     await_translation,
+  --                     await_check_forwarding_or_load_response,
+  --                     await_sb_fwd_check_response,
+  --                     build_packet,
+  --                     send_memory_request,
+  --                     await_mem_response,
+  --                     squashed_await_mem_response,
+  --                     write_result,
+  --                     await_committed
+  --                    };
 
   -- insts are either load or stores
   INST_TYPE : enum {ld, st, inval};
@@ -281,65 +282,68 @@ type ---- Type declarations ----
   end;
 
   -- just a 'dumb' copy of the state vars
-  LD_ENTRY_VALUES : record
-  ld_state : LD_ENTRY_STATE;
-  --#seq_num : inst_count_t; --#val_t;
-  instruction : INST;
-  virt_addr : addr_idx_t;
-  phys_addr : addr_idx_t;
-  read_value : val_t;
-  commit : boolean;
-  -- latest_store_seq_num : val_t;
-  st_seq_num : inst_count_t;
-  end;
+
+  -- LD_ENTRY_VALUES : record
+  -- ld_state : LD_ENTRY_STATE;
+  -- --#seq_num : inst_count_t; --#val_t;
+  -- instruction : INST;
+  -- virt_addr : addr_idx_t;
+  -- phys_addr : addr_idx_t;
+  -- read_value : val_t;
+  -- commit : boolean;
+  -- -- latest_store_seq_num : val_t;
+  -- st_seq_num : inst_count_t;
+  -- end;
 
   ---------------------- SQ_ENTRY ----------------------
 
   --# Murphi doesn't like the same enum names?
-  ST_ENTRY_STATE : enum {st_init,
-                         st_await_creation,
-                         st_await_scheduled,
-                         st_await_translation,
-                         st_await_lq_squash,
-                         st_build_packet,
-                         -- #send_memory_request,
-                         -- #await_mem_response,
-                         -- #write_result,
-                         st_await_committed
-                        };
 
-  SQ_ENTRY_VALUES : record
-  st_state : ST_ENTRY_STATE;
-  --#seq_num : inst_count_t; --#val_t;
-  instruction : INST;
-  virt_addr : addr_idx_t;
-  phys_addr : addr_idx_t;
-  write_value : val_t;
-  commit : boolean;
-  -- latest_load_seq_num : val_t;
-  ld_seq_num : inst_count_t;
-  end;
+  -- ST_ENTRY_STATE : enum {st_init,
+  --                        st_await_creation,
+  --                        st_await_scheduled,
+  --                        st_await_translation,
+  --                        st_await_lq_squash,
+  --                        st_build_packet,
+  --                        -- #send_memory_request,
+  --                        -- #await_mem_response,
+  --                        -- #write_result,
+  --                        st_await_committed
+  --                       };
+
+  -- SQ_ENTRY_VALUES : record
+  -- st_state : ST_ENTRY_STATE;
+  -- --#seq_num : inst_count_t; --#val_t;
+  -- instruction : INST;
+  -- virt_addr : addr_idx_t;
+  -- phys_addr : addr_idx_t;
+  -- write_value : val_t;
+  -- commit : boolean;
+  -- -- latest_load_seq_num : val_t;
+  -- ld_seq_num : inst_count_t;
+  -- end;
 
   ---------------------- SB_ENTRY ----------------------
 
   --# Murphi doesn't like the same enum names?
-  SB_ENTRY_STATE : enum {
-                         sb_await_creation,
-                         sb_await_send_mem_req,
-                         sb_await_mem_response
-                        };
 
-  SB_ENTRY_VALUES : record
-  sb_state : SB_ENTRY_STATE;
-  --#seq_num : inst_count_t; --#val_t;
-  instruction : INST;
-  --#TODO: ideally, replace phys_addr
-  --# with the packet.
-  --# more "accurate" to generated code
-  virt_addr : addr_idx_t;
-  phys_addr : addr_idx_t;
-  write_value : val_t;
-  end;
+  -- SB_ENTRY_STATE : enum {
+  --                        sb_await_creation,
+  --                        sb_await_send_mem_req,
+  --                        sb_await_mem_response
+  --                       };
+
+  -- SB_ENTRY_VALUES : record
+  -- sb_state : SB_ENTRY_STATE;
+  -- --#seq_num : inst_count_t; --#val_t;
+  -- instruction : INST;
+  -- --#TODO: ideally, replace phys_addr
+  -- --# with the packet.
+  -- --# more "accurate" to generated code
+  -- virt_addr : addr_idx_t;
+  -- phys_addr : addr_idx_t;
+  -- write_value : val_t;
+  -- end;
 
   ---------------------- Rename ----------------------
   -- # Rename inserts insts into LSQ #(LQ for now)
@@ -512,54 +516,63 @@ type ---- Type declarations ----
   -- compose "multi-core-system" from "core"
   -- instantiate "multi-core-system" as state
 
-  LQ : record
-  ld_entries : array [LD_ENTRY] of LD_ENTRY_VALUES;
-  ld_head : ld_idx_t;
-  ld_tail : ld_idx_t;
-  num_entries : ld_count_t;
-  --# Search related things
-  --# consider creating a record
-  search_busy : boolean;
-  --# LQ doesn't need to know which store sent a req
-  --# No wait it does, to send the completion
-  --# and let the store know it can move states or sth
-  st_seq_num : inst_count_t;
-  phys_addr : addr_idx_t;
-  ld_seq_num : inst_count_t;
-  end;
+  -- LQ : record
+  -- ld_entries : array [LD_ENTRY] of LD_ENTRY_VALUES;
+  -- ld_head : ld_idx_t;
+  -- ld_tail : ld_idx_t;
+  -- num_entries : ld_count_t;
+  -- --# Search related things
+  -- --# consider creating a record
+  -- search_busy : boolean;
+  -- --# LQ doesn't need to know which store sent a req
+  -- --# No wait it does, to send the completion
+  -- --# and let the store know it can move states or sth
+  -- st_seq_num : inst_count_t;
+  -- phys_addr : addr_idx_t;
+  -- ld_seq_num : inst_count_t;
+  -- end;
 
   ---------------------- SQ ----------------------
-  SQ : record
-  sq_entries : array [sq_idx_t] of SQ_ENTRY_VALUES;
-  sq_head : sq_idx_t;
-  sq_tail : sq_idx_t;
-  num_entries : sq_count_t;
-  --# Search related things
-  --# consider creating a record
-  search_busy : boolean;
-  st_seq_num : inst_count_t;
-  phys_addr : addr_idx_t;
-  ld_seq_num : inst_count_t;
-  end;
 
-  ---------------------- SB ----------------------
-  SB : record
-  sb_entries : array [sb_idx_t] of SB_ENTRY_VALUES;
-  sb_head : sb_idx_t;
-  sb_tail : sb_idx_t;
-  num_entries : sb_count_t;
+  -- SQ : record
+  -- sq_entries : array [sq_idx_t] of SQ_ENTRY_VALUES;
+  -- sq_head : sq_idx_t;
+  -- sq_tail : sq_idx_t;
+  -- num_entries : sq_count_t;
+  -- --# Search related things
+  -- --# consider creating a record
+  -- search_busy : boolean;
+  -- st_seq_num : inst_count_t;
+  -- phys_addr : addr_idx_t;
+  -- ld_seq_num : inst_count_t;
+  -- end;
 
-  --# Search related things
-  --# consider creating a record
-  search_busy : boolean;
-  phys_addr : addr_idx_t;
-  ld_seq_num : inst_count_t;
-  end;
+  -- ---------------------- SB ----------------------
+  -- SB : record
+  -- sb_entries : array [sb_idx_t] of SB_ENTRY_VALUES;
+  -- sb_head : sb_idx_t;
+  -- sb_tail : sb_idx_t;
+  -- num_entries : sb_count_t;
 
-  LSQ : record
-  lq_ : LQ;
-  sq_ : SQ;
-  end;
+  -- --# Search related things
+  -- --# consider creating a record
+  -- search_busy : boolean;
+  -- phys_addr : addr_idx_t;
+  -- ld_seq_num : inst_count_t;
+  -- end;
+
+  -- LSQ : record
+  -- lq_ : LQ;
+  -- sq_ : SQ;
+  -- end;
+  ]
+
+  -- AZ TODO: Build the CORE
+  -- half-manually,
+  -- i.e. synth the ctrler names..
+  let core_and_state_type_decl :=
+  [murϕ_type_decls|
+  type
 
   CORE : record
   lsq_ : LSQ;
@@ -582,18 +595,23 @@ type ---- Type declarations ----
 
   --#mem_interface_ : array [cores_t] of MEM_INTERFACE;
   end;
+  ]
 
-var -- state vars - explicit overall state --
+  let list_var_decls : List Murϕ.Decl := [murϕ_var_decls|
+  var -- state vars - explicit overall state --
 
   Sta :STATE
+  ]
 
 -- # ------------ HELPER FUNCTIONS --------------------
-
-function rename_read_head( rename_q : RENAME) : INST;
-  return rename_q.test_insts[rename_q.rename_head];
-end;
-
-function rename_pop_head(
+  let list_func_decls := [
+  [murϕ_proc_decl|
+  function rename_read_head( rename_q : RENAME) : INST;
+    return rename_q.test_insts[rename_q.rename_head];
+  end
+  ],
+  [murϕ_proc_decl|
+  function rename_pop_head(
              -- head and tail
              -- head : inst_idx_t;
              -- tail : inst_idx_t;
@@ -612,8 +630,10 @@ begin
   -- use this to overwrite the old one
   -- (immutable style)
   return rename_q;
-end;
+end
+  ],
 
+[murϕ_proc_decl|
 function lq_insert(
              lq : LQ;
              sq : SQ;
@@ -665,8 +685,9 @@ begin
   lq_new.ld_entries[lq.ld_tail] := curr_tail_entry;
 
   return lq_new;
-end;
-
+end
+],
+[murϕ_proc_decl|
 function lq_schedule(
              lq : LQ;
              seq_num : inst_count_t; --#seq_num_t;--inst_idx_t;
@@ -718,8 +739,9 @@ function lq_schedule(
   --
   error "didn't find the Load to Schedule?";
   return lq_new;
-end;
-
+end
+],
+[murϕ_proc_decl|
 function iq_insert(
              iq : IQ;
              inst : INST;
@@ -754,8 +776,10 @@ function iq_insert(
   --
   -- error "should have inserted inst into IQ?";
   return iq_new;
-end;
+end
+],
 
+[murϕ_proc_decl|
 function rob_insert(
              rob : ROB;
              inst : INST;
@@ -774,7 +798,9 @@ function rob_insert(
   -- # assert not needed...
   assert (rob.num_entries <= ( CORE_INST_NUM + 1)) "can't add more!";
   return rob_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function rob_remove(
              rob : ROB;
@@ -794,7 +820,9 @@ begin
   -- # assert not needed...
   assert (rob.num_entries >= ( 0 )) "can't remove more!";
   return rob_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function lq_clear_head(
              lq : LQ;
@@ -821,7 +849,9 @@ begin
   lq_new.num_entries := (lq_new.num_entries - 1);
 
   return lq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function lq_commit_head(
              lq : LQ;
@@ -852,7 +882,9 @@ begin
   -- # state after clearing entry info
 
   return lq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function search_lq_seq_num_idx(
              lq : LQ;
@@ -869,7 +901,9 @@ begin
     end;
   end;
   error "LQ Search: didn't find it? how? bad seq_num idx?";
-end;
+end
+],
+[murϕ_proc_decl|
 
 function search_sq_seq_num_idx(
              sq : SQ;
@@ -886,7 +920,9 @@ function search_sq_seq_num_idx(
     end;
   end;
   error "SQ Search: didn't find it? how? bad seq_num idx?";
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sq_insert(
              lq : LQ;
@@ -920,7 +956,9 @@ begin
   --
   assert (sq.num_entries < ( SQ_ENTRY_NUM + 1)) "can't add more!";
   return sq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sq_schedule(
              sq : SQ;
@@ -975,7 +1013,9 @@ function sq_schedule(
   --
   error "didn't find the Store to Schedule?";
   return sq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sq_clear_head(
              sq : SQ;
@@ -1001,7 +1041,9 @@ begin
   sq_new.num_entries := (sq_new.num_entries - 1);
 
   return sq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sq_commit_head(
              sq : SQ;
@@ -1033,7 +1075,9 @@ begin
   -- # state after clearing entry info
 
   return sq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sb_insert(
              sb : SB;
@@ -1058,7 +1102,9 @@ function sb_insert(
   --
   assert (sb.num_entries < ( SB_ENTRY_NUM + 1)) "can't add more!";
   return sb_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function sb_clear_head(
              sb : SB;
@@ -1083,7 +1129,9 @@ function sb_clear_head(
   sb_new.num_entries := (sb_new.num_entries - 1);
 
   return sb_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function insert_ld_in_mem_interface(
              --#mem_int : MEM_INTERFACE;
@@ -1103,7 +1151,9 @@ begin
   msg.seq_num := ld_entry.instruction.seq_num;
 
   return msg;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function insert_st_in_mem_interface(
              --#mem_int : MEM_INTERFACE;
@@ -1123,7 +1173,9 @@ begin
   msg.seq_num := sb_entry.instruction.seq_num;
 
   return msg;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function insert_msg_into_ic(
              ic : IC;
@@ -1141,7 +1193,9 @@ begin
       return ic_new;
     end;
   end;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function associative_assign_lq(
              lq : LQ;
@@ -1207,7 +1261,9 @@ function associative_assign_lq(
   --# number of "unnecessary" LD Messages?
   --#error "didn't find the Load to write the read val into?";
   return lq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function associative_ack_sb(
              sb : SB;
@@ -1247,8 +1303,9 @@ function associative_ack_sb(
   --
   error "didn't find the Load to write the read val into?";
   return sb_new;
-end;
-
+end
+],
+[murϕ_proc_decl|
 
 function store_queue_match_phys_addr_younger_than_seq_num_request
   (
@@ -1269,7 +1326,9 @@ begin
   sq_new.ld_seq_num := ld_seq_num;
 
   return sq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function store_buffer_match_phys_addr_younger_than_seq_num_request
   (
@@ -1289,7 +1348,9 @@ begin
   sb_new.ld_seq_num := ld_seq_num;
 
   return sb_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function find_st_idx_of_seq_num
   (
@@ -1306,7 +1367,9 @@ begin
   end;
   --#return SQ_ENTRY_NUM + 1;
   return 0;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function set_load_seq_num_entry_read
   (
@@ -1340,7 +1403,9 @@ begin
   --# exited their Queues
   --# leading to no load in the LQ
   return lq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function set_load_state_to_state
   (
@@ -1363,7 +1428,9 @@ begin
   end;
   --#error "Set Load State: load shouldn't have disappeared?";
   return lq_new;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function assert_load_state_is_state
   (
@@ -1388,7 +1455,9 @@ begin
   end;
   --#error "load shouldn't have disappeared?";
   return true;
-end;
+end
+],
+[murϕ_proc_decl|
 
 function init_state_fn () : STATE;
   var init_state : STATE;
@@ -1646,636 +1715,21 @@ begin
   end;
 
   return init_state;
-end;
+end
+]
+] ++ func_decls
 
--- # func for iq remove an elem..
--- # but an arbitrary elem?
--- # So maybe we don't need "head"
--- # and "tail" per se?
--- # just a way to add elems & remove them?
--- # and know when it's full?
--- # so a counter?
+  let list_rules : List Murϕ.Rule := List.join (
+    [
+  [murϕ_rule|
 
--- # So IQ should:
--- # randomly choose an elem to "schedule"
--- # and then remove it from the buffer
-
--- function iq_
-
-£func_decls
-
--- # ------------ RULES --------------------
--- init state --
-
--- #symmetry for scalar set checks
--- #just use normal for loop
--- ruleset i : LD_ENTRY do
--- rule
 startstate "init"
   undefine Sta;
 
   Sta := init_state_fn();
-end;
-
--- # alias ld_sm:Sta.core_[j].lsq_.lq_[i] do
--- #   -- move from curr state to next state
--- #   -- might be useful to use a table here
--- #   if ld_sm.ld_state = init then
--- #     ld_sm.ld_state := await_creation;
--- #   elsif ld_sm.ld_state = build_packet then
--- #     ld_sm.ld_state := send_memory_request;
--- #   elsif ld_sm.ld_state = send_memory_request then
--- #     ld_sm.ld_state := await_mem_response;
--- #   elsif ld_sm.ld_state = write_result then
--- #     ld_sm.ld_state := await_comitted;
--- #   end;
--- # end;
-
--- # ====== Actual States ========
-
---# ruleset i : LD_ENTRY do
---#   -- # progress thru ld states
---#   -- # for states that are
---#   -- # "await" on sth,
---#   -- # another rule needs to be
---#   -- # written to change the state
---# rule "init_to_await_insert"
---#   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = init
---# ==>
---#   -- decls
---#   var next_state : STATE;
---#   var ld_entry : LD_ENTRY_VALUES;
---# begin
---#   next_state := Sta;
---#   ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
---#   ld_entry.ld_state := await_creation;
---#   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
---# 
---#   Sta := next_state;
---# end; end;
-
---------------------- LQ TRANSITIONS -----------------
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-rule "await_fwd_check_to_await_store_queue_response"
-  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_fwd_check
-==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-  var sq : SQ;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-  sq := Sta.core_[j].lsq_.sq_;
-
-  --# if no valid seq num, go to translate & build_packet
-  --# NOTE: This means to skip to the check SB instead!
-  if (ld_entry.st_seq_num != 0) then
-    --# But I want to split the transitions (& behaviour),
-    --# this can happen in interleaved order
-    --# So send a message to SQ first, and there'll be
-    --# another transition after to message back
-    --# TODO NOTE: Add a check on number of elements.
-    if (sq.search_busy = false) then
-      sq := store_queue_match_phys_addr_younger_than_seq_num_request(
-          sq,
-          ld_entry.st_seq_num,
-          ld_entry.phys_addr,
-          ld_entry.instruction.seq_num
-        );
-      next_state.core_[j].lsq_.sq_ := sq;
-
-      --# TODO: Implement transition for the SQ to check & return
-      --# SQ transition moves this transition to next state,
-      --# setting the relevant LQ entry's regs.. in then when
-      --# statement
-      --# The send it to LQ entry can be "atomic" due to
-      --# the associativity,
-      --# otherwise we can also create an interface as well
-      --# "busy" or "not_busy".
-      ld_entry.ld_state := await_check_forwarding_or_load_response;
-    else
-      --# NOTE: This is more auto-generated
-      --# contention stuff...
-      --# Try again when resource free.
-      ld_entry.ld_state := await_fwd_check;
-    endif;
-  else
-    --# go to build_packet!
-    --#ld_entry.ld_state := build_packet;
-    --# NOTE: No! go to check SB!
-    ld_entry.ld_state := await_sb_fwd_check;
-  endif;
-
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
-------# NOTE: SQ TRANSITION, MOVE to SQ SECTION LATER ------
-ruleset j : cores_t do
---#ruleset i : LD_ENTRY do
-rule "sq_process_search_request"
---# Condition if there's a search request made
-Sta.core_[j].lsq_.sq_.search_busy = true
-==>
--- decls
-  var next_state : STATE;
-  var sq : SQ;
-  var lq : LQ;
-  var st_idx : sq_count_t;
-  var offset : sq_idx_t;
-  var difference : sq_idx_t;
-  var curr_idx : sq_idx_t;
-  var value : val_t;
-  var while_break : boolean;
-  var assert_check : boolean;
-begin
-  next_state := Sta;
-  sq := Sta.core_[j].lsq_.sq_;
-  lq := Sta.core_[j].lsq_.lq_;
-  while_break := false;
-
-  --# TODO:
-  --# do the search in the SQ
-  --# and return the value to the load
-  --# Move the load into the next state
-
-  --# (1) find the st index w/ st_seq_num
-  --# If it exists, do step (2)
-  --# put "=====\n";
-  --# put sq.num_entries;
-  if (sq.num_entries = 0) then
-    while_break := true;
-    lq := set_load_state_to_state(lq,
-                                  Sta.core_[j].lsq_.sq_.ld_seq_num,
-                                  await_sb_fwd_check);
-  endif;
-  st_idx := find_st_idx_of_seq_num(sq,
-                                   sq.st_seq_num);
-  --# put st_idx;
-  --# Treat ( SQ_ENTRY_NUM + 1 ) as not found
-  --#put "============\n";
-  --#put "st_idx: ";
-  --#put st_idx;
-  --#put "\n";
-
-  --#if ( st_idx != ( SQ_ENTRY_NUM + 1 ) ) then
-  difference := ( st_idx + ( SQ_ENTRY_NUM + 1) - sq.sq_head ) % ( SQ_ENTRY_NUM + 1);
-  offset := 0;
-  --#put "difference: ";
-  --#put difference;
-  --#put "\n";
-  while ( (offset <= difference) & (while_break = false) ) do
-    --#put "offset: ";
-    --#put offset;
-    --#put "\n";
-    curr_idx := ( st_idx + ( SQ_ENTRY_NUM + 1) - offset ) % ( SQ_ENTRY_NUM + 1);
-    if (sq.sq_entries[curr_idx].phys_addr
-        =
-        sq.phys_addr) then
-      --#st_idx := i;
-      --# (2) return val to the load
-      value := sq.sq_entries[curr_idx].write_value;
-      --# func to write to load's read val
-      --# This is the when block
-      --# NOTE: This function also advances the load's state
-      lq := set_load_seq_num_entry_read(lq,
-                                        sq.ld_seq_num,
-                                        value);
-      --#put "value: ";
-      --#put value;
-      --#put "\n";
-
-      --# NOTE: Commented out the assert check
-      --# Since the reset from the St [x] -> LQ check
-      --# resets the state
-
-      --#assert_check := assert_load_state_is_state(lq,
-      --#                           Sta.core_[j].lsq_.sq_.ld_seq_num,
-      --#                           await_check_forwarding_or_load_response
-      --#                          );
-      lq := set_load_state_to_state(lq,
-                                    Sta.core_[j].lsq_.sq_.ld_seq_num,
-                                    write_result);
-
-      --# Break out of the while loop
-      --#offset := difference + 1;
-      while_break := true;
-    endif;
-
-    --#if (while_break = true) then
-    --#  offset := difference + 1;
-    --#else
-    if (offset != SQ_ENTRY_NUM) then
-      offset := offset + 1;
-    else
-      while_break := true;
-    endif;
-  end;
-  --#end;
-
-  --# NOTE:
-  --# If SQ does not contain any entries, check SB
-  --# Set this in motion by moving the load to the next
-  --# stage..
-  --# Interestingly, the SQ could forward the request
-  --# to the SB as an optimization.
-  --# But it's better to keep to the DSL code for now
-  --# Change this check to offset = SQ_ENTRY_NUM
-  if (while_break = false) then
-    lq := set_load_state_to_state(lq,
-                                  Sta.core_[j].lsq_.sq_.ld_seq_num,
-                                  await_sb_fwd_check);
-  endif;
-
-  --# whether it was found or not, the request has been
-  --# completed
-  sq.search_busy := false;
-  sq.ld_seq_num := 0;
-  sq.st_seq_num := 0;
-  sq.phys_addr := 0;
-
-  --# (3) otherwise "return" fail
-  --# TODO NOTE: Make this search the store buffer as well!!!
-  --# all entries that is..
-  --#lq := set_load_state_to_state(lq,
-  --#                              Sta.core_[j].lsq_.sq_.ld_seq_num,
-  --#                              build_packet);
-
-  next_state.core_[j].lsq_.sq_ := sq;
-  next_state.core_[j].lsq_.lq_ := lq;
-
-  Sta := next_state;
-end; --#end;
-endruleset;
-
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-rule "await_sb_fwd_check_to_await_sb_response"
-  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_sb_fwd_check
-==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-  var sb : SB;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-  sb := Sta.core_[j].sb_;
-
-  --# TODO NOTE don't send request if buffer is empty!
-  --# Since the transition changes this load's state
-  --# This can mess with the load later..
-  if (sb.search_busy = false) then
-    sb := store_buffer_match_phys_addr_younger_than_seq_num_request(
-        sb,
-        ld_entry.st_seq_num,
-        ld_entry.phys_addr,
-        ld_entry.instruction.seq_num
-      );
-    next_state.core_[j].sb_ := sb;
-
-    ld_entry.ld_state := await_sb_fwd_check_response;
-  else
-    --# NOTE: This is more auto-generated
-    --# contention stuff...
-    --# Try again when resource free.
-    --# NOTE: doesn't need to be here,
-    --# Transition could have a guard
-    --# condition on the core # j's SB
-    --# search busy boolean flag
-    --# which is more efficient...
-    ld_entry.ld_state := await_sb_fwd_check;
-  endif;
-
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
-------# NOTE: SB TRANSITION, MOVE to SB SECTION LATER ------
-ruleset j : cores_t do
---#ruleset i : LD_ENTRY do
-rule "sb_process_search_request"
---# Condition if there's a search request made
-Sta.core_[j].sb_.search_busy = true
-==>
--- decls
-  var next_state : STATE;
-  var sb : SB;
-  var lq : LQ;
-  var st_idx : sb_idx_t;
-  var offset : sb_idx_t;
-  var difference : sb_idx_t;
-  var curr_idx : sb_idx_t;
-  var value : val_t;
-  var while_break : boolean;
-  var assert_check : boolean;
-begin
-  next_state := Sta;
-  sb := Sta.core_[j].sb_;
-  lq := Sta.core_[j].lsq_.lq_;
-
-  --# TODO:
-  --# do the search in the SB
-  --# and return the value to the load
-  --# Move the load into the next state
-
-  --# (1) find the st index w/ st_seq_num
-  --# If it exists, do step (2)
-
-  --#st_idx := find_st_idx_of_seq_num(sb,
-  --#                                 sb.st_seq_num);
-  --# Instead we just try to find the youngest store
-  --# to fwd from
-  while_break := false;
-
-  st_idx := ( sb.sb_tail + ( SB_ENTRY_NUM + 1) - 1 ) % ( SB_ENTRY_NUM + 1);
-  if (sb.num_entries = 0) then
-    while_break := true;
-    lq := set_load_state_to_state(lq,
-                                  Sta.core_[j].sb_.ld_seq_num,
-                                  build_packet);
-  endif;
-
-  difference := ( st_idx + ( SB_ENTRY_NUM + 1) - sb.sb_head ) % ( SB_ENTRY_NUM + 1);
-  offset := 0;
-  while ( (offset <= difference) & (while_break = false) )  do
-    curr_idx := ( st_idx + ( SB_ENTRY_NUM + 1 ) - offset ) % ( SB_ENTRY_NUM + 1);
-    if (sb.sb_entries[curr_idx].phys_addr
-        =
-        sb.phys_addr) then
-      --#st_idx := i;
-      --# (2) return val to the load
-      value := sb.sb_entries[curr_idx].write_value;
-      --#put "1=======\n";
-      --#put value;
-      --# func to write to load's read val
-      --# This is the when block
-      --# NOTE: This function also advances the load's state
-
-      lq := set_load_seq_num_entry_read(lq,
-                                        sb.ld_seq_num,
-                                        value);
-      --#put "2=======\n";
-      --#put lq;
-      --# Consider adjust the fn into a "procedure"
-      --#NOTE: Assuming this is similar to the SQ case
-      --# And the St [x] -> LQ Search
-      --# request can reset the Load's state
-
-      --# actually, after this resets the load's state
-      --# and it will retry, is there any problem?
-      --# there shouldn't be?
-      --# The transitions should give up if no elems in
-      --# SB or SQ?
-
-      --#assert_check := assert_load_state_is_state(lq,
-      --#                           Sta.core_[j].sb_.ld_seq_num,
-      --#                           await_sb_fwd_check_response
-      --#                          );
-      lq := set_load_state_to_state(lq,
-                                    Sta.core_[j].sb_.ld_seq_num,
-                                    write_result);
-
-      --# Break out of the while loop
-      --#offset := difference + 1;
-      while_break := true;
-    endif;
-    if ( offset != SB_ENTRY_NUM ) then
-      offset := offset + 1;
-    else
-      while_break := true;
-    endif;
-  end;
-
-  --# Change this check to if offset = SB_ENTRY_NUM
-  if (while_break = false) then
-    lq := set_load_state_to_state(lq,
-                                  Sta.core_[j].sb_.ld_seq_num,
-                                  build_packet);
-  endif;
-
-  --# whether sth was found or not, the request has
-  --# been completed
-  sb.search_busy := false;
-  sb.ld_seq_num := 0;
-  sb.phys_addr := 0;
-
-
-  next_state.core_[j].sb_ := sb;
-  next_state.core_[j].lsq_.lq_ := lq;
-
-  Sta := next_state;
-end; --#end;
-endruleset;
-
-
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-rule "await_translation_to_build_packet"
-  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_translation
-==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-
-  --# "translate" the address
-  --#NOTE TODO: access tlb? not quite necessary for litmus tests
-  ld_entry.phys_addr := ld_entry.virt_addr;
-
-  ld_entry.ld_state := await_fwd_check;
-
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
-
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-rule "build_packet_to_send_mem_req"
-(
-  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = build_packet
-)
-
-==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-  ld_entry.ld_state := send_memory_request;
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
---#NOTE: Marking this transition as the mem access one!
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-  rule "send_mem_req_to_await_mem_resp"
-  ( Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = send_memory_request )
-  --# this is a condition: act only if ld ahead has completed
-  &
-  (
-    --# if this isn't the head inst
-    ( i != Sta.core_[j].lsq_.lq_.ld_head)
-    --# then ensure the next inst is in a state
-    --# where it's already finished reading from mem
-    ->
-    (
-      --# NOTE: Removed this condition, since it's not ready yet
-      --# ( Sta.core_[j].lsq_.lq_.ld_entries[( i + LD_ENTRY_NUM - 1 ) % LD_ENTRY_NUM].ld_state
-      --# =
-      --# await_mem_response
-      --# )
-      --# |
-      ( Sta.core_[j].lsq_.lq_.ld_entries[( i + LD_ENTRY_NUM - 1 ) % LD_ENTRY_NUM].ld_state
-      =
-      write_result
-      )
-      |
-      ( Sta.core_[j].lsq_.lq_.ld_entries[( i + LD_ENTRY_NUM - 1 ) % LD_ENTRY_NUM].ld_state
-      =
-      await_committed
-      )
-    )
-  )
---# --# Add condition that there is a
---# --# free slot in the Inter-conn to mem
---#   &
---#   (
---#     Sta.ic_.num_entries < (IC_ENTRY_NUM+1)
---#   )
-
-  --# this is a condition: mem's msg buffer is empty
-  --# i.e. mem is free
-  &
-  (
-    Sta.core_[j].mem_interface_.out_busy = false
-  )
-  ==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-
-  --# var mem : MEM_ARRAY;
-  var phys_addr : addr_idx_t;
-
-  --# Hacked hacky
-  --# var rf : REG_FILE;
-
-  var mem_inter : MEM_INTERFACE;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-  --# mem := Sta.mem_;
-  --# rf := Sta.core_[j].rf_;
-  mem_inter := Sta.core_[j].mem_interface_;
-
-  -- Update state
-  ld_entry.ld_state := await_mem_response;
-
-  -- Read from memory
-  phys_addr := ld_entry.phys_addr;
-  --# ld_entry.read_value := mem.arr[phys_addr];
-  --# hacked hacky
-  --# rf.rf[ld_entry.instruction.dest_reg] := ld_entry.read_value;
-
-  --# NOTE: send to the mem interface
-  mem_inter.out_msg := insert_ld_in_mem_interface(
-                                                  ld_entry,
-                                                  j
-                                                 );
-  mem_inter.out_busy := true;
-
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-  next_state.core_[j].mem_interface_ := mem_inter;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
--- # ====== Shortcut/Testing States =====
---# NOTE: Receive mem response?
---# ruleset j : cores_t do
---# ruleset i : LD_ENTRY do
---# rule "await_mem_resp_to_writeback"
---#   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_mem_response
---# ==>
---# -- decls
---#   var next_state : STATE;
---#   var ld_entry : LD_ENTRY_VALUES;
---#   begin
---#     next_state := Sta;
---#   ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
---#   ld_entry.ld_state := write_result;
---#   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
---# 
---#   Sta := next_state;
---# end; end;
---# endruleset;
-
-ruleset j : cores_t do
-ruleset i : LD_ENTRY do
-rule "writeback_to_await_committed"
-  Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = write_result
-==>
-  -- decls
-  var next_state : STATE;
-  var ld_entry : LD_ENTRY_VALUES;
-  var rf : REG_FILE;
-  var dest_reg : reg_idx_t;
-begin
-  next_state := Sta;
-  ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
-  rf := Sta.core_[j].rf_;
-  dest_reg := ld_entry.instruction.dest_reg;
-
-  rf.rf[dest_reg] := ld_entry.read_value;
-  ld_entry.ld_state := await_committed;
-
-  next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
-  next_state.core_[j].rf_ := rf;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
--- change the state of await states
-
-
---# ruleset i : LD_ENTRY do
---#   rule "await_comitted_to_un_alloc"
---#   Sta.core_[j].lsq_.lq_.ld_entries[i].ld_state = await_committed
---#   ==>
---#   -- decls
---#   var next_state : STATE;
---#   var ld_entry : LD_ENTRY_VALUES;
---# begin
---#   next_state := Sta;
---#   ld_entry := Sta.core_[j].lsq_.lq_.ld_entries[i];
---#   ld_entry.ld_state := init;
---#   next_state.core_[j].lsq_.lq_.ld_entries[i] := ld_entry;
---#
---#   Sta := next_state;
---# end; end;
--- # TODO NOTE: also unalloc the load
--- #for now at least..
-
---------------------- END LQ TRANSITIONS -----------------
-
+end
+],
+[murϕ_rule|
 ------------- MEMORY TRANSITIONS -----------------
 --# Write the memory interface stuff
 
@@ -2306,7 +1760,9 @@ begin
 
   Sta := next_state;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 --# Choose an IC msg to perform it's access operation
 ruleset i : ic_idx_t do
@@ -2349,7 +1805,9 @@ begin
 
   Sta := next_state;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 --# Choose an IC msg to return it's acknowledgement
 ruleset j : cores_t do
@@ -2397,7 +1855,9 @@ begin
 
   Sta := next_state;
 end; end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 --# Core checks input msgs to notify dest structure
 ruleset j : cores_t do
@@ -2433,407 +1893,9 @@ begin
 
   Sta := next_state;
 end;
-endruleset;
-
-------------- END MEMORY TRANSITIONS -----------------
-
------------------- SQ STATE TRANSITIONS -----------------
-ruleset j : cores_t do
-ruleset i : sq_idx_t do
-rule "st_await_translation_to_await_squash"
-  ( Sta.core_[j].lsq_.sq_.sq_entries[i].st_state = st_await_translation )
-  &
-  (Sta.core_[j].lsq_.lq_.search_busy = false)
-==>
-  -- decls
-  var next_state : STATE;
-  var sq_entry : SQ_ENTRY_VALUES;
-  var lq : LQ;
-begin
-  next_state := Sta;
-  sq_entry := Sta.core_[j].lsq_.sq_.sq_entries[i];
-  lq := Sta.core_[j].lsq_.lq_;
-
-  --#NOTE TODO: access tlb? not quite necessary for litmus tests
-  sq_entry.phys_addr := sq_entry.virt_addr;
-
-  --# perform LQ search and squash
-  --# Technically don't need to await "completion"
-  --# from the LQ
-
-  --# NOTE
-  --# This could be an asynchronous event
-  --# However, we also want this to be served in due time
-  --# The consequences of not doing so mean that:
-  --# speculative loads that go before a fwding
-  --# store has it's phys addr ready will not be squashed
-  --# on time
-  --# (1)Thus we must wait until this request has completed
-  --# in order to stall the pipeline,
-  --# (2)Alternatively, we must specify a clock system
-  --# to simulate these things happening concurrently,
-  --# but this requires low level details that aren't
-  --# strictly available or required at a higher level
-  --# (3)Or mark another point in this store's SM
-  --# as the latest point which it can let this
-  --# LQ search be loosely scheduled/interleaved
-  --# (4) But this does bring up a good point
-  --# perhaps some events can be executed lazily
-  --# and just need to complete by some time
-  --# -> meaning there's some flexible scheduling
-  --# or some scheduling we can do here to "optimize"
-  --# the implementation or exact point where it does
-  --# start or must synch by
-  --# TODO: put in the LQ search here.
-  --# NOTE: in the LQ search processing transition
-  --# DURING A "SQUASH": remember to
-  --# Remove in-flight SQ and SB requests,
-  --# As these change the load's state
-  --# and the current implementation does not
-  --# stop if the load is in a reset'd state.
-  lq.st_seq_num := sq_entry.instruction.seq_num;
-  lq.ld_seq_num := sq_entry.ld_seq_num;
-  lq.phys_addr := sq_entry.phys_addr;
-  lq.search_busy := true;
-
-  --#sq_entry.st_state := st_build_packet;
-  sq_entry.st_state := st_await_lq_squash;
-
-  --# Update any changed state
-  next_state.core_[j].lsq_.sq_.sq_entries[i] := sq_entry;
-  next_state.core_[j].lsq_.lq_ := lq;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
---#============ LQ Transition =================
-ruleset j : cores_t do
---#ruleset i : sq_idx_t do
-rule "lq_process_search_request"
---# Rule sq_process_search_request, j:0 fired.
-  Sta.core_[j].lsq_.lq_.search_busy = true
-==>
-  -- decls
-  var next_state : STATE;
-  var sq_entry : SQ_ENTRY_VALUES;
-  var st_idx : sq_idx_t;
-  var lq : LQ;
-  var sq : SQ;
-  var sb : SB;
-  var ld_idx : ld_idx_t;
-  var offset : ld_idx_t;
-  var curr_idx : ld_idx_t;
-  var difference : ld_idx_t;
-  var already_read_mem : boolean;
-  var phys_addr_match : boolean;
-  var ld_entry : LD_ENTRY_VALUES;
-  var loop_break : boolean;
-begin
-  next_state := Sta;
-  lq := Sta.core_[j].lsq_.lq_;
-  sq := Sta.core_[j].lsq_.sq_;
-  sb := Sta.core_[j].sb_;
-  st_idx := search_sq_seq_num_idx(sq,
-                                  lq.st_seq_num);
-
-  --# Find all executed loads after the ld_seq_num
-  --# with a matching phys_addr
-  --# if match, then "squash" them
-  --# How do i want to implement squash here
-  --# maybe a simpler version for now,
-  --# where they're just reset, and will re-exec,
-  --# But this should also catch any dependent insts?
-  --# But the only dependent insts are loads or stores
-  --# But my litmus tests are simple and don't
-  --# check for dependent loads / stores
-  --# since there's no scoreboard modeled for this
-  --# simple first approach
-  --# So a simple reset is ok
-
-  loop_break := false;
-  if lq.num_entries = 0 then
-    loop_break := true;
-  endif;
-
-  --# (1) get matching LQ index num
-  if (sq.sq_entries[st_idx].ld_seq_num = 0) then
-    ld_idx := lq.ld_head;
-  else
-    --# Plus 1 to start from the elem after
-    --# but only if there are loads after this...
-    --# otherwise we run into problems...
-    ld_idx := search_lq_seq_num_idx(lq,
-                                    lq.ld_seq_num);
-    if (ld_idx != lq.ld_tail) then
-      ld_idx := ld_idx + 1;
-    else
-      loop_break := true;
-    endif;
-  endif;
-  --# (2) loop to tail searching for:
-  --# if plus 1 is outside this range, this should be caught
-  --# by difference check
-  difference := ( lq.ld_tail + (LD_ENTRY_NUM + 1) - ld_idx ) % ( LD_ENTRY_NUM + 1);
-  offset := 0;
-  --#if (difference != 0) then
-  while ( (offset <= difference) & (loop_break = false) ) do
-    --# do the search
-    curr_idx := ( ld_idx + offset ) % LD_ENTRY_NUM;
-    --# (3) a load entry that's in a state where it's
-    --# already done a read AND has a matching phys addr
-    ld_entry := lq.ld_entries[curr_idx];
-    already_read_mem := !(
-                          ( ld_entry.ld_state = await_fwd_check)
-                          |
-                          ( ld_entry.ld_state = await_scheduled)
-                        );
-    phys_addr_match := ld_entry.phys_addr = lq.phys_addr;
-    --# (4) if match, then reset it's state to before
-    --# it actually tried to check for a fwding st
-    --# (don't have any inst/scoreboard squashing to do)
-    if ( already_read_mem & phys_addr_match ) then
-      --# NOTE: fix:
-      --# remove in-flight SQ and SB reqs if
-      --# Load is in a given state
-      if ( ld_entry.ld_state = await_check_forwarding_or_load_response ) then
-        if (sq.ld_seq_num = ld_entry.instruction.seq_num) then
-          sq.search_busy := false;
-          --# I should probably clear the other fields...
-        endif;
-      elsif ( ld_entry.ld_state = await_sb_fwd_check_response ) then
-        if (sb.ld_seq_num = ld_entry.instruction.seq_num) then
-          sb.search_busy := false;
-          --# I should probably clear the other fields...
-        endif;
-      endif;
-
-      --#put "=== BEGIN ===\n";
-      --#put ld_entry.ld_state;
-      if ( ld_entry.ld_state = await_mem_response ) then
-        --# set to squashed state
-        ld_entry.ld_state := squashed_await_mem_response;
-        --#put "squashing\n";
-      else
-        ld_entry.ld_state := await_fwd_check;
-        --#put "just reset\n";
-      endif;
-      --#put "==== END ====\n";
-      --# don't bother doing any sophisticated rollback
-      --# or squashing for now
-      --# UPDATE STATE
-      lq.ld_entries[curr_idx] := ld_entry;
-
-      --# NOTE IMPORTANT! exit from loop!
-      loop_break := true;
-    endif;
-
-    if (offset != LD_ENTRY_NUM) then
-      offset := offset + 1;
-    else
-      loop_break := true;
-    endif;
-  end;
-  --#end;
-
-  --# set it's state fwd to st_build_packet
-  sq_entry := Sta.core_[j].lsq_.sq_.sq_entries[st_idx];
-  sq_entry.st_state := st_build_packet;
-  lq.search_busy := false;
-
-  next_state.core_[j].lsq_.sq_.sq_entries[st_idx] := sq_entry;
-  next_state.core_[j].lsq_.lq_ := lq;
-  next_state.core_[j].sb_ := sb;
-
-  Sta := next_state;
-end;
-endruleset;
---#============ LQ Transition =================
-
-ruleset j : cores_t do
-ruleset i : sq_idx_t do
-rule "st_build_packet_to_send_mem_req"
-  Sta.core_[j].lsq_.sq_.sq_entries[i].st_state = st_build_packet
-==>
-  -- decls
-  var next_state : STATE;
-  var sq_entry : SQ_ENTRY_VALUES;
-begin
-  next_state := Sta;
-  sq_entry := Sta.core_[j].lsq_.sq_.sq_entries[i];
-  sq_entry.st_state := st_await_committed;
-  next_state.core_[j].lsq_.sq_.sq_entries[i] := sq_entry;
-
-  Sta := next_state;
-end; end;
-endruleset;
-
---# TODO: Comment this out for the Load
---# Might be useful for debugging later?? dunno
--- # ====== Shortcut/Testing States =====
-  --#rule "await_mem_resp_to_writeback"
------------------- END SQ STATE TRANSITIONS -------------
-
------------------- SB STATE TRANSITIONS -------------
------------------- END SB STATE TRANSITIONS -------------
-
-
--- invariants --
-
-
--- #rules for transitions --
-
--- #need to implement an in order insertion
--- #do we also implement an array for the queue?
--- maybe not
-
--- # operation: insert
--- # so, set the item in the tail ptr
--- # increment the tail pointer, modulo by list len
--- # How to check if full? before inserting?
--- # either maintain a "full" bit reg
--- # or check thru computing size
--- # or maintain the curr size (simplest)
-
--- # rule "insert"
--- #   !(
--- #     (Sta.core_[j].lsq_.lq_.ld_head = Sta.core_[j].lsq_.lq_.ld_tail)
--- #     &
--- #     (Sta.core_[j].lsq_.lq_.num_entries = LD_ENTRY_NUM)
--- #   )
--- # ==>
--- #   var NxtSta : STATE;
--- #   var curr_head : ld_idx_t;
--- #   var curr_tail : ld_idx_t;
--- # begin
--- #   NxtSta := Sta;
--- #   curr_head := Sta.core_[j].lsq_.lq_.ld_head;
--- #   curr_tail := Sta.core_[j].lsq_.lq_.ld_tail;
--- # --
--- #   NxtSta.core_[j].lsq_.lq_.ld_entries[curr_tail].seq_num := 3;
--- #   NxtSta.core_[j].lsq_.lq_.ld_entries[curr_tail].instruction.op := ld;
--- #   NxtSta.core_[j].lsq_.lq_.ld_tail := (curr_tail + 1) % LD_ENTRY_NUM;
--- #   NxtSta.core_[j].lsq_.lq_.num_entries := (Sta.core_[j].lsq_.lq_.num_entries + 1);
--- # --
--- #   Sta := NxtSta;
--- # end;
-
--- # rule "remove"
--- #   !( Sta.num_entries = 0 )
--- # ==>
--- #   var NxtSta : STATE;
--- #   var curr_head : ld_idx_t;
--- #   var curr_tail : ld_idx_t;
--- # begin
--- #   NxtSta := Sta;
--- #   curr_head := Sta.ld_head;
--- #   curr_tail := Sta.ld_tail;
--- # --
--- #   NxtSta.ld_entries[curr_tail].seq_num := 2;
--- #   NxtSta.ld_entries[curr_tail].instruction.op := inval;
--- #   NxtSta.ld_head := (curr_head + 1) % LD_ENTRY_NUM;
--- #   NxtSta.num_entries := (Sta.num_entries - 1);
--- # --
--- #   Sta := NxtSta;
--- # end;
-
---#NOTE: This was for an "endless"
---# Test with instructions added infinitely
---# NOTE: It's not configured for litmus tests
--- i.e. at the time of writing, there is no
--- write_value in INST to initiate with for litmus
--- testing, or "random" litmus testing
-
---#ruleset j : cores_t do
---#rule "insert_ld_into_rename"
---#  -- # If not full, add another instruction!
---#  -- # Use less than, since if equal, it's full
---#  (Sta.core_[j].rename_.num_entries <= CORE_INST_NUM)
---#  --#!(
---#  --#  (Sta.core_[j].rename_.rename_head = Sta.core_[j].rename_.rename_tail)
---#  --#   &
---#  --#   (Sta.core_[j].rename_.num_entries = CORE_INST_NUM)
---#  --# )
---#==>
---#  var NxtSta : STATE;
---#  var curr_head : inst_idx_t;
---#  var curr_tail : inst_idx_t;
---#begin
---#  NxtSta := Sta;
---#  curr_head := Sta.core_[j].rename_.rename_head;
---#  curr_tail := Sta.core_[j].rename_.rename_tail;
---#--
---#  -- #NxtSta.core_[j].rename_.test_insts[curr_tail].seq_num := 3;
---#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] do
---#    test_inst.op := ld;
---#    test_inst.dest_reg := 0;
---#    test_inst.imm := 0;
---#    test_inst.seq_num := curr_tail+1;
---#  end;
---#  NxtSta.core_[j].rename_.rename_tail := (curr_tail + 1) % ( CORE_INST_NUM + 1);
---#  NxtSta.core_[j].rename_.num_entries := (Sta.core_[j].rename_.num_entries + 1);
---#--
---#assert (Sta.core_[j].rename_.num_entries <= CORE_INST_NUM) "full? can't insert?";
---#  Sta := NxtSta;
---#end;
---#endruleset;
--- End of the rule...
-
--- invariant "rename_non_neg_entry_count"
---   if !( Sta.core_[j].rename_.num_entries > 0 )
---   then
---     error "ERROR: === negative number of entries in rename queue? ==="
---   end;
-
---#NOTE: This was for an "endless"
---# Test with instructions added infinitely
---# NOTE: It's not configured for litmus tests
--- i.e. at the time of writing, there is no
--- write_value in INST to initiate with for litmus
--- testing, or "random" litmus testing
-
---#ruleset j : cores_t do
---#rule "insert_st_into_rename"
---#  -- # If not full, add another instruction!
---#  -- # Use less than, since if equal, it's full
---#  (Sta.core_[j].rename_.num_entries <= CORE_INST_NUM)
---#  --#!(
---#  --#  (Sta.core_[j].rename_.rename_head = Sta.core_[j].rename_.rename_tail)
---#  --#   &
---#  --#   (Sta.core_[j].rename_.num_entries = CORE_INST_NUM)
---#  --# )
---#==>
---#  var NxtSta : STATE;
---#  var curr_head : inst_idx_t;
---#  var curr_tail : inst_idx_t;
---#begin
---#  NxtSta := Sta;
---#  curr_head := Sta.core_[j].rename_.rename_head;
---#  curr_tail := Sta.core_[j].rename_.rename_tail;
---#--
---#  -- #NxtSta.core_[j].rename_.test_insts[curr_tail].seq_num := 3;
---#  alias test_inst:NxtSta.core_[j].rename_.test_insts[curr_tail] do
---#    test_inst.op := st;
---#    test_inst.dest_reg := 0;
---#    test_inst.imm := 0;
---#    test_inst.seq_num := curr_tail+1;
---#    test_inst.write_value := 1;
---#  end;
---#  NxtSta.core_[j].rename_.rename_tail := (curr_tail + 1) % ( CORE_INST_NUM + 1);
---#  NxtSta.core_[j].rename_.num_entries := (Sta.core_[j].rename_.num_entries + 1);
---#--
---#assert (Sta.core_[j].rename_.num_entries <= CORE_INST_NUM) "full? can't insert?";
---#  Sta := NxtSta;
---#end;
---#endruleset;
--- End of the rule...
-
--- invariant "rename_non_neg_entry_count"
---   if !( Sta.core_[j].rename_.num_entries > 0 )
---   then
---     error "ERROR: === negative number of entries in rename queue? ==="
---   end;
-
+endruleset
+],
+[murϕ_rule|
 
 ruleset j : cores_t do
 rule "inject_inst_from_rename"
@@ -2927,7 +1989,9 @@ begin
   --          (iq_q.iq_valid[1] = ready)
   --         ) "both iq entries won't be assigned";
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 -- # NOTE: Create rule for pop from IQ, tell LQ
 -- # to start, advance 1 state
@@ -3004,7 +2068,9 @@ begin
   -- error "trace";
 end;
 endruleset;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 -- # TODO: add simple transition rule to "remove"
 -- # a load once it reaches some state like commit
@@ -3118,7 +2184,9 @@ begin
 
   Sta := next_state;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 -- # TODO then model the store queue?
 -- # TODO then add code to transition to check store queue
@@ -3179,7 +2247,9 @@ begin
 --
   Sta := NxtSta;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 --# TODO make copy for STORE
 ruleset j : cores_t do
@@ -3234,7 +2304,9 @@ begin
 --
   Sta := NxtSta;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 --#NOTE: Marking this transition as the mem access one!
 --#ruleset i : sb_idx_t do
@@ -3294,52 +2366,10 @@ begin
 
   Sta := next_state;
 end;
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
---# NOTE: don't need to do this, the associative_ack
---# will clear the head in the SB
-
---#--# NOTE: lazily implemented, don't actually
---#--# have another transition from mem to reply
---#--# to request, just got wrote the mem value immediately
---#ruleset j : cores_t do
---#rule "sb_await_mem_resp_to_await_creation"
---#--# when head SB entry is waiting to send out it's request
---#  ( Sta.core_[j].sb_.sb_entries[Sta.core_[j].sb_.sb_head].sb_state = sb_await_mem_response )
---#  &
---#  --# have sb entries
---#  ( Sta.core_[j].sb_.num_entries > 0)
---#==>
---#  -- decls
---#  var next_state : STATE;
---#  var sb : SB;
---#  var sb_entry : SB_ENTRY_VALUES;
---#
---#  --# var mem : MEM_ARRAY;
---#  --# var phys_addr : addr_idx_t;
---#begin
---#  next_state := Sta;
---#  sb := Sta.core_[j].sb_;
---#  sb_entry := Sta.core_[j].sb_.sb_entries[Sta.core_[j].sb_.sb_head];
---#  --#mem := Sta.core_[j].mem_;
---#
---#  --#-- Update state
---#  --#sb_entry.sb_state := sb_await_mem_response;
---#
---#  --#-- Write to memory
---#  --#phys_addr := sb_entry.phys_addr;
---#  --#mem.arr[phys_addr] := sb_entry.write_value;
---#
---#  sb := sb_clear_head(sb);
---#
---#  --#next_state.core_[j].sb_.sb_entries[i] := sb_entry;
---#  --#--#next_state.core_[j].mem_ := mem;
---#
---#  next_state.core_[j].sb_ := sb;
---#
---#  Sta := next_state;
---#end;
---#endruleset;
 
 ruleset j : cores_t do
 invariant "test_invariant"
@@ -3349,7 +2379,9 @@ invariant "test_invariant"
     =
     ( ( Sta.core_[j].lsq_.lq_.ld_head + 1 ) % (LD_ENTRY_NUM + 1) )
   )
-endruleset;
+endruleset
+],
+[murϕ_rule|
 
 rule "reset"
   (
@@ -3385,7 +2417,9 @@ begin
 
   --#Sta := next_state;
   Sta := init_state_fn();
-end;
+end
+],
+[murϕ_rule|
 
 
 --#invariant "amd1_verif"
@@ -3440,11 +2474,17 @@ invariant "iwp23b1"
   ( Sta.core_[1].rf_.rf[0] = 0 )
   &
   ( Sta.core_[1].rf_.rf[1] = 1 )
-);
+)
+]
+]
+) ++ rules
 
-£rules
-  ]
+  let murphi_file : Murϕ.Program := {
+    constdecls := list_const_decls,
+    typedecls  := list_type_decls,
+    vardecls   := list_var_decls,
+    procdecls  := list_func_decls,
+    rules      := list_rules
+  }
 
--- )
---   ]
   murphi_file
