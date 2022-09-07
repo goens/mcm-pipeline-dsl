@@ -1,3 +1,4 @@
+import PipelineDsl.AnalysisHelpers
 
 import PipelineDsl.Murphi
 
@@ -151,6 +152,7 @@ def compose_murphi_file_components
 ( type_decls : List Murϕ.Decl)
 ( func_decls : List Murϕ.ProcDecl)
 ( rules : List Murϕ.Rule)
+( ctrler_list : List controller_info )
 : Murϕ.Program
 :=
   let list_const_decls := [murϕ_const_decls|
@@ -172,7 +174,50 @@ def compose_murphi_file_components
   --# max value
   MAX_VALUE : 1;
   -- £const_decls;
+  ] ++ const_decls
+
+  -- Gen the decls for the ctrlers in the CORE type
+  let ctrler_names : List String := ctrler_list.map (
+    λ ctrler => ctrler.name
+  )
+
+  -- make the murphi decls
+  let ctrler_type_decl : List Murϕ.Decl := ctrler_names.map (
+    λ name =>
+      Murϕ.Decl.type (name.append "_") (Murϕ.TypeExpr.previouslyDefined name)
+  )
+
+  -- AZ TODO: Build the CORE
+  -- half-manually,
+  -- i.e. synth the ctrler names..
+  let core_and_state_type_decl :=
+  [murϕ_type_decls|
+  type
+
+  CORE : record
+  £ctrler_type_decl;
+  -- lsq_ : LSQ;
+  -- sb_ : SB;
+  rename_ : RENAME;
+  iq_ : IQ;
+  rf_ : REG_FILE;
+  rob_ : ROB;
+  mem_interface_ : MEM_INTERFACE;
+  end;
+
+  STATE : record
+  core_ : array [cores_t] of CORE;
+  mem_ : MEM_ARRAY;
+  -- other things like message channels could go here
+  ic_ : IC;
+  --# Pretending this is
+  --# a single port mem interface
+  --# for each core..
+
+  --#mem_interface_ : array [cores_t] of MEM_INTERFACE;
+  end;
   ]
+
   let list_type_decls := [murϕ_type_decls|
 type ---- Type declarations ----
 
@@ -565,37 +610,7 @@ type ---- Type declarations ----
   -- lq_ : LQ;
   -- sq_ : SQ;
   -- end;
-  ]
-
-  -- AZ TODO: Build the CORE
-  -- half-manually,
-  -- i.e. synth the ctrler names..
-  let core_and_state_type_decl :=
-  [murϕ_type_decls|
-  type
-
-  CORE : record
-  lsq_ : LSQ;
-  rename_ : RENAME;
-  iq_ : IQ;
-  rf_ : REG_FILE;
-  rob_ : ROB;
-  sb_ : SB;
-  mem_interface_ : MEM_INTERFACE;
-  end;
-
-  STATE : record
-  core_ : array [cores_t] of CORE;
-  mem_ : MEM_ARRAY;
-  -- other things like message channels could go here
-  ic_ : IC;
-  --# Pretending this is
-  --# a single port mem interface
-  --# for each core..
-
-  --#mem_interface_ : array [cores_t] of MEM_INTERFACE;
-  end;
-  ]
+  ] ++ core_and_state_type_decl
 
   let list_var_decls : List Murϕ.Decl := [murϕ_var_decls|
   var -- state vars - explicit overall state --
@@ -604,7 +619,7 @@ type ---- Type declarations ----
   ]
 
 -- # ------------ HELPER FUNCTIONS --------------------
-  let list_func_decls := [
+  let list_func_decls := List.join ([
   [murϕ_proc_decl|
   function rename_read_head( rename_q : RENAME) : INST;
     return rename_q.test_insts[rename_q.rename_head];
@@ -1717,7 +1732,7 @@ begin
   return init_state;
 end
 ]
-] ++ func_decls
+]) ++ func_decls
 
   let list_rules : List Murϕ.Rule := List.join (
     [
