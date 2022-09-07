@@ -101,6 +101,15 @@ def ast0000 ( input : Pipeline.AST) : Identifier :=
 open Pipeline AST
 -- How to write this more idiomatically?
 
+structure lst_stmts_decls where
+stmts : List Murϕ.Statement
+decls : List Murϕ.Decl
+deriving Inhabited
+
+def empty_stmt_decl_lsts : lst_stmts_decls := {
+  stmts := [],
+  decls := []
+}
 
 inductive how_many_found
 | nothing
@@ -134,6 +143,7 @@ is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
 -- assign var?
 
 structure expr_translation_info where
@@ -148,6 +158,7 @@ is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -161,6 +172,7 @@ is_await : await_or_not_state
 entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
 
 structure trans_and_expected_func where
 expected_func : Identifier
@@ -173,6 +185,7 @@ dest_ctrler_name : Identifier
 -- using a specific entry name with a
 -- ctrler which has entries
 specific_murphi_dest_expr : Murϕ.Expr
+-- lst_decls : List Murϕ.Decl
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -190,6 +203,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -208,6 +222,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -226,6 +241,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 
 partial def assn_expr_to_term_translation_info
@@ -245,6 +261,7 @@ term_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 
 partial def assn_term_to_term_translation_info
@@ -264,6 +281,7 @@ term_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 
 partial def assn_term_to_expr_translation_info
@@ -283,6 +301,7 @@ expr_translation_info
   translation_info.entry_keyword_dest
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
 )
 --- =========== CUT FROM TRANSFORMATION ================
 
@@ -2373,7 +2392,7 @@ partial def state_listen_handle_to_murphi_if_stmt
 ( trans_and_func : trans_and_expected_func )
 :
 -- List of (if Condition, and List of if cond stmts)
-List (Murϕ.Expr × List Murϕ.Statement)
+List (Murϕ.Expr × lst_stmts_decls)
 :=
   let trans : Pipeline.Description := trans_and_func.trans
   let expected_func : Identifier := trans_and_func.expected_func
@@ -2406,9 +2425,9 @@ List (Murϕ.Expr × List Murϕ.Statement)
 
   let how_many_listen_handle_blks : how_many_found :=
   match listen_handle_blk_lst with
-  | [one] => how_many_found.one
+  | [_] => how_many_found.one
   | [] => how_many_found.nothing
-  | h::t => how_many_found.two_or_more
+  | _::_ => how_many_found.two_or_more
 
   match how_many_listen_handle_blks with
   | how_many_found.nothing =>
@@ -2543,11 +2562,12 @@ List (Murϕ.Expr × List Murϕ.Statement)
         -- don't think we need this here, but...
         entry_keyword_dest := trans_and_func.dest_ctrler_name,
         trans_obj := trans_and_func.trans,
-        specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr
+        specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr,
+        lst_decls := trans_and_func.stmt_trans_info.lst_decls
       }
       -- TODO NOTE: THIS MUST BE TESTED!
 
-      let if_blk_stmts := ast_stmt_to_murphi_stmts stmt_trans_info
+      let if_blk_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts stmt_trans_info
 
       -- Okay, this means I need to know how to index into the
       -- current entry as well!
@@ -2571,10 +2591,11 @@ List (Murϕ.Expr × List Murϕ.Statement)
       -- once we have different structure types,
       -- the dest structure may not have entries, and we
       -- may not need the .entries part
+      let ctrler_name_ : String := trans_and_func.dest_ctrler_name.append "_"
       let dest_struct_entry := trans_and_func.specific_murphi_dest_expr
       let murphi_entry_is_on_state_cond : Murϕ.Expr :=
         [murϕ|
-        £trans_and_func.dest_ctrler_name .entries[ £dest_struct_entry ] .state = £trans_name]
+        next_state .core_[ j ] .£ctrler_name_ .entries[ £dest_struct_entry ] .state = £trans_name]
 
       [(murphi_entry_is_on_state_cond, if_blk_stmts)]
     | how_many_found.two_or_more =>
@@ -2602,7 +2623,9 @@ partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
 
 (expected_func : Identifier)
 (expected_struct : Identifier)
-: List Murϕ.Statement -- if stmt..
+:
+-- List Murϕ.Statement -- if stmt..
+lst_stmts_decls
 :=
   -- let stmt := stmt_trans_info.stmt
   let ctrlers_lst := stmt_trans_info.lst_ctrlers
@@ -2648,29 +2671,35 @@ partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
     stmt_trans_info := stmt_trans_info,
     dest_ctrler_name := dest_ctrler_name,
     specific_murphi_dest_expr := ctrler_squash_idx
+    -- lst_decls := stmt_trans_info.lst_decls
   }
   )
 
-  let trans_handle_squash_list : List (Murϕ.Expr × (List Murϕ.Statement)) :=
+  let trans_handle_squash_list : List (Murϕ.Expr × (lst_stmts_decls)) :=
   List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
 
   -- This would be the if stmt
   -- to do handle ROB Squash signals
-  let trans_handle_squash_if_stmt : List Murϕ.Statement :=
+  let trans_handle_squash_if_stmt : lst_stmts_decls :=
   match trans_handle_squash_list with
   | [] => --dbg_trace ""
     -- Nothing found, nothing to generate?
-    []
+    empty_stmt_decl_lsts
   | [one] => 
-    let murphi_if_condition := one.1
-    let murphi_true_cond_stmts := one.2
-    [
-    [murϕ|
-    if (£murphi_if_condition) then
-    £murphi_true_cond_stmts
-    endif
-    ]
-    ]
+    let murphi_if_condition : Murϕ.Expr := one.1
+    let murphi_true_cond_stmts : lst_stmts_decls := one.2
+
+    let stmts_decls : lst_stmts_decls := {
+      stmts := [
+        [murϕ|
+        if (£murphi_if_condition) then
+        £murphi_true_cond_stmts.stmts
+        endif
+        ]
+      ],
+      decls := murphi_true_cond_stmts.decls
+    }
+    stmts_decls
   | h :: t => 
     let len_2_if_conds : Bool :=
     trans_handle_squash_list.length == 2
@@ -2679,32 +2708,55 @@ partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
 
     let first_if_cond := trans_handle_squash_list[0]!
     let if_condition_0 := first_if_cond.1
-    let true_cond_stmts_0 := first_if_cond.2
+    let true_cond_stmts_0 : lst_stmts_decls := first_if_cond.2
 
     let snd_if_cond := trans_handle_squash_list[1]!
     let if_condition_1 := snd_if_cond.1
-    let true_cond_stmts_1 := snd_if_cond.2
+    let true_cond_stmts_1 : lst_stmts_decls := snd_if_cond.2
 
     if len_2_if_conds then
-      [
-      [murϕ|
-      if (£if_condition_0) then
-        £true_cond_stmts_0
-      elsif (£if_condition_1) then
-        £true_cond_stmts_1
-      -- else
-        -- actually, could be on other states,
-        -- so don't error here!
-        -- error "Unexpected case in this transition";
-      endif
-      ]
-      ]
+    let stmts_decls : lst_stmts_decls := {
+      stmts := [
+        [murϕ|
+        if (£if_condition_0) then
+          £true_cond_stmts_0.stmts
+        elsif (£if_condition_1) then
+          £true_cond_stmts_1.stmts
+        -- else
+          -- actually, could be on other states,
+          -- so don't error here!
+          -- error "Unexpected case in this transition";
+        endif
+        ]
+      ],
+      decls := true_cond_stmts_0.decls ++ true_cond_stmts_1.decls
+    }
+    stmts_decls
     else
     if more_than_2_if_conds then
+      let stmts_form : List (Murϕ.Expr × List Murϕ.Statement) :=
+        t.map (
+          λ tuple =>
+            let murphi_expr := tuple.1
+            let murphi_stmts := tuple.2.stmts
+            (murphi_expr, murphi_stmts)
+        )
       let murphi_if_stmt : Murϕ.Statement :=
-      Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0 t []
+      Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0.stmts stmts_form []
 
-      [murphi_if_stmt]
+      let decls : List Murϕ.Decl := List.join (
+        t.map (
+          λ tuple =>
+            let murphi_decls := tuple.2.decls
+            murphi_decls
+        )
+      )
+
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_if_stmt],
+        decls := true_cond_stmts_0.decls ++ decls
+      }
+      stmts_decls
     else
       panic! "Should have caught other cases before this one?"
   
@@ -2720,7 +2772,8 @@ partial def ast_stmt_stray_expr_to_murphi_expr
 -- (src_ctrler : Option Identifier)
 -- (lst_src_args : Option List Identifier)
 :
-List Murϕ.Statement
+-- List Murϕ.Statement
+lst_stmts_decls
 :=
   let stmt := stmt_trans_info.stmt
   let ctrlers_lst := stmt_trans_info.lst_ctrlers
@@ -3015,9 +3068,11 @@ List Murϕ.Statement
                 none
                 stmt_trans_info.trans_obj
                 none
+                stmt_trans_info.lst_decls
               )
 
-              let murphi_stmts : List Murϕ.Statement :=
+              -- let murphi_stmts : List Murϕ.Statement :=
+              let murphi_stmts : lst_stmts_decls :=
               ast_stmt_to_murphi_stmts trans_info
 
               murphi_stmts
@@ -3037,7 +3092,8 @@ List Murϕ.Statement
               -- as needed
 
             | _ => dbg_trace "shouldn't get another stmt type"
-              []
+              -- []
+              empty_stmt_decl_lsts
 
             when_stmt_murphi_stmts
             -- AZ CHECKPOINT TODO:
@@ -3205,7 +3261,12 @@ List Murϕ.Statement
             let combined_stmts :=
             ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
 
-            combined_stmts
+            let stmts_decls : lst_stmts_decls := {
+              stmts := combined_stmts,
+              decls := []
+            }
+            stmts_decls
+            
           else
           if (and (api_func_name == "send_store_request")
           (dest_ctrler_name == "memory_interface"))
@@ -3339,7 +3400,11 @@ List Murϕ.Statement
             let combined_stmts :=
             ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
 
-            combined_stmts
+            let stmts_decls : lst_stmts_decls := {
+              stmts := combined_stmts,
+              decls := []
+            }
+            stmts_decls
 
           else
           if (and (api_func_name == "write")
@@ -3355,7 +3420,14 @@ List Murϕ.Statement
               assn_stmt_to_expr_translation_info stmt_trans_info reg_idx_expr
             let reg_idx_murphi_expr := ast_expr_to_murphi_expr reg_idx_trans_expr
 
+            let reg_write_stmt : List Murϕ.Statement :=
             [murϕ| next_state .core[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
+
+            let stmts_decls : lst_stmts_decls := {
+              stmts := reg_write_stmt,
+              decls := []
+            }
+            stmts_decls
           else
           if (api_func_name == "head_search_squash")
           then
@@ -3381,7 +3453,8 @@ List Murϕ.Statement
             is_await := stmt_trans_info.is_await,
             entry_keyword_dest := Option.some dest_ctrler_name,
             trans_obj := stmt_trans_info.trans_obj,
-            specific_murphi_dest_expr := none
+            specific_murphi_dest_expr := none,
+            lst_decls := stmt_trans_info.lst_decls
             }
 
 -- (
@@ -3464,7 +3537,7 @@ List Murϕ.Statement
             let expected_func := "squash"
             let expected_struct := "ROB"
 
-            let ld_trans_handle_squash_if_stmt : List Murϕ.Statement := (
+            let ld_trans_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               stmt_trans_info) speculative_ld_unit_name squash_ld_id (
               dest_ctrler_name) expected_func expected_struct
@@ -3475,7 +3548,7 @@ List Murϕ.Statement
             let expected_func := "squash"
             let expected_struct := "ROB"
 
-            let st_trans_handle_squash_if_stmt : List Murϕ.Statement := (
+            let st_trans_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               stmt_trans_info) speculative_st_unit_name squash_st_id (
               dest_ctrler_name) expected_func expected_struct
@@ -3487,8 +3560,37 @@ List Murϕ.Statement
 
             let dest_ctrler_name_ := String.join [dest_ctrler_name, "_"]
 
+
+            let speculative_ld_unit_name_ := speculative_ld_unit_name.append "_"
+            let speculative_st_unit_name_ := speculative_st_unit_name.append "_"
+            -- These structures may or may not exist depending 
+            -- on the μarch
+            -- Thus TODO: Check if these structures exist and
+            -- gen template code accordingly...
+            let speculative_ld_unit_idx_type := speculative_ld_unit_name.append "_idx_t"
+            let speculative_st_unit_idx_type := speculative_st_unit_name.append "_idx_t"
+            let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+            let decls : List Murϕ.Decl := [
+              (Murϕ.Decl.var ["loop_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+              (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+              (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+              (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+              (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+              (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
+              (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
+              (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB")),
+              (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["squash_ld_id"] (Murϕ.TypeExpr.previouslyDefined speculative_ld_unit_idx_type)),
+              -- [murϕ_var_decls|
+              --   var squash_st_id : £speculative_st_unit_idx_type
+              -- ]
+              (Murϕ.Decl.var ["squash_st_id"] (Murϕ.TypeExpr.previouslyDefined speculative_st_unit_idx_type))
+            ]
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
+            rob := Sta .core_[j] .rob_;
             loop_break := false;
             if next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0 then
               loop_break := true;
@@ -3600,10 +3702,10 @@ List Murϕ.Statement
                     -- But maybe do a simpler version for now
                     --# if ld, then copy above
                     -- TODO: Auto gen the search func per queue struct we generate...
-                    squash_ld_id := £search_load_ctrler_func_call(£speculative_ld_unit_name , curr_rob_inst.seq_num);
+                    squash_ld_id := £search_load_ctrler_func_call(next_state .core[j] .£speculative_ld_unit_name_ , curr_rob_inst.seq_num);
                     -- squash_dest_ctrler_entry := £speculative_ld_unit_name .entries[squash_ld_id];
 
-                    £ld_trans_handle_squash_if_stmt
+                    £ld_trans_handle_squash_if_stmt.stmts
                     -- if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
                     --   if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
                     --     sq.valid_access_msg := false;
@@ -3636,10 +3738,10 @@ List Murϕ.Statement
 
                   elsif (curr_rob_inst.op = st) then
                     --#
-                    squash_st_id := £search_store_ctrler_func_call(£speculative_st_unit_name, curr_rob_inst.seq_num);
+                    squash_st_id := £search_store_ctrler_func_call(next_state .core[j] .£speculative_st_unit_name_, curr_rob_inst.seq_num);
                     -- squash_st_entry := £speculative_st_unit_name .entries[squash_st_id];
 
-                    £st_trans_handle_squash_if_stmt
+                    £st_trans_handle_squash_if_stmt.stmts
                     -- --# Shouldn't need to check this case actually
                     -- --# LQ must be busy with an older store's req
                     -- if ( squash_sq_entry.st_state = st_await_lq_squash ) then
@@ -3749,9 +3851,17 @@ List Murϕ.Statement
               endif;
             end;
 
+            next_state .core_[j] .rob_ := rob;
             ]
             -- []
-            overall_murphi_head_search_squash_template
+            let stmts_decls : lst_stmts_decls := {
+              stmts := overall_murphi_head_search_squash_template,
+              decls := (decls ++
+              ld_trans_handle_squash_if_stmt.decls ++ 
+              st_trans_handle_squash_if_stmt.decls)
+            }
+            stmts_decls
+            
           else
             -- reg file write?
             -- throw an error for unknown fns?
@@ -3794,19 +3904,23 @@ List Murϕ.Statement
             -- Then build the expr, maybe with the metaprogramming
             -- environment
             -- []
-            [murphi_reg_file_assign]
+            let stmts_decls : lst_stmts_decls := {
+              stmts := [murphi_reg_file_assign],
+              decls := []
+            }
+            stmts_decls
         else
         if len_1_qual_name
         then
         dbg_trace "doesn't make sense.. replace this with Except throw"
-        []
+        empty_stmt_decl_lsts
         else
           -- len more than 2 qual name...
           -- we don't have that at the moment?
           -- should throw error
           -- just return default
         dbg_trace "doesn't make sense.. replace this with Except throw"
-          []
+        empty_stmt_decl_lsts
          
 
       | _ =>
@@ -3814,7 +3928,7 @@ List Murϕ.Statement
         -- can't, this is returns some expr?
         dbg_trace "What was i just passed?? should be a stray expr?"
         dbg_trace term
-        []
+        empty_stmt_decl_lsts
       -- Murϕ.Expr.integerConst 0
     | _ =>
     -- let expr_trans_info :=
@@ -3835,10 +3949,10 @@ List Murϕ.Statement
     -- would map to?
           
     dbg_trace "What was i just passed?? should be a stray expr?"
-    []
+    empty_stmt_decl_lsts
   | _ =>
   dbg_trace "passed in sth that's not a stray_expr"
-  []
+  empty_stmt_decl_lsts
 
 partial def api_term_func_to_murphi_func
 -- ( term : Pipeline.Term )
@@ -3847,6 +3961,7 @@ partial def api_term_func_to_murphi_func
 -- try to match with when statements
 -- use when stmt identifiers
 ( stmts_in_await : List Pipeline.Statement)
+: lst_stmts_decls
 :=
   let term : Pipeline.Term := term_trans_info.term
   -- also get the current struct name... etc.
@@ -3907,7 +4022,8 @@ partial def api_term_func_to_murphi_func
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr :=  curr_idx
+    specific_murphi_dest_expr :=  curr_idx,
+    lst_decls := term_trans_info.lst_decls
   }
 
   -- (
@@ -3979,7 +4095,8 @@ partial def api_term_func_to_murphi_func
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr := curr_idx
+    specific_murphi_dest_expr := curr_idx,
+    lst_decls := term_trans_info.lst_decls
   }
   let when_search_fail_trans_info : stmt_translation_info := {
     stmt := when_search_fail,
@@ -3991,16 +4108,19 @@ partial def api_term_func_to_murphi_func
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr := curr_idx
+    specific_murphi_dest_expr := curr_idx,
+    lst_decls := term_trans_info.lst_decls
   }
 
-  let when_search_success_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_success_trans_info
-  let when_search_fail_murphi_stmts : List Murϕ.Statement := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+  let when_search_success_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
+  let when_search_fail_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
   dbg_trace "&&&&& BEGIN Murϕ when_success &&&&&"
-  dbg_trace when_search_success_murphi_stmts
+  dbg_trace when_search_success_murphi_stmts.stmts
+  dbg_trace when_search_success_murphi_stmts.decls
   dbg_trace "&&&&& END Murϕ when_success &&&&&"
   dbg_trace "&&&&& BEGIN Murϕ when_fail &&&&&"
-  dbg_trace when_search_fail_murphi_stmts
+  dbg_trace when_search_fail_murphi_stmts.stmts
+  dbg_trace when_search_fail_murphi_stmts.decls
   dbg_trace "&&&&& END Murϕ when_fail &&&&&"
 
   -- ex. SQ_NUM_ETNRIES_CONST
@@ -4011,6 +4131,21 @@ partial def api_term_func_to_murphi_func
   -- Or maybe earlier, but i'm not 100% sure
   -- what the "common code" segments are just yet...
 
+  let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+  let decls : List Murϕ.Decl := [
+    (Murϕ.Decl.var ["while_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+    (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+    -- [murϕ_var_decls|
+    --   var found_entry : boolean
+    -- ],
+    (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+    (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+    (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+    (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
+    -- [murϕ_var_decls|
+    --   var curr_idx : £ctrler_idx_t
+    -- ]
+  ]
   let dest_ctrler_name_ := dest_ctrler_name.append "_"
   let overall_murphi_tail_search_template : List Murϕ.Statement :=
   [
@@ -4059,7 +4194,7 @@ partial def api_term_func_to_murphi_func
           -- Note that "entry" indicates access to the dest ctrler's
           -- fields
           -- So that we can even use entry in the when block...
-          £when_search_success_murphi_stmts;
+          £when_search_success_murphi_stmts.stmts;
 
           -- value := £dest_ctrler_name_ .entries[curr_idx] .write_value;
   
@@ -4075,7 +4210,7 @@ partial def api_term_func_to_murphi_func
       end],
     [murϕ|
       if (found_entry = false) then
-        £when_search_fail_murphi_stmts
+        £when_search_fail_murphi_stmts.stmts
       endif]
   ]
 
@@ -4086,7 +4221,15 @@ partial def api_term_func_to_murphi_func
 -- update this to work generically..?
 
   -- 0
-  overall_murphi_tail_search_template
+  let stmts_decls : lst_stmts_decls := {
+    stmts := overall_murphi_tail_search_template,
+    decls := (
+      when_search_success_murphi_stmts.decls ++
+      when_search_fail_murphi_stmts.decls ++
+      decls
+    )
+  }
+  stmts_decls
   -- default
 
 partial def dsl_type_to_murphi_type_string
@@ -4130,7 +4273,8 @@ partial def murphi_type_to_null
 partial def ast_stmt_to_murphi_stmts
 (stmt_trans_info : stmt_translation_info)
 :
-(List Murϕ.Statement)
+-- (List Murϕ.Statement)
+lst_stmts_decls
 :=
   let stmt := stmt_trans_info.stmt
   let ctrlers_lst := stmt_trans_info.lst_ctrlers
@@ -4147,14 +4291,19 @@ partial def ast_stmt_to_murphi_stmts
   | Statement.labelled_statement label stmt =>
     let new_translation_info := assn_stmt_to_stmt_translation_info stmt_trans_info stmt
 
-    let stmt_lst : List Murϕ.Statement := ast_stmt_to_murphi_stmts new_translation_info
+    -- let stmt_lst : List Murϕ.Statement := ast_stmt_to_murphi_stmts new_translation_info
+    let stmt_lst : lst_stmts_decls := ast_stmt_to_murphi_stmts new_translation_info
 
     stmt_lst
   | Statement.variable_declaration typed_ident =>
     -- AZ NOTE: must ignore declarations,
     -- since they go in the decl list,
     -- and not the stmt list
-    []
+    -- Well.. i kinda have the other func for this..
+    -- but i still need the decl list for manually returning the 
+    -- template func decls, so i can avoid doing type inference...
+    let lsts : lst_stmts_decls := { stmts := [], decls := []}
+    lsts
   | Statement.value_declaration typed_ident expr =>
     -- dbg_trace "$$$$$$$ CHECK FOR NULL $$$$$$$"
   -- AZ NOTE: In this case there's no way this is
@@ -4217,13 +4366,21 @@ partial def ast_stmt_to_murphi_stmts
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_null
 
-      [murphi_assignment_stmt]
+      let lsts : lst_stmts_decls := {
+        stmts := [murphi_assignment_stmt],
+        decls := []
+      }
+      lsts
     else
 
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_expr
 
-      [murphi_assignment_stmt]
+      let lsts : lst_stmts_decls := {
+        stmts := [murphi_assignment_stmt],
+        decls := []
+      }
+      lsts
 
   | Statement.return_stmt expr =>
     let expr_trans_info :=
@@ -4234,7 +4391,11 @@ partial def ast_stmt_to_murphi_stmts
     let murphi_return_stmt :=
     Murϕ.Statement.returnstmt murphi_expr
 
-    [murphi_return_stmt]
+    let lsts : lst_stmts_decls := {
+      stmts := [murphi_return_stmt],
+      decls := []
+    }
+    lsts
 
   | Statement.block lst_stmts =>
     -- let num_stmts := lst_stmts.length
@@ -4251,8 +4412,18 @@ partial def ast_stmt_to_murphi_stmts
     let murphi_stmts_lst_lst :=
     stmt_trans_info_lst.map ast_stmt_to_murphi_stmts
 
-    let murphi_stmts_lst :=
-    List.join murphi_stmts_lst_lst
+    -- let empty_stmt_decl_lsts : lst_stmts_decls := {
+    --   stmts := [],
+    --   decls := []
+    -- }
+    let murphi_stmts_lst := murphi_stmts_lst_lst.foldl (
+      λ lsts_lst lsts =>
+        let new_lsts : lst_stmts_decls := {
+          stmts := lsts_lst.stmts ++ lsts.stmts,
+          decls := lsts_lst.decls ++ lsts.decls
+        }
+        new_lsts
+    ) empty_stmt_decl_lsts
 
     murphi_stmts_lst
 
@@ -4370,7 +4541,7 @@ partial def ast_stmt_to_murphi_stmts
 
 -- TODO: Thurs, 12:36, was here!
 
-  let lst_murphi_stmts : List Murϕ.Statement :=
+  let lst_murphi_stmts : lst_stmts_decls :=
   ast_stmt_stray_expr_to_murphi_expr stmt_trans_info
 
   lst_murphi_stmts
@@ -4378,7 +4549,8 @@ partial def ast_stmt_to_murphi_stmts
   | Statement.await none lst_stmts =>
     -- nothing to do here, we're awaiting on
     -- another structure to do something
-    []
+    -- []
+    empty_stmt_decl_lsts
 
   /-
   Listen & Handle...
@@ -4426,22 +4598,26 @@ partial def ast_stmt_to_murphi_stmts
 
       let stmt_trans_info1 := 
         assn_stmt_to_stmt_translation_info stmt_trans_info stmt1
-      let murphi_stmt1 :=
+      let murphi_stmt1 : lst_stmts_decls :=
       ast_stmt_to_murphi_stmts stmt_trans_info1
 
       let stmt_trans_info2 := 
         assn_stmt_to_stmt_translation_info stmt_trans_info stmt2
-      let murphi_stmt2 :=
+      let murphi_stmt2 : lst_stmts_decls  :=
       ast_stmt_to_murphi_stmts stmt_trans_info2
 
       let murphi_if_stmt :=
-      Murϕ.Statement.ifstmt murphi_expr murphi_stmt1 [] murphi_stmt2
+      Murϕ.Statement.ifstmt murphi_expr murphi_stmt1.stmts [] murphi_stmt2.stmts
 
   dbg_trace "!!!!! BEGIN generated if-else -> if stmt !!!!!"
   dbg_trace murphi_if_stmt
   dbg_trace "!!!!! END generated if-else -> if stmt !!!!!"
 
-      [murphi_if_stmt]
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_if_stmt],
+        decls := murphi_stmt1.decls ++ murphi_stmt2.decls
+        }
+      stmts_decls
     | Conditional.if_statement expr stmt =>
       let expr_trans_info := 
         assn_stmt_to_expr_translation_info stmt_trans_info expr
@@ -4453,12 +4629,16 @@ partial def ast_stmt_to_murphi_stmts
       ast_stmt_to_murphi_stmts stmt_trans_info'
 
       let murphi_if_stmt :=
-      Murϕ.Statement.ifstmt murphi_expr murphi_stmt [] []
+      Murϕ.Statement.ifstmt murphi_expr murphi_stmt.stmts [] []
   dbg_trace "!!!!! BEGIN generated if-stmt -> if stmt !!!!!"
   dbg_trace murphi_if_stmt
   dbg_trace "!!!!! END generated if-stmt -> if stmt !!!!!"
 
-      [murphi_if_stmt]
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_if_stmt],
+        decls := murphi_stmt.decls
+      }
+      stmts_decls
 
   /-
   Variable assignment
@@ -4572,17 +4752,31 @@ partial def ast_stmt_to_murphi_stmts
         let murphi_assn_stmt :=
         Murϕ.Statement.assignment murphi_var_name_designator murphi_null
     
-        [murphi_assn_stmt]
+        -- let murphi_decl :=
+        -- Murϕ.Decl.var 
+        let stmts_decls : lst_stmts_decls := {
+          stmts := [murphi_assn_stmt],
+          decls := []
+        }
+        stmts_decls
       else
         let murphi_assn_stmt :=
           Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
     
-        [murphi_assn_stmt]
+        let stmts_decls : lst_stmts_decls := {
+          stmts := [murphi_assn_stmt],
+          decls := []
+        }
+        stmts_decls
     else
       let murphi_assn_stmt :=
         Murϕ.Statement.assignment murphi_var_name_designator murphi_expr
     
-      [murphi_assn_stmt]
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_assn_stmt],
+        decls := []
+      }
+      stmts_decls
 
   -- 0
 
@@ -4596,7 +4790,8 @@ partial def ast_stmt_to_murphi_stmts
     match await_or_not with
     | await_or_not_state.await => 
       -- return nothing
-      []
+      -- []
+      empty_stmt_decl_lsts
     | await_or_not_state.not_await => 
       -- translate ident into updating
       -- this structure's entry state
@@ -4665,12 +4860,17 @@ partial def ast_stmt_to_murphi_stmts
           Murϕ.Designator.mk ident []
         ) )
 
-      [murphi_state_assn]
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_state_assn],
+        decls := []
+      }
+      stmts_decls
       else
       -- AZ TODO NOTE: Consider the case of a unit
         -- If this isn't a FIFO / buffer structure
         -- Then do we just assign the unit's state?
-        []
+        -- []
+        empty_stmt_decl_lsts
     murphi_stmt
   -- TODO: Fill in these cases,
   -- These kinda go hand in hand,
@@ -4709,16 +4909,17 @@ partial def ast_stmt_to_murphi_stmts
       let term_trans_info := assn_stmt_to_term_translation_info stmt_trans_info extracted_term
       -- TODO: Actually handle the Option term
 
-      let murphi_tail_search_template : List Murϕ.Statement :=
+      let murphi_tail_search_template : lst_stmts_decls :=
       api_term_func_to_murphi_func term_trans_info lst_stmts
 
       murphi_tail_search_template
     else
-      []
+      empty_stmt_decl_lsts
 
   | Statement.when _ _ _ =>
   -- TODO : Implement this case
-    []
+    -- []
+    empty_stmt_decl_lsts
 
 end -- END mutually recursive func region --
 
@@ -4925,40 +5126,31 @@ partial def ast_decl_assn_decl_to_murphi_decl
   -- let murphi_stmts_decls := murphi_stmts_decls_monad.run
   --   { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names} |>.run.2
   -- let (lst_murphi_decls, murphi_inits) := (murphi_stmts_decls.decl_list, murphi_stmts_decls.init_list)
-    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
-    let lst_decls := ast_decl_translation_monad.run
-      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-      |>.run.1
-    return lst_decls
+    let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl stmt
+    return ast_decl_translation
   | .conditional_stmt condition =>
     match condition with
     | Pipeline.Conditional.if_else_statement _ stmt1 stmt2 =>
-      let ast_decl_translation_monad1 := ast_decl_assn_decl_to_murphi_decl stmt1
-      let lst_decls1 := ast_decl_translation_monad1.run
-        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-      let ast_decl_translation_monad2 := ast_decl_assn_decl_to_murphi_decl stmt2
-      let lst_decls2 := ast_decl_translation_monad2.run
-        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-      return (lst_decls1 ++ lst_decls2)
+      let ast_decl_translation1 ← ast_decl_assn_decl_to_murphi_decl stmt1
+      let ast_decl_translation2 ← ast_decl_assn_decl_to_murphi_decl stmt2
+      return (ast_decl_translation1 ++ ast_decl_translation2)
     | .if_statement _ stmt =>
-      let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
-      let lst_decls := ast_decl_translation_monad.run
-        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-      return lst_decls
+      let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl stmt
+      return ast_decl_translation
   | .listen_handle stmt _ => ast_decl_assn_decl_to_murphi_decl stmt
   | .await none _ => return []
   | .await term stmt_list =>
     --  let await_stmts_decls :=
     --  List.join (stmt_list.map ast_decl_assn_decl_to_murphi_decl)
-    let await_stmt_monads := stmt_list.map ast_decl_assn_decl_to_murphi_decl
-    let lst_lst_decls : List (List Murϕ.Decl) := await_stmt_monads.map
-      λ monad =>
-        monad.run {trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-    let lst_decls : (List Murϕ.Decl) := List.join lst_lst_decls
+
+    -- let await_stmts ← stmt_list.map ast_decl_assn_decl_to_murphi_decl
+    let await_stmts ← stmt_list.mapM ast_decl_assn_decl_to_murphi_decl
+
+    -- let lst_lst_decls : List (List Murϕ.Decl) := await_stmt_monads.map
+    --   λ monad =>
+    --     monad.run {trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
+    --     |>.run.1
+    let lst_decls : (List Murϕ.Decl) := List.join await_stmts
 
 -- inductive Term
 -- | negation: Term → Term
@@ -4994,27 +5186,21 @@ partial def ast_decl_assn_decl_to_murphi_decl
     | _ => dbg_trace "should be a when stmt!?"
       panic! "Should have just found a when stmt! why did we get something else?"
 
-    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl when_stmts
-    let lst_decls_from_dest_struct := ast_decl_translation_monad.run
-      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-      |>.run.1
+    let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl when_stmts
 
     -- await_stmts_decls
-    return (lst_decls ++ lst_decls_from_dest_struct)
+    return (lst_decls ++ ast_decl_translation)
        
   | .when _ _ stmt =>
-    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl stmt
-    let lst_decls := ast_decl_translation_monad.run
-      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-      |>.run.1
-    return lst_decls
+    let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl stmt
+    return ast_decl_translation
   -- ast_decl_assn_decl_to_murphi_decl stmt
   | .stray_expr expr =>
     let term_from_expr :=
     match expr with
     | Pipeline.Expr.some_term term => term
     | _ => dbg_trace "This shouldn't happen, malformed AST. TODO: Throw?"
-      panic! "Shold Throw here..."
+      panic! "Should Throw here..."
 
     let q_name :=
      match term_from_expr with
@@ -5038,19 +5224,12 @@ partial def ast_decl_assn_decl_to_murphi_decl
     | _ => dbg_trace "should be a when stmt!?"
       panic! "Should have just found a when stmt! why did we get something else?"
 
-    let ast_decl_translation_monad := ast_decl_assn_decl_to_murphi_decl when_stmts
-    let lst_decls_from_dest_struct := ast_decl_translation_monad.run
-      { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-      |>.run.1
+    let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl when_stmts
 
-    return lst_decls_from_dest_struct
+    return ast_decl_translation
   | .block stmt_lst =>
-    let await_stmt_monads := stmt_lst.map ast_decl_assn_decl_to_murphi_decl
-    let lst_lst_decls : List (List Murϕ.Decl) := await_stmt_monads.map
-      λ monad =>
-        monad.run {trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-    let lst_decls : (List Murϕ.Decl) := List.join lst_lst_decls
+    let await_stmts ← stmt_lst.mapM ast_decl_assn_decl_to_murphi_decl
+    let lst_decls : (List Murϕ.Decl) := List.join await_stmts
 
     return lst_decls
     -- List.join (stmt_lst.map ast_decl_assn_decl_to_murphi_decl)
@@ -5218,15 +5397,15 @@ def murphi_stmts_to_murphi_decls
 : DeclInitM Unit
 := do
   -- get relevant info
-  let lst_ctrlers : List controller_info := (← get).lst_ctrlers
+  -- let lst_ctrlers : List controller_info := (← get).lst_ctrlers
 
   -- The other stuff, but i don't use this here..
   -- { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names}
-  let trans := (← get).trans
-  let init_list := (← get).init_list
-  let decl_list := (← get).decl_list
-  let ctrler_names := (← get).ctrler_names
-  let curr_ctrler_name := (← get).curr_ctrler_name
+  -- let trans := (← get).trans
+  -- let init_list := (← get).init_list
+  -- let decl_list := (← get).decl_list
+  -- let ctrler_names := (← get).ctrler_names
+  -- let curr_ctrler_name := (← get).curr_ctrler_name
 
   -- foldl thru the stmts list, match stmt with | case
   -- translate line by line
@@ -5234,20 +5413,7 @@ def murphi_stmts_to_murphi_decls
   --   if recursive, then still same; add decls & init to list..
 
   -- α : Unit, β : List Pipeline.Statement
-  let _ := List.foldl (
-    λ _ stmt =>
-      let gen_decl_monad := gen_decl_from_stmt_and_append () stmt
-      let lst_decls := gen_decl_monad.run
-        { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name}
-        |>.run.1
-      dbg_trace "******************"
-      dbg_trace lst_decls
-      dbg_trace "*******END********"
-      -- modify λ
-      --   { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name } =>
-      --   { trans := trans, init_list := init_list ++ decl_init_tuple.2, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name, decl_list := decl_list ++ decl_init_tuple.1, ctrler_names := ctrler_names }
-      ()
-  ) () stmts
+  let _ ← List.foldlM gen_decl_from_stmt_and_append () stmts
 
   -- TODO: implement
   return ()
@@ -5574,13 +5740,16 @@ def dsl_trans_descript_to_murphi_rule
     entry_keyword_dest := none
     trans_obj := trans
     specific_murphi_dest_expr := none
+    lst_decls := []
   }
 
-  -- The murphi stmts for the transition body
-  let lst_murphi_stmt : List Murϕ.Statement:=
+  let murphi_stmts_decls : lst_stmts_decls :=
   -- AZ TODO: Implement the AST Stmts => Murphi Stmts fn
     -- AZ TODO: Use the struct!
     ast_stmt_to_murphi_stmts stmt_trans_info
+  -- The murphi stmts for the transition body
+  let lst_murphi_stmt : List Murϕ.Statement := murphi_stmts_decls.stmts
+  let decls_from_translation : List Murϕ.Decl := murphi_stmts_decls.decls
     
   -- List of ctrler names ( identifiers )
   let lst_ctrler_names : List Identifier := 
@@ -5592,8 +5761,10 @@ def dsl_trans_descript_to_murphi_rule
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.1
 
   let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
-  let murphi_stmts_decls := murphi_stmts_decls_monad.run
-    { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names,
+  let murphi_stmts_decls := murphi_stmts_decls_monad.run {
+    trans := trans, init_list := [],
+    decl_list := simple_ast_murphi_decls ++ decls_from_translation,
+    ctrler_names := lst_ctrler_names,
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.2
   let (lst_murphi_decls, murphi_inits) := (murphi_stmts_decls.decl_list, murphi_stmts_decls.init_list)
   -- AZ TODO: Implement the Murphi stmts -> Decls fn
