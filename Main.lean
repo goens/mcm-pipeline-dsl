@@ -10,6 +10,7 @@ open Lean Pipeline
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
 -- NOTE: This is the "rewrite" DSL filename
 def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-henn-patt/o3/lsq-phys-reg-dsl-rewrite-flattened-simple.file"
+def output_file := "generated_output.m"
 
 def main (args : List String): IO Unit := do
   let filename := match args.get? 0 with
@@ -132,6 +133,7 @@ def main (args : List String): IO Unit := do
 -- ( rules : List Murϕ.Rule)
 -- : Murϕ.Program
   let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules
+  IO.FS.writeFile output_file murphi_file.toString
 
   -- AZ TODO:
   -- add code to filter for certain controllers (LSQ ctrlers)
