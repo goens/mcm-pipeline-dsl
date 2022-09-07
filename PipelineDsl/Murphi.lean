@@ -385,7 +385,7 @@ def Program.toString : Program → String
     let constdecls := String.intercalate ";\n" $ prog.constdecls.map Decl.toString
     let vardecls := String.intercalate ";\n" $ prog.vardecls.map Decl.toString
     let typedecls := String.intercalate ";\n" $ prog.typedecls.map Decl.toString
-    let decls := s!"const{constdecls}\ntype\n{typedecls}\nvar\n{vardecls}\n"
+    let decls := s!"const\n{constdecls}\ntype\n{typedecls}\nvar\n{vardecls}\n"
     let procdecls := String.intercalate ";\n" $ prog.procdecls.map ProcDecl.toString
     let rules := String.intercalate ";\n" $ prog.rules.map Rule.toString
   s!"{decls} \n {procdecls} \n {rules}"

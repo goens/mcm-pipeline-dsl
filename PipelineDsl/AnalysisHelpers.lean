@@ -257,7 +257,8 @@ def ast0048_generate_controller_murphi_record
     (Expr.integerConst 0)
     (Expr.designator ctrler_entries_enum_name_designator)
   let ctrler_entries_range_decl_name :=
-    (String.join [ctrl.name, "_ENTRIES_ENUM"])
+    -- (String.join [ctrl.name, "_ENTRIES_ENUM"])
+    (String.join [ctrl.name, "_idx_t"])
   -- NOTE: Another decl to return
   let ctrler_entries_range_decl :=
     Decl.type (

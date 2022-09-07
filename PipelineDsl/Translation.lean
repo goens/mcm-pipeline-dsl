@@ -5449,6 +5449,141 @@ def gen_next_state_update
   )
   lst_ctrler_updates
 
+--========== Check if desig has i =========
+def check_desig_for_i_expr 
+(desig : Murϕ.Designator)
+: List Bool
+:=
+  List.join (
+  match desig with
+  | Murϕ.Designator.mk _ sum_lst =>
+    sum_lst.map (
+      λ elem =>
+        match elem with
+        | Sum.inr type_expr =>
+          match type_expr with
+          | Murϕ.Expr.designator desig' =>
+            match desig' with
+            | .mk id _ =>
+              if id == "i" then
+                [true]
+              else
+                []
+          | _ => []
+        | _ => []
+    )
+  )
+
+partial def check_expr_for_i
+( expr : Murϕ.Expr )
+: List Bool
+:=
+-- inductive Expr
+--   | designator : Designator → Expr
+--   | integerConst : Int → Expr
+--   | call : ID → List Expr → Expr
+--   | universal : Quantifier → Expr → Expr
+--   | existential : Quantifier → Expr → Expr
+--   | binop : BinOp → Expr → Expr → Expr
+--   | negation : Expr → Expr
+--   | conditional : Expr → Expr → Expr → Expr
+  match expr with
+  | Murϕ.Expr.designator desig =>
+    check_desig_for_i_expr desig
+  | .call _ lst_expr =>
+    List.join (lst_expr.map check_expr_for_i)
+  | .binop _ expr1 expr2 =>
+    (check_expr_for_i expr1) ++ (check_expr_for_i expr2)
+  | .negation expr => check_expr_for_i expr
+  | .conditional expr1 expr2 expr3 => (
+      (check_expr_for_i expr1) ++
+      (check_expr_for_i expr2) ++
+      (check_expr_for_i expr3)
+    )
+  | _ => []
+
+partial def does_stmt_have_desig_i
+(stmt : Murϕ.Statement)
+: Bool
+:=
+-- inductive Statement
+--   | assignment : Designator → Expr → Statement
+--   | ifstmt : Expr → List Statement → List (Expr × List Statement) → List Statement → Statement
+--   | switchstmt : Expr → List (List Expr × List Statement) → List Statement → Statement
+--   | forstmt : Quantifier → List Statement → Statement
+--   | whilestmt : Expr → List Statement → Statement
+--   | aliasstmt : List Alias → List Statement → Statement
+--   | proccall : ID → List Expr → Statement
+--   | clearstmt : Designator → Statement
+--   | errorstmt : String → Statement
+--   | assertstmt : Expr → String → Statement
+--   | putstmtexp : Expr → Statement
+--   | putstmtstr : String → Statement
+--   | returnstmt : Option Expr → Statement
+--   | undefine : ID → Statement
+  let bool_list : List Bool :=
+  match stmt with
+  | Murϕ.Statement.assignment desig expr =>
+    let desig_has_i : List Bool :=
+    check_desig_for_i_expr desig
+    let expr_has_i : List Bool :=
+    check_expr_for_i expr
+
+    desig_has_i ++ expr_has_i
+  | .ifstmt expr lst_stmt1 lst_expr_stmt lst_stmt2 =>
+    let expr_bool := check_expr_for_i expr
+    let stmt1_bool := lst_stmt1.map does_stmt_have_desig_i
+    let lst_expr_stmt_bool : List Bool := List.join ( lst_expr_stmt.map (
+      λ elem =>
+        let expr_bool' : List Bool := check_expr_for_i elem.1
+        let stmts' : List Bool := elem.2.map does_stmt_have_desig_i
+        expr_bool' ++ stmts'
+    ))
+    let stmt2_bool := lst_stmt2.map does_stmt_have_desig_i
+
+    expr_bool ++ stmt1_bool ++ lst_expr_stmt_bool ++ stmt2_bool
+  | .switchstmt expr lst_expr_stmt lst_stmt =>
+    let expr_bool := check_expr_for_i expr
+    let lst_expr_stmt_bool : List Bool := List.join ( lst_expr_stmt.map (
+      λ elem =>
+        let expr_bool' : List Bool := List.join (elem.1.map check_expr_for_i)
+        let stmts' : List Bool := elem.2.map does_stmt_have_desig_i
+        expr_bool' ++ stmts'
+    ))
+    let stmt_bool := lst_stmt.map does_stmt_have_desig_i
+    expr_bool ++ lst_expr_stmt_bool ++ stmt_bool
+
+  | .forstmt _ lst_stmt =>
+    let stmt_bool := lst_stmt.map does_stmt_have_desig_i
+    stmt_bool
+
+  | .whilestmt expr lst_stmt =>
+    let expr_bool := check_expr_for_i expr
+    let stmt_bool := lst_stmt.map does_stmt_have_desig_i
+    expr_bool ++ stmt_bool
+  | .proccall _ lst_expr =>
+    List.join (lst_expr.map check_expr_for_i)
+  | .returnstmt expr =>
+    match expr with
+    | .some expr' =>
+      check_expr_for_i expr'
+    | .none =>
+      []
+  | _ => []
+  
+  match bool_list with
+  | [] => false
+  | _ => true
+
+def find_designator_with_expr_i
+(stmts : List Murϕ.Statement)
+: Bool
+:=
+  let res : List Bool := stmts.map does_stmt_have_desig_i
+  match res with
+  | [] => false
+  | _ => true
+
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
 (trans_info : dsl_trans_info)
@@ -5801,11 +5936,11 @@ def dsl_trans_descript_to_murphi_rule
   dbg_trace "=== lst murphi stmt ==="
     dbg_trace lst_murphi_stmt
   dbg_trace "===== END TRANSLATION INFO ====="
-  -- ======= After the analysis ======
-  let murphi_core_ruleset :=
-    Rule.ruleset -- List of quantifier, List of rule
-    -- List of Quantifier (our TypeExpr of cores)
-    [
+
+  let is_a_per_entry_rule : Bool :=
+    find_designator_with_expr_i lst_murphi_stmt
+  
+  let rule_core_quantifier : Murϕ.Quantifier :=
       (
         Quantifier.simple
         -- ID
@@ -5813,7 +5948,23 @@ def dsl_trans_descript_to_murphi_rule
         -- TypeExpr
         (cores_t)
       )
-    ]
+
+  let list_rule_quantifiers :=
+  if is_a_per_entry_rule then
+    let ruleset_buffer_idx := "i"
+    let ctrler_idx :=
+      TypeExpr.previouslyDefined (ctrler_name.append "_idx_t")
+
+    [rule_core_quantifier].concat (
+      Quantifier.simple ruleset_buffer_idx ctrler_idx
+    )
+  else
+    [rule_core_quantifier]
+  -- ======= After the analysis ======
+  let murphi_core_ruleset :=
+    Rule.ruleset -- List of quantifier, List of rule
+    -- List of Quantifier (our TypeExpr of cores)
+    list_rule_quantifiers
     [
       (
         Rule.simplerule

@@ -132,7 +132,7 @@ def main (args : List String): IO Unit := do
 -- ( func_decls : List Murϕ.ProcDecl)
 -- ( rules : List Murϕ.Rule)
 -- : Murϕ.Program
-  let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules
+  let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
   IO.FS.writeFile output_file murphi_file.toString
 
   -- AZ TODO:
