@@ -230,7 +230,9 @@ private partial def typeExprToString : TypeExpr → String
   | .previouslyDefined id => s!"{id}"
   | .integerSubrange startexp endexp => exprToString startexp ++ " .. " ++ exprToString endexp
   | .enum ids => "enum {" ++ (", ".intercalate ids) ++ "}"
-  | .record decls => "record\n" ++ (";\n".intercalate $ decls.map declToString) ++ ";\nend"
+  | .record decls => "record\n" ++
+    (String.join (( decls.map declToString ).map fun str => (String.join ["  ", str, ";\n"] ) )) -- (";\n".intercalate $ decls.map declToString)
+    ++ "end"
   | .array ty₁ ty₂ => "array [" ++ typeExprToString ty₁ ++ "] of " ++ typeExprToString ty₂
 
 private partial def declToString : Decl → String
@@ -254,11 +256,16 @@ private partial def formalToString : Formal → String
 
 private partial def procDeclToString : ProcDecl → String
   | .procedure id formals decls statements => s!"procedure {id} (" ++ "; ".intercalate (formals.map formalToString) ++ ");\n"
-    ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n" ++ ";\n".intercalate (statements.map statementToString)
+    ++ "\n".intercalate (decls.map declToString) ++ "begin\n" ++ ";\n".intercalate (statements.map statementToString)
     ++ ";\n end;"
   | .function id formals type decls statements => s!"function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ")"
-    ++ " : " ++ typeExprToString type ++ ";\n" ++ "\n".intercalate (decls.map declToString) ++ "\n begin \n"
-    ++ ";\n".intercalate (statements.map statementToString) ++ ";\n end;"
+    ++ " : " ++ typeExprToString type ++ ";\n" ++
+    -- Function Variables, Syntax: var <var_name> : <var_type> ;
+    String.join (( decls.map declToString ).map fun str => String.join ["  var ", str, ";\n"] ) -- "\n".intercalate (decls.map declToString)
+    ++ "\nbegin\n"
+    ++ String.join (( statements.map statementToString ).map fun str => String.join ["  ", str, ";\n"] )
+    -- ";\n".intercalate (statements.map statementToString)
+    ++ "end"
 
 private partial def designatorToString : Designator → String
   | .mk id idorexps =>
@@ -280,14 +287,15 @@ private partial def quantifierToString : Quantifier → String
 private partial def statementToString : Statement → String
   | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
   | .ifstmt cond thenstmts eliflist elsestmts =>
-    let thenS := ";\n".intercalate $ thenstmts.map statementToString
+    let thenS := String.join (( thenstmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) --";\n".intercalate $ thenstmts.map statementToString
     let elseS :=
-     if elsestmts.length == 0 then "\nend"
-     else "else\n" ++ ";\n".intercalate (elsestmts.map statementToString)
+     if elsestmts.length == 0 then "\n"
+     else "else\n" ++
+     String.join (( elsestmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (elsestmts.map statementToString)
     let elifS := String.intercalate " " $ eliflist.map λ (elifexp, elifstmts) =>
-      s!" elsif {exprToString elifexp} then "
-        ++ ";\n".intercalate (elifstmts.map statementToString)
-    s!"if {exprToString cond} then\n" ++ thenS ++ "\n" ++ elifS ++ "\n" ++ elseS
+      s!" elsif {exprToString elifexp} then\n"
+      ++ String.join (( elifstmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (elifstmts.map statementToString)
+    s!"if {exprToString cond} then\n" ++ thenS ++ "\n" ++ elifS ++ "\n" ++ elseS ++ "\nend"
   | .switchstmt exp cases elsestmts =>
     let casesS := "\n".intercalate $ cases.map
       λ (exps,stmts) => ",".intercalate (exps.map exprToString) ++ " : "
@@ -296,18 +304,19 @@ private partial def statementToString : Statement → String
         else "else " ++ ";\n".intercalate (elsestmts.map statementToString)
     s!"switch {exprToString exp}{casesS}{elseS} endswitch"
   | .forstmt quant stmts =>
-    let stmtsS := ";\n".intercalate (stmts.map statementToString)
-    s!"for {quantifierToString quant} do {stmtsS} endfor"
+    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+    s!"for {quantifierToString quant} do\n{stmtsS} endfor"
   | .whilestmt cond stmts =>
-    let stmtsS := ";\n".intercalate (stmts.map statementToString)
-    s!"while {exprToString cond} do {stmtsS} end"
+    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+
+    s!"while {exprToString cond} do\n{stmtsS} end"
   | .aliasstmt aliases stmts =>
-    let stmtsS := ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
     "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS} end"
   | .proccall id args => s!"{id} (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
   | .clearstmt des => s!"clear {designatorToString des}"
-  | .errorstmt msg => s!"error {msg}"
-  | .assertstmt exp msg => s!"assert {exprToString exp} {msg}"
+  | .errorstmt msg => s!"error \"{msg}\""
+  | .assertstmt exp msg => s!"assert {exprToString exp} \"{msg}\""
   | .putstmtexp exp => s!"put {exprToString exp}"
   | .putstmtstr str => s!"put {str}"
   | .returnstmt opExp => "return " ++ (match opExp with | none => "" | some exp => exprToString exp)
@@ -318,30 +327,30 @@ private partial def aliasToString : Alias → String
 
 private partial def ruleToString : Rule → String
   | .simplerule opName opExp decls stmts =>
-    let stmtsS := ";\n".intercalate (stmts.map statementToString)
-    let declsS := String.intercalate ";\n" $ decls.map declToString
+    let stmtsS := String.join (( stmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (stmts.map statementToString)
+    let declsS := (String.join (( decls.map declToString ).map (fun str => String.join ["  var ", str, ";\n"]) )) -- String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
       | some name => name
     let expS := match opExp with
       | none => ""
-      | some exp => exprToString exp ++ " ==>\n"
-      s!"rule \"{nameS}\" \n{expS} \n{declsS}\nbegin\n{stmtsS}\nend\n"
+      | some exp => exprToString exp ++ "\n==>\n"
+      s!"rule \"{nameS}\" \n{expS} \n{declsS}\nbegin\n{stmtsS}\nend"
   | .startstate opName decls stmts =>
-    let stmtsS := ";\n".intercalate (stmts.map statementToString)
-    let declsS := String.intercalate ";\n" $ decls.map declToString
+    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+    let declsS := (String.join (( decls.map declToString ).map (fun str => String.join ["  var ", str, ";\n"]) )) -- String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
       | some name => name
-    s!"startstate {nameS}{declsS}\n begin {stmtsS} end"
+    s!"startstate \"{nameS}\"{declsS}\nbegin\n{stmtsS} end"
   | .invariant opName exp =>
     let nameS := match opName with
       | none => ""
       | some name => name
-    s!"invariant {nameS} {exprToString exp}"
+    s!"invariant \"{nameS}\"\n{exprToString exp}"
   | .ruleset quants rules =>
     let quantsS := "; ".intercalate (quants.map quantifierToString)
-    let rulesS := String.intercalate ";\n" $ rules.map ruleToString
+    let rulesS := (String.join (( rules.map ruleToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- String.intercalate ";\n" $ rules.map ruleToString
     s!"\nruleset {quantsS} do \n{rulesS}\nend"
   | .aliasrule aliases rules =>
     let aliasesS := "; ".intercalate (aliases.map aliasToString)
@@ -382,13 +391,13 @@ instance : ToString Decl where toString := Decl.toString
 
 def Program.toString : Program → String
   | prog =>
-    let constdecls := String.intercalate ";\n" $ prog.constdecls.map Decl.toString
-    let vardecls := String.intercalate ";\n" $ prog.vardecls.map Decl.toString
-    let typedecls := String.intercalate ";\n" $ prog.typedecls.map Decl.toString
+    let constdecls := String.join (( prog.constdecls.map Decl.toString ).map fun str => str.append ";\n") -- String.intercalate ";\n" $ prog.constdecls.map Decl.toString
+    let vardecls := String.join (( prog.vardecls.map Decl.toString ).map fun str => str.append ";\n") -- String.intercalate ";\n" $ prog.vardecls.map Decl.toString
+    let typedecls := String.join (( prog.typedecls.map Decl.toString ).map fun str => str.append ";\n") -- String.intercalate ";\n" $ prog.typedecls.map Decl.toString
     let decls := s!"const\n{constdecls}\ntype\n{typedecls}\nvar\n{vardecls}\n"
-    let procdecls := String.intercalate ";\n" $ prog.procdecls.map ProcDecl.toString
-    let rules := String.intercalate ";\n" $ prog.rules.map Rule.toString
-  s!"{decls} \n {procdecls} \n {rules}"
+    let procdecls := String.join (( prog.procdecls.map ProcDecl.toString ).map fun str => str.append ";\n\n") -- String.intercalate ";\n" $ prog.procdecls.map ProcDecl.toString
+    let rules := String.join (( prog.rules.map Rule.toString ).map fun str => str.append ";\n\n") -- String.intercalate ";\n" $ prog.rules.map Rule.toString
+  s!"{decls}\n{procdecls}\n{rules}"
 instance : ToString Program where toString := Program.toString
 
 def Designator.cons : Designator → (ID ⊕ Expr) → Designator

@@ -3177,7 +3177,7 @@ lst_stmts_decls
               Murϕ.Expr.designator ld_st_entry_designator
 
               let ld_st_designator : Murϕ.Designator :=
-              Murϕ.Designator.mk "ld_st" []
+              Murϕ.Designator.mk "ld_st_entry" []
               let ld_st_entry_stmt : Murϕ.Statement :=
               Murϕ.Statement.assignment ld_st_designator ld_st_entry_expr
 
@@ -3205,16 +3205,36 @@ lst_stmts_decls
               Sum.inl "core_",
               -- core_[j]
               Sum.inr core_idx_designator,
-              -- core_[j].LQ
-              Sum.inl (ctrler_name.append "_"),
-              -- core_[j].LQ.entries
+              -- core_[j].msg_out
               Sum.inl msg_out
             ])
+
+            -- NOTE: Duplicated! from the if cond above..
+            let ld_st_entry_designator := (
+            Designator.mk (
+            -- Example in comments
+            -- core_
+            "next_state"
+            )
+            [
+            -- Example in comments
+            -- Sta.core_
+            Sum.inl "core_",
+            -- Sta.core_[j]
+            Sum.inr core_idx_designator,
+            -- Sta.core_[j].LQ
+            Sum.inl (ctrler_name.append "_"),
+            -- Sta.core_[j].LQ.entries
+            Sum.inl entries,
+            -- Sta.core_[j].LQ.entries[i]
+            Sum.inr entry_idx_designator
+            ]
+            )
 
             let func_call_expr :=
             Murϕ.Expr.call "insert_ld_in_mem_interface" [
               -- list of args
-              Murϕ.Expr.designator (Murϕ.Designator.mk "ld_st_entry" []),
+              Murϕ.Expr.designator ld_st_entry_designator,
               Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
             ]
 
@@ -3259,7 +3279,8 @@ lst_stmts_decls
             --   £dest_ctrler_name .out_busy := false;
             -- ]
             let combined_stmts :=
-            ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
+            -- ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
+            [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
 
             let stmts_decls : lst_stmts_decls := {
               stmts := combined_stmts,
@@ -3421,11 +3442,15 @@ lst_stmts_decls
             let reg_idx_murphi_expr := ast_expr_to_murphi_expr reg_idx_trans_expr
 
             let reg_write_stmt : List Murϕ.Statement :=
-            [murϕ| next_state .core[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
+            [murϕ| next_state .core_[j] .rf_ .rf[ £reg_idx_murphi_expr ] := £write_val_murphi_expr; ]
 
             let stmts_decls : lst_stmts_decls := {
               stmts := reg_write_stmt,
-              decls := []
+              -- AZ TODO: Have expr translation gen decls..?
+              -- No, it should temporarily use next_state.<sth>
+              decls := [
+                -- Murϕ.Decl.var ["inst"] (Murϕ.TypeExpr.previouslyDefined "INST")
+              ]
             }
             stmts_decls
           else
@@ -3702,7 +3727,7 @@ lst_stmts_decls
                     -- But maybe do a simpler version for now
                     --# if ld, then copy above
                     -- TODO: Auto gen the search func per queue struct we generate...
-                    squash_ld_id := £search_load_ctrler_func_call(next_state .core[j] .£speculative_ld_unit_name_ , curr_rob_inst.seq_num);
+                    squash_ld_id := £search_load_ctrler_func_call(next_state .core_[j] .£speculative_ld_unit_name_ , curr_rob_inst.seq_num);
                     -- squash_dest_ctrler_entry := £speculative_ld_unit_name .entries[squash_ld_id];
 
                     £ld_trans_handle_squash_if_stmt.stmts
@@ -3738,7 +3763,7 @@ lst_stmts_decls
 
                   elsif (curr_rob_inst.op = st) then
                     --#
-                    squash_st_id := £search_store_ctrler_func_call(next_state .core[j] .£speculative_st_unit_name_, curr_rob_inst.seq_num);
+                    squash_st_id := £search_store_ctrler_func_call(next_state .core_[j] .£speculative_st_unit_name_, curr_rob_inst.seq_num);
                     -- squash_st_entry := £speculative_st_unit_name .entries[squash_st_id];
 
                     £st_trans_handle_squash_if_stmt.stmts
@@ -5021,34 +5046,133 @@ def qualified_name_to_murphi_expr
   else
     throw s!"Input isn't insert or mem_access, how did it reach this?"
 
+-- =========== Same, but use Sta instead of next_state for Guard ===
+def qualified_name_to_sta_murphi_expr
+(lst_idents : List Identifier)
+: Except String Murϕ.Expr
+:= do
+  let is_insert := lst_idents.contains "insert"
+  let is_mem_access := lst_idents.contains "send_memory_request"
+
+  let ruleset_core_elem_idx := "i"
+  let core_idx_designator :=
+  Murϕ.Expr.designator (
+    Designator.mk ruleset_core_elem_idx []
+  )
+
+  if is_insert
+  then
+  -- this is a fifo_access_guard_
+  -- since it goes and checks an entry...
+    -- dbg_trace "== trying to get ctrler from list of idents in qual name translation =="
+    let dest_ctrler := lst_idents[0]!
+    let insert_func := lst_idents[1]!
+
+    let num_entries := "num_entries"
+
+    -- now build up the conditional
+    let dest_structure_entry_count :=
+      Murϕ.Expr.designator (
+        Designator.mk (
+          -- Example in comments
+          -- core_
+          "Sta"
+        )
+        [
+          -- Example in comments
+          Sum.inl "core_",
+          -- core_[i]
+          Sum.inr core_idx_designator,
+          -- core_[i].LQ
+          Sum.inl dest_ctrler,
+          -- core_[i].LQ.num_entries
+          Sum.inl num_entries
+        ]
+      )
+
+    let current_state_expr :=
+    Murϕ.Expr.designator (
+      Designator.mk
+      (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
+      []
+    )
+    let num_entries_of_dest_not_full :=
+    Murϕ.Expr.binop (
+      "<"
+    ) dest_structure_entry_count current_state_expr
+
+    return num_entries_of_dest_not_full
+  else
+  if is_mem_access
+  then
+
+    -- dbg_trace "== trying to get ctrler_name from lst of idents! in qual name trans =="
+    let dest_ctrler := lst_idents[0]!
+    -- let dest_ctrler := "mem_interface_"
+    let mem_access_func := lst_idents[1]!
+
+    let out_busy := "out_busy"
+
+    -- check that out_busy is false
+    let msg_out_busy_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk (
+          -- Example in comments
+          -- core_
+          "Sta"
+        )
+        [
+          -- Example in comments
+          Sum.inl "core_",
+          -- core_[i]
+          Sum.inr core_idx_designator,
+          -- core_[i].mem_interface_
+          Sum.inl dest_ctrler,
+          -- core_[i].mem_interface_.out_busy
+          Sum.inl out_busy
+        ]
+      )
+
+    let murphi_false_expr :=
+      Murϕ.Expr.negation msg_out_busy_designator
+    -- let must_out_not_busy_murphi_expr :=
+    --   Murϕ.Expr.binop
+    --   "="
+    --   msg_out_busy_designator
+    --   ()
+    return murphi_false_expr
+  else
+    throw s!"Input isn't insert or mem_access, how did it reach this?"
 --========= Convert DSL Decl and Decl Assn Stmts to Decls =========
 -- TODO: Check what I did to Decl Assn Stmts
 
-def dsl_type_to_murphi_type
-( dsl_type : Identifier )
-: Murϕ.TypeExpr
-:=
-  -- Types that one may use in the DSL.. & it's Murphi Test Harness "Equivalent" (for now that is)
-  -- DSL        |    Murphi Test Harness
-  -- -----------------------------------
-  -- address    |    addr_idx_t
-  -- u32        |    val_t
-  -- packet     |    N/A
-  -- seq_num    |    inst_idx_t
-  let murphi_type_name : ID :=
-  if dsl_type == "address" then
-    "addr_idx_t"
-  else if dsl_type == "u32" then
-    "val_t"
-  else if dsl_type == "seq_num" then
-    "inst_idx_t"
-  else
-    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+-- Moved to AnalysisHelpers.lean for use in EmitMurphi.lean
 
-  let murphi_type_expr : Murϕ.TypeExpr :=
-  Murϕ.TypeExpr.previouslyDefined murphi_type_name
+-- def dsl_type_to_murphi_type
+-- ( dsl_type : Identifier )
+-- : Murϕ.TypeExpr
+-- :=
+--   -- Types that one may use in the DSL.. & it's Murphi Test Harness "Equivalent" (for now that is)
+--   -- DSL        |    Murphi Test Harness
+--   -- -----------------------------------
+--   -- address    |    addr_idx_t
+--   -- u32        |    val_t
+--   -- packet     |    N/A
+--   -- seq_num    |    inst_idx_t
+--   let murphi_type_name : ID :=
+--   if dsl_type == "address" then
+--     "addr_idx_t"
+--   else if dsl_type == "u32" then
+--     "val_t"
+--   else if dsl_type == "seq_num" then
+--     "inst_idx_t"
+--   else
+--     panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
 
-  murphi_type_expr
+--   let murphi_type_expr : Murϕ.TypeExpr :=
+--   Murϕ.TypeExpr.previouslyDefined murphi_type_name
+
+--   murphi_type_expr
 
 
 -- structure decl_gen_info where
@@ -5713,7 +5837,7 @@ def dsl_trans_descript_to_murphi_rule
       Designator.mk (
         -- Example in comments
         -- core_
-        "next_state"
+        "Sta"
       )
       [
         -- Example in comments
@@ -5776,7 +5900,7 @@ def dsl_trans_descript_to_murphi_rule
   -- put together the guard condition
 
   let exception_murphi_guard_exprs := 
-    calls_which_can_guard.map qualified_name_to_murphi_expr
+    calls_which_can_guard.map qualified_name_to_sta_murphi_expr
 
   let murphi_guard_exprs : List Murϕ.Expr := 
     exception_murphi_guard_exprs.map (

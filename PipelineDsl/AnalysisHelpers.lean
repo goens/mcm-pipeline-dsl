@@ -142,7 +142,36 @@ instance : ToString ctrler_decl_entry_decl_const_decl := ⟨
     "<<<MURPHI CONST DECL LST>>>\n" ++ toString i.const_decl_lst ++ "\n\n" ++
     "<<<MURPHI ENUM DECL>>>\n" ++ toString i.range_enum_decl ++
     "\n=== End Controller Defn Decls ===\n\n"
-  ⟩ 
+  ⟩
+
+def dsl_type_to_murphi_type
+( dsl_type : Identifier )
+: Murϕ.TypeExpr
+:=
+  -- Types that one may use in the DSL.. & it's Murphi Test Harness "Equivalent" (for now that is)
+  -- DSL        |    Murphi Test Harness
+  -- -----------------------------------
+  -- address    |    addr_idx_t
+  -- u32        |    val_t
+  -- packet     |    N/A
+  -- seq_num    |    inst_idx_t
+  -- inst       |    INST
+  let murphi_type_name : ID :=
+  if dsl_type == "address" then
+  "addr_idx_t"
+  else if dsl_type == "u32" then
+  "val_t"
+  else if dsl_type == "seq_num" then
+  "inst_idx_t"
+  else if dsl_type == "inst" then
+  "INST"
+  else
+  panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+
+  let murphi_type_expr : Murϕ.TypeExpr :=
+  Murϕ.TypeExpr.previouslyDefined murphi_type_name
+
+  murphi_type_expr
 
 -- open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
@@ -153,16 +182,32 @@ def ast0048_generate_controller_murphi_record
   -- read the transition names
   -- build allowable states murphi enum
   -- Also add state for searching
+  let murphi_state_vars : List Murϕ.Decl :=
+    ctrl.state_vars.map (
+      λ dsl_typed_ident =>
+      let (typed, ident) :=
+      match dsl_typed_ident with
+      | TypedIdentifier.mk typed ident => (typed, ident)
+
+        -- use ident for the Decl name
+        -- map type (typed) to a type for the decl
+        -- inductive Decl
+        --   | const : ID → Expr → Decl
+        --   | type  : ID → TypeExpr → Decl
+        --   | var   : List ID → TypeExpr → Decl
+        let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
+
+        Murϕ.Decl.var [ident] murphi_type_expr
+    )
+
   let murphi_decls_lst :=
-  -- NOTE: Lean likes it when the parentheses
-  -- starts immediately on the same line as map
-  -- nightly-2022-07-13
-  ctrl.state_vars.map (
-    λ dsl_typed_ident => 
-    match dsl_typed_ident with
-    | TypedIdentifier.mk tiden ident =>
-      Decl.var [ident] (TypeExpr.previouslyDefined tiden)
-  )
+    murphi_state_vars.concat (
+      Decl.var ["state"] (
+        TypeExpr.previouslyDefined
+        (ctrl.name.append "_state")
+      )
+    )
+
   -- This is a record of what an entry looks like
   let murphi_entry_record := TypeExpr.record murphi_decls_lst
   -- make the controller record with a given num of entries
@@ -219,7 +264,7 @@ def ast0048_generate_controller_murphi_record
   -- ========== Ctrler Num Entries =============
   let ctrler_num_entries_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_CONST"])
   let ctrler_num_entries_const :=
-    Decl.const 
+    Decl.const
     ctrler_num_entries_const_name
     (Expr.integerConst num_entries)
 
@@ -231,7 +276,8 @@ def ast0048_generate_controller_murphi_record
     (Expr.integerConst 0)
     (Expr.designator ctrler_num_entries_name_designator)
   let ctrler_entries_count_decl_name :=
-    (String.join [ctrl.name, "_COUNT_ENUM"])
+    -- (String.join [ctrl.name, "_COUNT_ENUM"])
+    (String.join [ctrl.name, "_count_t"])
   -- NOTE: Another decl to return
   let ctrler_entries_count_decl :=
     Decl.type (
@@ -266,6 +312,7 @@ def ast0048_generate_controller_murphi_record
     )
     ctrler_entries_range
 
+  -- ========== Entries States =============
   let list_of_transition_names : List String :=
     ctrl.transition_list.map λ trans => match trans with
     | Pipeline.Description.transition ident _ => ident
@@ -276,7 +323,7 @@ def ast0048_generate_controller_murphi_record
     Murϕ.TypeExpr.enum list_of_transition_names)
 
   -- Now we can build a Decl for the controller record
-  let murphi_ctrler_record_name := String.join [ctrl.name, "_entries"]
+  let murphi_ctrler_record_name := "entries"
   let murphi_ctrler_record :=
     Decl.var [ctrl.name] (
       TypeExpr.record [
@@ -297,10 +344,10 @@ def ast0048_generate_controller_murphi_record
               murphi_entry_record_decl_name
             )
           ),
-        Decl.var ["state"] (
-          TypeExpr.previouslyDefined
-          (ctrl.name.append "_state")
-          ),
+        -- Decl.var ["state"] (
+        --   TypeExpr.previouslyDefined
+        --   (ctrl.name.append "_state")
+        --   ),
         -- Head, tail, and num_entries counter
         Decl.var ["head"] (
           TypeExpr.previouslyDefined
@@ -332,3 +379,82 @@ def ast0048_generate_controller_murphi_record
 
     }
   ctrler_entry_const_decls
+
+def find_speculative_ld_ctrler
+: String
+:=
+  "LQ"
+
+def find_speculative_st_ctrler
+: String
+:=
+  "SQ"
+
+-- Future TODO: let any insert operations be auto-generated
+-- by any structures that use them
+-- The framework is already there... nothing needs to be done..
+
+-- def create_murphi_ctrler_insert_func
+-- ( ctrler_name : String )
+-- : Murϕ.ProcDecl
+-- :=
+--   let insert_name := String.join [ctrler_name, "_insert"]
+--   let ld_spec_ctrler := find_speculative_ld_ctrler
+--   let st_spec_ctrler := find_speculative_st_ctrler
+--   let lq_idx_t := ld_spec_ctrler.append "_idx_t"
+
+--   let proc : Murϕ.ProcDecl :=
+--   [murϕ_proc_decl|
+-- function £insert_name(
+--              lq : £ld_spec_ctrler;
+--              sq : £st_spec_ctrler;
+--              inst : INST;
+--            ) : LQ;
+--   var lq_new : LQ;
+--   var lq_tail : ld_idx_t;
+
+--   --# ADDED NOTE
+--   --#var sq : SQ;
+--   var curr_tail_entry : LD_ENTRY_VALUES;
+-- begin
+--   --
+--   lq_new := lq;
+--   curr_tail_entry := lq_new.ld_entries[lq.ld_tail];
+
+--   assert curr_tail_entry.ld_state = await_creation "to insert, load should be awaiting creation";
+--   curr_tail_entry.ld_state := await_scheduled;
+--   --# AZ TODO: do the store_queue check
+
+--   --# Consider placing the Check Store_queue latest
+--   --# Entry here!
+--   --# Though if I do, this means this action is atomic,
+--   --# and no other message passing operations 
+--   --# NOTE should be add the assert in automatically?
+--   --# or allow the user to specify asserts as well?
+--   --# Or both?
+--   --# Generated asserts shouldn't cause problems for the user
+--   assert (curr_tail_entry.st_seq_num = 0) "should first be 0?";
+--   if (sq.num_entries != 0) then
+--     --#NOTE: REMEMBER TO CLEAR ST SEQ NUM
+--     --# at the end...
+--     curr_tail_entry.st_seq_num := sq.entries[sq.head].instruction.seq_num;
+--   else
+--     --# Keep at none
+--     --# 0 is "none" here...
+--     curr_tail_entry.st_seq_num := 0;
+--   end;
+
+--   --# NOTE: Auto generate the standard "insert" part
+--   curr_tail_entry.instruction := inst;
+--   lq_new.ld_tail := ( lq.ld_tail + 1 ) % (LD_ENTRY_NUM + 1);
+--   lq_new.num_entries := lq.num_entries + 1;
+--   --
+--   --# NOTE: assert, but not technically required, since
+--   --# if it's out of the range, Murphi throws an error
+--   assert (lq.num_entries < ( LD_ENTRY_NUM + 1)) "can't add more!";
+
+--   lq_new.ld_entries[lq.ld_tail] := curr_tail_entry;
+
+--   return lq_new;
+-- end
+--   ]
