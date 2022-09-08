@@ -1487,6 +1487,11 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_state_var :=
     ident_matches_ident_list state_var_idents one_ident 
 
+
+    dbg_trace "!!! BEGIN IDENT !!!"
+    dbg_trace one_ident
+    dbg_trace state_var_idents
+    dbg_trace "!!! END IDENT !!!"
     -- if ident_matches_state_var
     -- then we should check the designator
     -- and generate the name using the
@@ -1801,6 +1806,7 @@ partial def ast_term_to_murphi_expr
           -- the dest ctrler
           curr_ctrler_name
           tail_or_entry_or_custom
+          
           -- will if none naturally if it is none
           term_trans_info.specific_murphi_dest_expr
         )
@@ -3193,8 +3199,8 @@ lst_stmts_decls
             [murϕ|
             next_state .core_[ j ] .mem_interface_  .out_msg := insert_ld_in_mem_interface( ld_st , j)]
 
-            let msg_out := "msg_out"
-            let msg_out_designator : Murϕ.Designator := (
+            let out_msg := "out_msg"
+            let out_msg_designator : Murϕ.Designator := (
             Designator.mk (
               -- Example in comments
               -- core_
@@ -3205,8 +3211,10 @@ lst_stmts_decls
               Sum.inl "core_",
               -- core_[j]
               Sum.inr core_idx_designator,
-              -- core_[j].msg_out
-              Sum.inl msg_out
+              -- core_[j].mem_interface_
+              Sum.inl ("mem_interface_"),
+              -- core_[j].mem_interface_.out_msg
+              Sum.inl out_msg
             ])
 
             -- NOTE: Duplicated! from the if cond above..
@@ -3243,8 +3251,8 @@ lst_stmts_decls
             --                                       ld_entry,
             --                                       j
             --                                      );
-            let assn_msg_out_func_call_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment msg_out_designator func_call_expr
+            let assn_out_msg_func_call_stmt : Murϕ.Statement :=
+            Murϕ.Statement.assignment out_msg_designator func_call_expr
 
             let out_busy := "out_busy"
             let out_busy_designator : Murϕ.Designator := (
@@ -3259,7 +3267,7 @@ lst_stmts_decls
               -- core_[i]
               Sum.inr core_idx_designator,
               -- core_[i].LQ
-              Sum.inl (ctrler_name.append "_"),
+              Sum.inl "mem_interface_",
               -- core_[i].LQ.entries
               Sum.inl out_busy
             ])
@@ -3269,7 +3277,7 @@ lst_stmts_decls
             -- assign the out_busy to true
             --   £dest_ctrler_name .out_busy := false;
             let assn_out_busy_true_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment msg_out_designator true_designator_expr
+            Murϕ.Statement.assignment out_busy_designator true_designator_expr
             -- let set_core_mem_out_busy :=
             -- [murϕ|
             --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
@@ -3279,8 +3287,8 @@ lst_stmts_decls
             --   £dest_ctrler_name .out_busy := false;
             -- ]
             let combined_stmts :=
-            -- ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
-            [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
+            -- ld_or_st_inst_info.append [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
+            [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
 
             let stmts_decls : lst_stmts_decls := {
               stmts := combined_stmts,
@@ -3347,14 +3355,36 @@ lst_stmts_decls
               -- This case is for something like
               -- the load exec unit in the NoSQ
               []
+            -- NOTE: Duplicated, don't feel like modifying the
+            -- condition above right now...
+            let ld_st_entry_designator := (
+            Designator.mk (
+            -- Example in comments
+            -- core_
+            "next_state"
+            )
+            [
+            -- Example in comments
+            -- Sta.core_
+            Sum.inl "core_",
+            -- Sta.core_[j]
+            Sum.inr core_idx_designator,
+            -- Sta.core_[j].LQ
+            Sum.inl (ctrler_name.append "_"),
+            -- Sta.core_[j].LQ.entries
+            Sum.inl entries,
+            -- Sta.core_[j].LQ.entries[i]
+            Sum.inr entry_idx_designator
+            ]
+            )
 
             let set_core_mem_out_msg : Murϕ.Statement :=
             -- TODO: fix "ambiguous" here
             [murϕ|
-            next_state .core_[ j ] .mem_interface_ .out_msg := insert_st_in_mem_interface( ld_st , j)]
+            next_state .core_[ j ] .mem_interface_ .out_msg := insert_st_in_mem_interface( ld_st_entry_designator , j)]
 
-            let msg_out := "msg_out"
-            let msg_out_designator : Murϕ.Designator := (
+            let out_msg := "out_msg"
+            let out_msg_designator : Murϕ.Designator := (
             Designator.mk (
               -- Example in comments
               -- core_
@@ -3366,15 +3396,15 @@ lst_stmts_decls
               -- core_[j]
               Sum.inr core_idx_designator,
               -- core_[j].LQ
-              Sum.inl (ctrler_name.append "_"),
+              Sum.inl ("mem_interface_"),
               -- core_[j].LQ.entries
-              Sum.inl msg_out
+              Sum.inl out_msg
             ])
 
             let func_call_expr :=
             Murϕ.Expr.call "insert_st_in_mem_interface" [
               -- list of args
-              Murϕ.Expr.designator (Murϕ.Designator.mk "ld_st_entry" []),
+              Murϕ.Expr.designator ld_st_entry_designator,
               Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
             ]
 
@@ -3383,8 +3413,8 @@ lst_stmts_decls
             --                                       ld_entry,
             --                                       j
             --                                      );
-            let assn_msg_out_func_call_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment msg_out_designator func_call_expr
+            let assn_out_msg_func_call_stmt : Murϕ.Statement :=
+            Murϕ.Statement.assignment out_msg_designator func_call_expr
 
             let out_busy := "out_busy"
             let out_busy_designator : Murϕ.Designator := (
@@ -3399,7 +3429,7 @@ lst_stmts_decls
               -- core_[i]
               Sum.inr core_idx_designator,
               -- core_[i].LQ
-              Sum.inl (ctrler_name.append "_"),
+              Sum.inl "mem_interface_",
               -- core_[i].LQ.entries
               Sum.inl out_busy
             ])
@@ -3409,7 +3439,7 @@ lst_stmts_decls
             -- assign the out_busy to true
             --   £dest_ctrler_name .out_busy := false;
             let assn_out_busy_true_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment msg_out_designator true_designator_expr
+            Murϕ.Statement.assignment out_busy_designator true_designator_expr
             -- let set_core_mem_out_busy :=
             -- [murϕ|
             --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
@@ -3419,7 +3449,7 @@ lst_stmts_decls
             --   £dest_ctrler_name .out_busy := false;
             -- ]
             let combined_stmts :=
-            ld_or_st_inst_info.append [assn_msg_out_func_call_stmt, assn_out_busy_true_stmt]
+            [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
 
             let stmts_decls : lst_stmts_decls := {
               stmts := combined_stmts,
@@ -3611,7 +3641,8 @@ lst_stmts_decls
               -- [murϕ_var_decls|
               --   var squash_st_id : £speculative_st_unit_idx_type
               -- ]
-              (Murϕ.Decl.var ["squash_st_id"] (Murϕ.TypeExpr.previouslyDefined speculative_st_unit_idx_type))
+              (Murϕ.Decl.var ["squash_st_id"] (Murϕ.TypeExpr.previouslyDefined speculative_st_unit_idx_type)),
+              (Murϕ.Decl.var ["curr_rob_inst"] (Murϕ.TypeExpr.previouslyDefined "INST"))
             ]
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
@@ -5016,7 +5047,7 @@ def qualified_name_to_murphi_expr
     let out_busy := "out_busy"
 
     -- check that out_busy is false
-    let msg_out_busy_designator :=
+    let out_msg_busy_designator :=
       Murϕ.Expr.designator (
         Designator.mk (
           -- Example in comments
@@ -5029,18 +5060,19 @@ def qualified_name_to_murphi_expr
           -- core_[i]
           Sum.inr core_idx_designator,
           -- core_[i].mem_interface_
-          Sum.inl dest_ctrler,
+          -- Sum.inl dest_ctrler,
+          Sum.inl "mem_interface_",
           -- core_[i].mem_interface_.out_busy
           Sum.inl out_busy
         ]
       )
 
     let murphi_false_expr :=
-      Murϕ.Expr.negation msg_out_busy_designator
+      Murϕ.Expr.negation out_msg_busy_designator
     -- let must_out_not_busy_murphi_expr :=
     --   Murϕ.Expr.binop
     --   "="
-    --   msg_out_busy_designator
+    --   out_msg_busy_designator
     --   ()
     return murphi_false_expr
   else
@@ -5114,7 +5146,7 @@ def qualified_name_to_sta_murphi_expr
     let out_busy := "out_busy"
 
     -- check that out_busy is false
-    let msg_out_busy_designator :=
+    let out_msg_busy_designator :=
       Murϕ.Expr.designator (
         Designator.mk (
           -- Example in comments
@@ -5127,18 +5159,19 @@ def qualified_name_to_sta_murphi_expr
           -- core_[i]
           Sum.inr core_idx_designator,
           -- core_[i].mem_interface_
-          Sum.inl dest_ctrler,
+          -- Sum.inl dest_ctrler,
+          Sum.inl "mem_interface_",
           -- core_[i].mem_interface_.out_busy
           Sum.inl out_busy
         ]
       )
 
     let murphi_false_expr :=
-      Murϕ.Expr.negation msg_out_busy_designator
+      Murϕ.Expr.negation out_msg_busy_designator
     -- let must_out_not_busy_murphi_expr :=
     --   Murϕ.Expr.binop
     --   "="
-    --   msg_out_busy_designator
+    --   out_msg_busy_designator
     --   ()
     return murphi_false_expr
   else
@@ -5708,6 +5741,32 @@ def find_designator_with_expr_i
   | [] => false
   | _ => true
 
+def check_if_decl_is_defined
+( decls : List Murϕ.Decl )
+( decl : Murϕ.Decl )
+: List Murϕ.Decl
+:=
+  let decl_names := List.join (
+  decls.map (
+    fun decl' =>
+      Decl.getIDs decl'
+  ))
+  let decl_name := ( Decl.getIDs decl )[0]!
+
+  if decl_names.contains decl_name then
+    decls
+  else
+    decls.concat decl
+
+def remove_duplicate_murphi_decl
+( decls : List Murϕ.Decl )
+: List Murϕ.Decl
+:=
+  let unique_decls : List Murϕ.Decl :=
+  decls.foldl check_if_decl_is_defined []
+
+  unique_decls
+
 --=========== DSL AST to Murphi AST =============
 def dsl_trans_descript_to_murphi_rule
 (trans_info : dsl_trans_info)
@@ -6040,9 +6099,11 @@ def dsl_trans_descript_to_murphi_rule
   -- Post-pend next_state for all structures in the Decl list
   -- Post-pend Sta := next_state
 
-  let prepared_murphi_decls : List Murϕ.Decl :=
+  let all_decls : List Murϕ.Decl :=
     -- add the next state, which is of type STATE...
     lst_murphi_decls ++ [Murϕ.Decl.var ["next_state"] (Murϕ.TypeExpr.previouslyDefined "STATE")]
+  let prepared_murphi_decls : List Murϕ.Decl :=
+    remove_duplicate_murphi_decl all_decls
 
   let update_next_state : List Murϕ.Statement := 
     -- Convert any declared decls of ctrlers into update

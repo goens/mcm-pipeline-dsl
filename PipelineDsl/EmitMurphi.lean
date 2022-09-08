@@ -618,6 +618,23 @@ type ---- Type declarations ----
 -- # ------------ HELPER FUNCTIONS --------------------
   let list_func_decls := List.join ([
   [murϕ_proc_decl|
+  function search_rob_seq_num_idx(
+    rob : ROB;
+    seq_num : inst_count_t;
+    ) : inst_idx_t;
+    --#var rob_new : ROB;
+    --#var rob_idx : inst_idx_t;
+    begin
+    
+    for i : inst_idx_t do
+      if (rob.rob_insts[i].seq_num = seq_num) then
+        return i;
+      end;
+    end;
+    error "ROB Search: didn't find it? how? bad seq_num idx?";
+  end
+  ],
+  [murϕ_proc_decl|
   function rename_read_head( rename_q : RENAME) : INST;
     return rename_q.test_insts[rename_q.rename_head];
   end
