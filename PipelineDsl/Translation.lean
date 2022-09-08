@@ -1488,10 +1488,10 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     ident_matches_ident_list state_var_idents one_ident 
 
 
-    dbg_trace "!!! BEGIN IDENT !!!"
-    dbg_trace one_ident
-    dbg_trace state_var_idents
-    dbg_trace "!!! END IDENT !!!"
+    -- dbg_trace "!!! BEGIN IDENT !!!"
+    -- dbg_trace one_ident
+    -- dbg_trace state_var_idents
+    -- dbg_trace "!!! END IDENT !!!"
     -- if ident_matches_state_var
     -- then we should check the designator
     -- and generate the name using the
@@ -2662,11 +2662,24 @@ lst_stmts_decls
   -- stmts
   let this_ctrler : controller_info :=
   -- dbg_trace "===== ROB SQUASH api gen ====="
-    get_ctrler_matching_name ctrler_name ctrlers_lst
+    get_ctrler_matching_name ctrler_to_translate_handle_blks ctrlers_lst
 
   let ctrler_squash_idx := queue_idx
   -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
 
+  let stmt_trans_info' : stmt_translation_info := {
+    stmt := stmt_trans_info.stmt,
+    lst_ctrlers := stmt_trans_info.lst_ctrlers,
+    ctrler_name := ctrler_to_translate_handle_blks,
+    src_ctrler := stmt_trans_info.src_ctrler,
+    lst_src_args := stmt_trans_info.lst_src_args,
+    func := stmt_trans_info.func,
+    is_await := stmt_trans_info.is_await,
+    entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+    trans_obj := stmt_trans_info.trans_obj,
+    specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+    lst_decls := stmt_trans_info.lst_decls
+  }
   let handle_trans_info_lst : List trans_and_expected_func :=
   this_ctrler.transition_list.map (
   λ trans' =>
@@ -2674,8 +2687,8 @@ lst_stmts_decls
     expected_func := expected_func,
     expected_struct := expected_struct,
     trans := trans',
-    stmt_trans_info := stmt_trans_info,
-    dest_ctrler_name := dest_ctrler_name,
+    stmt_trans_info := stmt_trans_info',
+    dest_ctrler_name := ctrler_to_translate_handle_blks --dest_ctrler_name,
     specific_murphi_dest_expr := ctrler_squash_idx
     -- lst_decls := stmt_trans_info.lst_decls
   }
@@ -2684,6 +2697,10 @@ lst_stmts_decls
   let trans_handle_squash_list : List (Murϕ.Expr × (lst_stmts_decls)) :=
   List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
 
+  dbg_trace "##### BEGIN match handle block #####"
+  dbg_trace ctrler_to_translate_handle_blks
+  dbg_trace trans_handle_squash_list.length
+  dbg_trace "##### END match handle block #####"
   -- This would be the if stmt
   -- to do handle ROB Squash signals
   let trans_handle_squash_if_stmt : lst_stmts_decls :=
@@ -3597,6 +3614,10 @@ lst_stmts_decls
               stmt_trans_info) speculative_ld_unit_name squash_ld_id (
               dest_ctrler_name) expected_func expected_struct
             )
+            dbg_trace "===== BEGIN LQ Handle finder ====="
+            dbg_trace ld_trans_handle_squash_if_stmt.stmts
+            dbg_trace ld_trans_handle_squash_if_stmt.decls
+            dbg_trace "===== END LQ Handle finder ====="
 
             let squash_st_id :=
             Murϕ.Expr.designator (Murϕ.Designator.mk "squash_st_id" [])
@@ -3608,6 +3629,11 @@ lst_stmts_decls
               stmt_trans_info) speculative_st_unit_name squash_st_id (
               dest_ctrler_name) expected_func expected_struct
             )
+
+            dbg_trace "===== BEGIN SQ Handle finder ====="
+            dbg_trace st_trans_handle_squash_if_stmt.stmts
+            dbg_trace st_trans_handle_squash_if_stmt.decls
+            dbg_trace "===== END SQ Handle finder ====="
 
             -- 
             let search_load_ctrler_func_call : Identifier := "search_" ++ speculative_ld_unit_name ++ "_seq_num_idx"
