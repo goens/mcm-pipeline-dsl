@@ -455,7 +455,7 @@ type ---- Type declarations ----
   -- listen state gets MSG, does MSG action
   -- in handle block
 
-  ROB_STATE : enum {commit_not_sent, commit_sig_sent};
+  -- ROB_STATE : enum {commit_not_sent, commit_sig_sent};
 
   ROB: record
   rob_insts : array [inst_idx_t] of INST;
@@ -463,7 +463,10 @@ type ---- Type declarations ----
   rob_tail : inst_idx_t;
   -- do we also include is_executed state?
   num_entries : inst_count_t;
-  state : array [inst_idx_t] of ROB_STATE;
+
+  is_executed : array [inst_idx_t] of boolean;
+
+  -- state : array [inst_idx_t] of ROB_STATE;
   end;
 
   ---------------------- mem interface --------------
@@ -844,7 +847,7 @@ begin
   rob_new .rob_insts[rob .rob_head] .op := inval;
   rob_new .rob_head := ( rob .rob_head + 1 ) % (CORE_INST_NUM + 1);
   rob_new .num_entries := rob .num_entries - 1;
-  rob_new .state[rob .rob_head] := commit_not_sent;
+  -- rob_new .state[rob .rob_head] := commit_not_sent;
   --
   -- # assert not needed...
   assert (rob .num_entries >= ( 0 )) "can't remove more!";
@@ -1621,7 +1624,8 @@ begin
       for i : 0 .. CORE_INST_NUM do
         rob .rob_insts[i] .op := inval;
         rob .rob_insts[i] .seq_num := 0;
-        rob .state[i] := commit_not_sent;
+        -- rob .state[i] := commit_not_sent;
+        rob.is_executed[i] := false;
       end;
       rob .rob_head := 0;
       rob .rob_tail := 0;
@@ -2128,13 +2132,17 @@ rule "rob_commit_head"
   -- pre cond
   -- have entries to commit
   (Sta .core_[j] .rob_.num_entries > 0)
+  -- &
+  -- -- and haven't tried commit this inst yet
+  -- --# NOTE This is a trick, add state, to make sure
+  -- --# this only runs once
+  -- --# maybe different if we generate explicit
+  -- --# substates (what andres was going to do?)
+  -- (Sta .core_[j] .rob_.state[Sta .core_[j] .rob_.rob_head] = commit_not_sent)
+  
   &
-  -- and haven't tried commit this inst yet
-  --# NOTE This is a trick, add state, to make sure
-  --# this only runs once
-  --# maybe different if we generate explicit
-  --# substates (what andres was going to do?)
-  (Sta .core_[j] .rob_.state[Sta .core_[j] .rob_.rob_head] = commit_not_sent)
+  --# head inst has executed
+  (Sta .core_[j] .rob_ .is_executed[Sta .core_[j] .rob_ .rob_head] = true)
 ==>
   -- decls
   var next_state : STATE;
@@ -2166,10 +2174,12 @@ begin
     if (lq_q .entries[lq_q .head] .state = await_committed)
       then
       rob := rob_remove(rob);
+      rob .is_executed[rob .rob_head] := false;
     else
       --# If inst wasn't directly committed
       -- # set state to commit sig sent
-      rob .state[rob .rob_head] := commit_sig_sent;
+      error "ld entry should be in await_comitted state..";
+      -- rob .state[rob .rob_head] := commit_sig_sent;
     endif;
 
     -- # should be the head load...
@@ -2187,6 +2197,7 @@ begin
       if (sq_q .entries[sq_q .head] .state = sq_await_committed)
         then
         rob := rob_remove(rob);
+        rob .is_executed[rob .rob_head] := false;
 
         sq_entry := sq_q .entries[sq_q .head];
         sb_q := sb_insert(sb_q, sq_entry);
@@ -2194,7 +2205,8 @@ begin
       else
         --# If inst wasn't directly committed
         -- # set state to commit sig sent
-        rob .state[rob .rob_head] := commit_sig_sent;
+        error "st entry should be in await_comitted state..";
+        -- rob .state[rob .rob_head] := commit_sig_sent;
       endif;
 
       -- # should be the head load...

@@ -1323,10 +1323,13 @@ partial def get_api_with_guard_function_calls
           -- dbg_trace lst_ident
           -- dbg_trace "===== END List of Func Identifiers ====\n"
 
-          if (or
+          if
+          -- (or
+          (or
           (lst_ident.contains "insert")
-          (lst_ident.contains "send_memory_request")
-          )
+          (lst_ident.contains "send_memory_request"))
+          -- (lst_ident.contains "set_executed")
+          -- )
           then
             [lst_ident]
           else
@@ -3943,8 +3946,50 @@ lst_stmts_decls
               st_trans_handle_squash_if_stmt.decls)
             }
             stmts_decls
-            
           else
+          if (and (api_func_name == "set_executed")
+          (dest_ctrler_name == "rob"))
+          then
+            -- TODO: Handle this case!!!
+            -- In the final version which also
+            -- generates the ROB, we do the same thing as
+            -- the "insert" api code and search for the
+            -- dest ctrler (ROB) & use it's when code
+            -- But for now, we can just use a template..
+            let ctrler_name_ : String := ctrler_name.append "_"
+
+            let set_exec_template : List Murϕ.Statement :=
+            [murϕ|
+              -- set the is_executed bool in the ROB
+              rob := Sta.core_[j].rob_;
+
+              --# process msg
+              rob_id := search_rob_seq_num_idx(rob,
+                        next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
+              assert (rob .is_executed[rob_id] = false) "why isn't it false?";
+              rob .is_executed[rob_id] := true;
+
+              -- rob .valid_access_msg := false;
+
+              next_state .core_[j] .rob_ := rob;
+            ]
+            let set_exec_decls : List Murϕ.Decl := [
+              (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
+              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+            ]
+
+            let stmts_decls : lst_stmts_decls := {
+            stmts := set_exec_template,
+            decls := set_exec_decls
+            }
+            stmts_decls
+          else
+            -- TODO: Remove this? Just throw an error?
+            -- Or try to match to ctrler?
+            -- The match to ctrler should be the default behaviour
+            -- Then it should also check if this is an API call..
+            -- If it can't find an API call.. then it should throw an error
+            -- as a last resort..
             -- reg file write?
             -- throw an error for unknown fns?
             -- but just going to return a default
@@ -5110,7 +5155,8 @@ def qualified_name_to_sta_murphi_expr
 : Except String Murϕ.Expr
 := do
   let is_insert := lst_idents.contains "insert"
-  let is_mem_access := lst_idents.contains "send_memory_request"
+  let is_mem_access := or (lst_idents.contains "send_load_request") (lst_idents.contains "send_store_request")
+  let is_set_executed := lst_idents.contains "set_executed"
 
   let ruleset_core_elem_idx := "i"
   let core_idx_designator :=
