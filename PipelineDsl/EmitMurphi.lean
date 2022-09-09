@@ -627,7 +627,7 @@ type ---- Type declarations ----
     begin
     
     for i : inst_idx_t do
-      if (rob.rob_insts[i].seq_num = seq_num) then
+      if (rob .rob_insts[i] .seq_num = seq_num) then
         return i;
       end;
     end;
@@ -636,7 +636,7 @@ type ---- Type declarations ----
   ],
   [murϕ_proc_decl|
   function rename_read_head( rename_q : RENAME) : INST;
-    return rename_q.test_insts[rename_q.rename_head];
+    return rename_q .test_insts[rename_q .rename_head];
   end
   ],
   [murϕ_proc_decl|
@@ -651,10 +651,10 @@ type ---- Type declarations ----
 begin
   rename_q := rename_queue;
 
-  rename_q.rename_head := ( rename_queue.rename_head + 1 ) % (CORE_INST_NUM + 1);
-  rename_q.num_entries := rename_queue.num_entries - 1;
+  rename_q .rename_head := ( rename_queue .rename_head + 1 ) % (CORE_INST_NUM + 1);
+  rename_q .num_entries := rename_queue .num_entries - 1;
   -- assert num_entries not less than 0?
-  -- assert ( rename_q.num_entries > 0 ) "can't have neg entries";
+  -- assert ( rename_q .num_entries > 0 ) "can't have neg entries";
 
   -- use this to overwrite the old one
   -- (immutable style)
@@ -677,10 +677,10 @@ function lq_insert(
 begin
   --
   lq_new := lq;
-  curr_tail_entry := lq_new.entries[lq.tail];
+  curr_tail_entry := lq_new .entries[lq .tail];
 
-  assert curr_tail_entry.state = await_creation "to insert, load should be awaiting creation";
-  curr_tail_entry.state := await_scheduled;
+  assert curr_tail_entry .state = await_creation "to insert, load should be awaiting creation";
+  curr_tail_entry .state := await_scheduled;
   --# AZ TODO: do the store_queue check
 
   --# Consider placing the Check Store_queue latest
@@ -691,27 +691,27 @@ begin
   --# or allow the user to specify asserts as well?
   --# Or both?
   --# Generated asserts shouldn't cause problems for the user
-  assert (curr_tail_entry.st_seq_num = 0) "should first be 0?";
-  if (sq.num_entries != 0) then
+  assert (curr_tail_entry .st_seq_num = 0) "should first be 0?";
+  if (sq .num_entries != 0) then
     --#NOTE: REMEMBER TO CLEAR ST SEQ NUM
     --# at the end...
-    curr_tail_entry.st_seq_num := sq.entries[sq.head].instruction.seq_num;
+    curr_tail_entry .st_seq_num := sq .entries[sq .head] .instruction .seq_num;
   else
     --# Keep at none
     --# 0 is "none" here...
-    curr_tail_entry.st_seq_num := 0;
+    curr_tail_entry .st_seq_num := 0;
   end;
 
   --# NOTE: Auto generate the standard "insert" part
-  curr_tail_entry.instruction := inst;
-  lq_new.tail := ( lq.tail + 1 ) % (LQ_NUM_ENTRIES_CONST);
-  lq_new.num_entries := lq.num_entries + 1;
+  curr_tail_entry .instruction := inst;
+  lq_new .tail := ( lq .tail + 1 ) % (LQ_NUM_ENTRIES_CONST);
+  lq_new .num_entries := lq .num_entries + 1;
   --
   --# NOTE: assert, but not technically required, since
   --# if it's out of the range, Murphi throws an error
-  assert (lq.num_entries < ( LQ_NUM_ENTRIES_CONST)) "can't add more!";
+  assert (lq .num_entries < ( LQ_NUM_ENTRIES_CONST)) "can't add more!";
 
-  lq_new.entries[lq.tail] := curr_tail_entry;
+  lq_new .entries[lq .tail] := curr_tail_entry;
 
   return lq_new;
 end
@@ -729,8 +729,8 @@ function lq_schedule(
   begin
   --
   lq_new := lq;
-  lq_iter := lq.head;
-  lq_count := lq.num_entries;
+  lq_iter := lq .head;
+  lq_count := lq .num_entries;
 
   --#for i:0 .. lq_count do
   --# actually interesting,
@@ -746,21 +746,21 @@ function lq_schedule(
     -- Use i
 
     curr_entry_id := ( lq_iter + i ) % ( LQ_NUM_ENTRIES_CONST);
-    curr_entry := lq_new.entries[curr_entry_id];
-    if (curr_entry.instruction.seq_num = seq_num)
+    curr_entry := lq_new .entries[curr_entry_id];
+    if (curr_entry .instruction .seq_num = seq_num)
       then
       -- # put "\n ================ \n";
       -- # put "seq_num: ";
       -- # put seq_num;
       -- # put "\n";
       -- # put "\n ================ \n";
-      assert ( curr_entry.state = await_scheduled ) "Should be in await scheduled?";
-      curr_entry.state := await_translation;
+      assert ( curr_entry .state = await_scheduled ) "Should be in await scheduled?";
+      curr_entry .state := await_translation;
 
       --# NOTE: For mem access stuff
-      curr_entry.virt_addr := curr_entry.instruction.imm;
+      curr_entry .virt_addr := curr_entry .instruction .imm;
 
-      lq_new.entries[curr_entry_id] := curr_entry;
+      lq_new .entries[curr_entry_id] := curr_entry;
       -- error "trace load schedule?";
       return lq_new;
     end;
@@ -781,21 +781,21 @@ function iq_insert(
   begin
   --
   iq_new := iq;
-  --#iq_new.iq_insts[iq.iq_tail] := inst;
-  --#iq_new.iq_tail := ( iq.iq_tail + 1 ) % CORE_INST_NUM;
-  iq_new.num_entries := iq.num_entries + 1;
+  --#iq_new .iq_insts[iq .iq_tail] := inst;
+  --#iq_new .iq_tail := ( iq .iq_tail + 1 ) % CORE_INST_NUM;
+  iq_new .num_entries := iq .num_entries + 1;
   --#for i:0 .. CORE_INST_NUM do
   i := CORE_INST_NUM;
   --#while i <= CORE_INST_NUM do
   while 0 <= i do
     -- find an entry to insert into
-    if ( iq_new.iq_valid[i] = invalid )
+    if ( iq_new .iq_valid[i] = invalid )
       then
-      iq_new.iq_insts[i] := inst;
+      iq_new .iq_insts[i] := inst;
       --# TODO NOTE: insert as valid
       --# TODO NOTE: and have scoreboard
       --# mark as ready!
-      iq_new.iq_valid[i] := ready;
+      iq_new .iq_valid[i] := ready;
       --# Finish, leave fn
       --# assert (i = 0) "always 0 check?";
       return iq_new;
@@ -818,14 +818,14 @@ function rob_insert(
   begin
   --
   rob_new := rob;
-  rob_tail := rob.rob_tail;
+  rob_tail := rob .rob_tail;
 
-  rob_new.rob_insts[rob.rob_tail] := inst;
-  rob_new.rob_tail := ( rob.rob_tail + 1 ) % (CORE_INST_NUM + 1);
-  rob_new.num_entries := rob.num_entries + 1;
+  rob_new .rob_insts[rob .rob_tail] := inst;
+  rob_new .rob_tail := ( rob .rob_tail + 1 ) % (CORE_INST_NUM + 1);
+  rob_new .num_entries := rob .num_entries + 1;
   --
   -- # assert not needed...
-  assert (rob.num_entries <= ( CORE_INST_NUM + 1)) "can't add more!";
+  assert (rob .num_entries <= ( CORE_INST_NUM + 1)) "can't add more!";
   return rob_new;
 end
 ],
@@ -839,15 +839,15 @@ function rob_remove(
 begin
   --
   rob_new := rob;
-  rob_head := rob.rob_head;
+  rob_head := rob .rob_head;
 
-  rob_new.rob_insts[rob.rob_head].op := inval;
-  rob_new.rob_head := ( rob.rob_head + 1 ) % (CORE_INST_NUM + 1);
-  rob_new.num_entries := rob.num_entries - 1;
-  rob_new.state[rob.rob_head] := commit_not_sent;
+  rob_new .rob_insts[rob .rob_head] .op := inval;
+  rob_new .rob_head := ( rob .rob_head + 1 ) % (CORE_INST_NUM + 1);
+  rob_new .num_entries := rob .num_entries - 1;
+  rob_new .state[rob .rob_head] := commit_not_sent;
   --
   -- # assert not needed...
-  assert (rob.num_entries >= ( 0 )) "can't remove more!";
+  assert (rob .num_entries >= ( 0 )) "can't remove more!";
   return rob_new;
 end
 ],
@@ -862,21 +862,21 @@ function lq_clear_head(
 begin
 
   lq_new := lq;
-  curr_head := lq.head;
+  curr_head := lq .head;
 
-  lq_new.entries[curr_head].instruction.seq_num := 0;
-  lq_new.entries[curr_head].instruction.op := inval;
-  lq_new.entries[curr_head].instruction.dest_reg := 0;
-  lq_new.entries[curr_head].instruction.imm := 0;
+  lq_new .entries[curr_head] .instruction .seq_num := 0;
+  lq_new .entries[curr_head] .instruction .op := inval;
+  lq_new .entries[curr_head] .instruction .dest_reg := 0;
+  lq_new .entries[curr_head] .instruction .imm := 0;
   -- AZ NOTE: CUSTOMIZATION PT?
-  lq_new.entries[curr_head].state := await_creation;
-  -- lq_new.entries[curr_head].commit := false;
-  lq_new.entries[curr_head].read_value := 0;
-  lq_new.entries[curr_head].virt_addr := 0;
-  lq_new.entries[curr_head].phys_addr := 0;
-  lq_new.entries[curr_head].st_seq_num := 0;
-  lq_new.head := (curr_head + 1) % ( LQ_NUM_ENTRIES_CONST);
-  lq_new.num_entries := (lq_new.num_entries - 1);
+  lq_new .entries[curr_head] .state := await_creation;
+  -- lq_new .entries[curr_head] .commit := false;
+  lq_new .entries[curr_head] .read_value := 0;
+  lq_new .entries[curr_head] .virt_addr := 0;
+  lq_new .entries[curr_head] .phys_addr := 0;
+  lq_new .entries[curr_head] .st_seq_num := 0;
+  lq_new .head := (curr_head + 1) % ( LQ_NUM_ENTRIES_CONST);
+  lq_new .num_entries := (lq_new .num_entries - 1);
 
   return lq_new;
 end
@@ -894,17 +894,17 @@ begin
 
   lq_new := lq;
   --#lq_idx := search_lq_seq_num_idx(lq,
-  --#                               inst.seq_num);
+  --#                               inst .seq_num);
 
   -- check what state is the load in
-  --#if (lq.entries[lq_idx].state = await_committed)
-  if (lq.entries[lq.head].state = await_committed)
+  --#if (lq .entries[lq_idx] .state = await_committed)
+  if (lq .entries[lq .head] .state = await_committed)
     then
     lq_new := lq_clear_head(lq_new);
   else
     -- simply set a flag in the ld entry
     error "Load should be on the await_committed state..";
-    -- lq_new.entries[lq.head].commit := true;
+    -- lq_new .entries[lq .head] .commit := true;
   end;
   -- # if state is not in await commit
   -- # then set a flag in the load entry state
@@ -926,7 +926,7 @@ function search_lq_seq_num_idx(
 begin
 
   for i : LQ_idx_t do
-    if (lq.entries[i].instruction.seq_num = seq_num)
+    if (lq .entries[i] .instruction .seq_num = seq_num)
       then
       return i;
     end;
@@ -945,7 +945,7 @@ function search_sq_seq_num_idx(
   begin
 
   for i : SQ_idx_t do
-    if (sq.entries[i].instruction.seq_num = seq_num)
+    if (sq .entries[i] .instruction .seq_num = seq_num)
       then
       return i;
     end;
@@ -968,25 +968,25 @@ begin
   sq_new := sq;
 
   -- AZ NOTE: CUSTOMIZATION PT?
-  assert sq_new.entries[sq.tail].state = sq_await_creation "to insert, store should be awaiting creation";
-  sq_new.entries[sq.tail].state := sq_await_scheduled;
+  assert sq_new .entries[sq .tail] .state = sq_await_creation "to insert, store should be awaiting creation";
+  sq_new .entries[sq .tail] .state := sq_await_scheduled;
 
   lq_new := lq;
-  if (lq.num_entries != 0) then
+  if (lq .num_entries != 0) then
     --#NOTE: REMEMBER TO CLEAR ST SEQ NUM
     --# at the end...
-    sq_new.entries[sq.tail].ld_seq_num := lq.entries[lq.tail].instruction.seq_num;
+    sq_new .entries[sq .tail] .ld_seq_num := lq .entries[lq .tail] .instruction .seq_num;
   else
     --# actually, if 0 entries, then the search should
     --# just start from the head element
     --# Treat 0 as a special symbol to start from head
-    sq_new.entries[sq.tail].ld_seq_num := 0;
+    sq_new .entries[sq .tail] .ld_seq_num := 0;
   end;
-  sq_new.entries[sq.tail].instruction := inst;
-  sq_new.tail := ( sq.tail + 1 ) % (SQ_NUM_ENTRIES_CONST);
-  sq_new.num_entries := sq.num_entries + 1;
+  sq_new .entries[sq .tail] .instruction := inst;
+  sq_new .tail := ( sq .tail + 1 ) % (SQ_NUM_ENTRIES_CONST);
+  sq_new .num_entries := sq .num_entries + 1;
   --
-  assert (sq.num_entries < ( SQ_NUM_ENTRIES_CONST)) "can't add more!";
+  assert (sq .num_entries < ( SQ_NUM_ENTRIES_CONST)) "can't add more!";
   return sq_new;
 end
 ],
@@ -1004,8 +1004,8 @@ function sq_schedule(
   begin
   --
   sq_new := sq;
-  sq_iter := sq.head;
-  sq_count := sq.num_entries;
+  sq_iter := sq .head;
+  sq_count := sq .num_entries;
 
   --#for i:0 .. lq_count do
   --# actually interesting,
@@ -1021,8 +1021,8 @@ function sq_schedule(
     -- Use i
 
     curr_entry_id := ( sq_iter + i ) % ( SQ_NUM_ENTRIES_CONST);
-    curr_entry := sq_new.entries[curr_entry_id];
-    if (curr_entry.instruction.seq_num = seq_num)
+    curr_entry := sq_new .entries[curr_entry_id];
+    if (curr_entry .instruction .seq_num = seq_num)
       then
       -- # put "\n ================ \n";
       -- # put "seq_num: ";
@@ -1030,15 +1030,15 @@ function sq_schedule(
       -- # put "\n";
       -- # put "\n ================ \n";
       -- AZ NOTE: CUSTOMIZATION PT?
-      assert ( curr_entry.state = sq_await_scheduled ) "Should be in await scheduled?";
-      curr_entry.state := sq_await_translation;
+      assert ( curr_entry .state = sq_await_scheduled ) "Should be in await scheduled?";
+      curr_entry .state := sq_await_translation;
 
       --# NOTE: For mem access stuff
-      curr_entry.virt_addr := curr_entry.instruction.imm;
+      curr_entry .virt_addr := curr_entry .instruction .imm;
       --# NOTE TODO: Hacked in for litmus test
-      curr_entry.write_value := curr_entry.instruction.write_value;
+      curr_entry .write_value := curr_entry .instruction .write_value;
 
-      sq_new.entries[curr_entry_id] := curr_entry;
+      sq_new .entries[curr_entry_id] := curr_entry;
       -- error "trace load schedule?";
       return sq_new;
     end;
@@ -1059,20 +1059,20 @@ function sq_clear_head(
 begin
 
   sq_new := sq;
-  curr_head := sq.head;
+  curr_head := sq .head;
 
-  sq_new.entries[curr_head].instruction.seq_num := 0;
-  sq_new.entries[curr_head].instruction.op := inval;
-  sq_new.entries[curr_head].instruction.dest_reg := 0;
-  sq_new.entries[curr_head].instruction.imm := 0;
+  sq_new .entries[curr_head] .instruction .seq_num := 0;
+  sq_new .entries[curr_head] .instruction .op := inval;
+  sq_new .entries[curr_head] .instruction .dest_reg := 0;
+  sq_new .entries[curr_head] .instruction .imm := 0;
   -- AZ NOTE: CUSTOMIZATION PT?
-  sq_new.entries[curr_head].state := sq_await_creation;
-  -- sq_new.entries[curr_head].commit := false;
-  sq_new.entries[curr_head].write_value := 0;
-  sq_new.entries[curr_head].virt_addr := 0;
-  sq_new.entries[curr_head].phys_addr := 0;
-  sq_new.head := (curr_head + 1) % ( SQ_NUM_ENTRIES_CONST);
-  sq_new.num_entries := (sq_new.num_entries - 1);
+  sq_new .entries[curr_head] .state := sq_await_creation;
+  -- sq_new .entries[curr_head] .commit := false;
+  sq_new .entries[curr_head] .write_value := 0;
+  sq_new .entries[curr_head] .virt_addr := 0;
+  sq_new .entries[curr_head] .phys_addr := 0;
+  sq_new .head := (curr_head + 1) % ( SQ_NUM_ENTRIES_CONST);
+  sq_new .num_entries := (sq_new .num_entries - 1);
 
   return sq_new;
 end
@@ -1090,19 +1090,19 @@ begin
 
   sq_new := sq;
   --#sq_idx := search_sq_seq_num_idx(sq,
-  --#                               inst.seq_num);
+  --#                               inst .seq_num);
 
   -- check what state is the load in
-  --#if (sq.entries[sq_idx].sq_state = sq_await_committed)
+  --#if (sq .entries[sq_idx] .sq_state = sq_await_committed)
   -- AZ NOTE: CUSTOMIZATION PT?
-  if (sq.entries[sq.head].state = sq_await_committed)
+  if (sq .entries[sq .head] .state = sq_await_committed)
     then
     --# remove head
     sq_new := sq_clear_head(sq_new);
   else
     -- simply set a flag in the ld entry
     error "SQ entry should be on sq_await_committed";
-    -- sq_new.entries[sq.head].commit := true;
+    -- sq_new .entries[sq .head] .commit := true;
   end;
   -- # if state is not in await commit
   -- # then set a flag in the load entry state
@@ -1124,20 +1124,20 @@ function sb_insert(
   begin
   --
   sb_new := sb;
-  sb_tail := sb.tail;
+  sb_tail := sb .tail;
 
-  assert sb_new.entries[sb.tail].state = sb_await_creation "to insert into SB, store should be awaiting creation";
+  assert sb_new .entries[sb .tail] .state = sb_await_creation "to insert into SB, store should be awaiting creation";
   -- AZ NOTE: CUSTOMIZATION PT?
-  sb_new.entries[sb.tail].state := sb_await_send_mem_req;
+  sb_new .entries[sb .tail] .state := sb_await_send_mem_req;
 
-  sb_new.entries[sb.tail].instruction := sq_entry.instruction;
-  sb_new.entries[sb.tail].virt_addr := sq_entry.virt_addr;
-  sb_new.entries[sb.tail].phys_addr := sq_entry.phys_addr;
-  sb_new.entries[sb.tail].write_value := sq_entry.write_value;
-  sb_new.tail := ( sb.tail + 1 ) % (SB_NUM_ENTRIES_CONST);
-  sb_new.num_entries := sb.num_entries + 1;
+  sb_new .entries[sb .tail] .instruction := sq_entry  .instruction;
+  sb_new .entries[sb .tail] .virt_addr := sq_entry .virt_addr;
+  sb_new .entries[sb .tail] .phys_addr := sq_entry .phys_addr;
+  sb_new .entries[sb .tail] .write_value := sq_entry .write_value;
+  sb_new .tail := ( sb .tail + 1 ) % (SB_NUM_ENTRIES_CONST);
+  sb_new .num_entries := sb .num_entries + 1;
   --
-  assert (sb.num_entries < ( SB_NUM_ENTRIES_CONST)) "can't add more!";
+  assert (sb .num_entries < ( SB_NUM_ENTRIES_CONST)) "can't add more!";
   return sb_new;
 end
 ],
@@ -1152,18 +1152,18 @@ function sb_clear_head(
   begin
 
   sb_new := sb;
-  curr_head := sb.head;
+  curr_head := sb .head;
 
-  sb_new.entries[curr_head].instruction.seq_num := 0;
-  sb_new.entries[curr_head].instruction.op := inval;
-  sb_new.entries[curr_head].instruction.dest_reg := 0;
-  sb_new.entries[curr_head].instruction.imm := 0;
-  sb_new.entries[curr_head].state := sb_await_creation;
-  sb_new.entries[curr_head].write_value := 0;
-  sb_new.entries[curr_head].virt_addr := 0;
-  sb_new.entries[curr_head].phys_addr := 0;
-  sb_new.head := (curr_head + 1) % ( SB_NUM_ENTRIES_CONST);
-  sb_new.num_entries := (sb_new.num_entries - 1);
+  sb_new .entries[curr_head] .instruction .seq_num := 0;
+  sb_new .entries[curr_head] .instruction .op := inval;
+  sb_new .entries[curr_head] .instruction .dest_reg := 0;
+  sb_new .entries[curr_head] .instruction .imm := 0;
+  sb_new .entries[curr_head] .state := sb_await_creation;
+  sb_new .entries[curr_head] .write_value := 0;
+  sb_new .entries[curr_head] .virt_addr := 0;
+  sb_new .entries[curr_head] .phys_addr := 0;
+  sb_new .head := (curr_head + 1) % ( SB_NUM_ENTRIES_CONST);
+  sb_new .num_entries := (sb_new .num_entries - 1);
 
   return sb_new;
 end
@@ -1178,14 +1178,14 @@ function insert_ld_in_mem_interface(
   var msg : MEM_REQ;
 begin
 
-  msg.addr := ld_entry.phys_addr;
-  msg.r_w := read;
-  --#msg.value := 0;
-  msg.valid := true;
+  msg .addr := ld_entry .phys_addr;
+  msg .r_w := read;
+  --#msg .value := 0;
+  msg .valid := true;
 
-  msg.dest := mem;
-  msg.dest_id := core;
-  msg.seq_num := ld_entry.instruction.seq_num;
+  msg .dest := mem;
+  msg .dest_id := core;
+  msg .seq_num := ld_entry .instruction .seq_num;
 
   return msg;
 end
@@ -1200,14 +1200,14 @@ function insert_st_in_mem_interface(
   var msg : MEM_REQ;
 begin
 
-  msg.addr := sb_entry.phys_addr;
-  msg.r_w := write;
-  msg.value := sb_entry.write_value;
-  msg.valid := true;
+  msg .addr := sb_entry .phys_addr;
+  msg .r_w := write;
+  msg .value := sb_entry .write_value;
+  msg .valid := true;
 
-  msg.dest := mem;
-  msg.dest_id := core;
-  msg.seq_num := sb_entry.instruction.seq_num;
+  msg .dest := mem;
+  msg .dest_id := core;
+  msg .seq_num := sb_entry .instruction .seq_num;
 
   return msg;
 end
@@ -1222,11 +1222,11 @@ function insert_msg_into_ic(
 begin
   ic_new := ic;
   for i : ic_idx_t do
-    if ic_new.valid[i] = false
+    if ic_new .valid[i] = false
       then
-      ic_new.buffer[i] := msg;
-      ic_new.valid[i] := true;
-      ic_new.num_entries := ic.num_entries + 1;
+      ic_new .buffer[i] := msg;
+      ic_new .valid[i] := true;
+      ic_new .num_entries := ic .num_entries + 1;
       return ic_new;
     end;
   end;
@@ -1247,21 +1247,21 @@ function associative_assign_lq(
   begin
   --
   lq_new := lq;
-  lq_iter := lq.head;
-  lq_count := lq.num_entries;
-  seq_num := msg.seq_num;
+  lq_iter := lq .head;
+  lq_count := lq .num_entries;
+  seq_num := msg .seq_num;
 
   for i:0 .. LQ_NUM_ENTRIES_ENUM_CONST do
     -- error "trace load schedule?";
     -- Use i
 
     curr_entry_id := ( lq_iter + i ) % ( LQ_NUM_ENTRIES_CONST);
-    curr_entry := lq_new.entries[curr_entry_id];
-    if (curr_entry.instruction.seq_num = seq_num)
+    curr_entry := lq_new .entries[curr_entry_id];
+    if (curr_entry .instruction .seq_num = seq_num)
       then
       --# NOTE: load can be in other states due to
       --# an asynch restart sig from the St [x] -> LQ search
-      assert (( curr_entry.state = squashed_await_ld_mem_resp ) | ( curr_entry.state = await_mem_response ) ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+      assert (( curr_entry .state = squashed_await_ld_mem_resp ) | ( curr_entry .state = await_mem_response ) ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
 
       --# This causes problems
       --# if load was reset, this will also set the state
@@ -1275,18 +1275,18 @@ function associative_assign_lq(
       --# a packet or request and stop it.
       --# It's simpler to ignore messages with a time
       --# stamp mis-match for example.
-      if ( curr_entry.state = await_mem_response ) then
-        curr_entry.state := write_result;
-      elsif (curr_entry.state = squashed_await_ld_mem_resp) then
+      if ( curr_entry .state = await_mem_response ) then
+        curr_entry .state := write_result;
+      elsif (curr_entry .state = squashed_await_ld_mem_resp) then
         --# Complete the squash action
-        curr_entry.state := await_fwd_check;
+        curr_entry .state := await_fwd_check;
       end;
 
 
       --# NOTE: For mem access stuff
-      curr_entry.read_value := msg.value;
+      curr_entry .read_value := msg .value;
 
-      lq_new.entries[curr_entry_id] := curr_entry;
+      lq_new .entries[curr_entry_id] := curr_entry;
       -- error "trace load schedule?";
       return lq_new;
     end;
@@ -1315,20 +1315,20 @@ function associative_ack_sb(
   begin
   --
   sb_new := sb;
-  sb_iter := sb.head;
-  sb_count := sb.num_entries;
-  seq_num := msg.seq_num;
+  sb_iter := sb .head;
+  sb_count := sb .num_entries;
+  seq_num := msg .seq_num;
 
   for i:0 .. SB_NUM_ENTRIES_ENUM_CONST do
     curr_entry_id := ( sb_iter + i ) % ( SB_NUM_ENTRIES_CONST);
-    curr_entry := sb_new.entries[curr_entry_id];
-    if (curr_entry.instruction.seq_num = seq_num)
+    curr_entry := sb_new .entries[curr_entry_id];
+    if (curr_entry .instruction .seq_num = seq_num)
       then
-      assert ( curr_entry.state = sb_await_mem_response ) "ACK SB: Should be in await mem resp?";
-      --# curr_entry.state := sb_await_creation;
-      assert (curr_entry.instruction.seq_num = sb_new.entries[sb_new.head].instruction.seq_num) "should be de-queuing the head!!";
+      assert ( curr_entry .state = sb_await_mem_response ) "ACK SB: Should be in await mem resp?";
+      --# curr_entry .state := sb_await_creation;
+      assert (curr_entry .instruction .seq_num = sb_new .entries[sb_new .head] .instruction .seq_num) "should be de-queuing the head!!";
 
-      --#sb_new.entries[curr_entry_id] := curr_entry;
+      --#sb_new .entries[curr_entry_id] := curr_entry;
       --# Should implement a de-queue operation
       --# that's based on matching a field
       sb_new := sb_clear_head(sb_new);
@@ -1357,10 +1357,10 @@ begin
   sq_new := sq;
 
   --# seq sq flag, to perform the search in parallel
-  -- sq_new.search_busy := true;
-  -- sq_new.st_seq_num := st_seq_num;
-  -- sq_new.phys_addr := phys_addr;
-  -- sq_new.ld_seq_num := ld_seq_num;
+  -- sq_new .search_busy := true;
+  -- sq_new .st_seq_num := st_seq_num;
+  -- sq_new .phys_addr := phys_addr;
+  -- sq_new .ld_seq_num := ld_seq_num;
 
   return sq_new;
 end
@@ -1380,9 +1380,9 @@ begin
   sb_new := sb;
 
   --# seq sq flag, to perform the search in parallel
-  -- sb_new.search_busy := true;
-  -- sb_new.phys_addr := phys_addr;
-  -- sb_new.ld_seq_num := ld_seq_num;
+  -- sb_new .search_busy := true;
+  -- sb_new .phys_addr := phys_addr;
+  -- sb_new .ld_seq_num := ld_seq_num;
 
   return sb_new;
 end
@@ -1397,8 +1397,8 @@ function find_st_idx_of_seq_num
   var sq_entry : SQ_entry_values;
 begin
   for i : SQ_idx_t do
-    sq_entry := sq.entries[i];
-    if (sq_entry.instruction.seq_num = seq_num) then
+    sq_entry := sq .entries[i];
+    if (sq_entry .instruction .seq_num = seq_num) then
       return i;
     end;
   end;
@@ -1422,10 +1422,10 @@ begin
   --# write the val to the ld entry
   for i : LQ_idx_t do
     --# find matching st_num
-    ld_entry := lq.entries[i];
-    if (ld_entry.instruction.seq_num = seq_num) then
-      lq_new.entries[i].read_value := value;
-      --#lq_new.entries[i].state := write_result;
+    ld_entry := lq .entries[i];
+    if (ld_entry .instruction .seq_num = seq_num) then
+      lq_new .entries[i] .read_value := value;
+      --#lq_new .entries[i] .state := write_result;
       --#put "Confirm found entry";
       --#put i;
       --#put value;
@@ -1456,9 +1456,9 @@ begin
   lq_new := lq;
   --# write the val to the ld entry
   for i : LQ_idx_t do
-    ld_entry := lq.entries[i];
-    if (ld_entry.instruction.seq_num = seq_num) then
-      lq_new.entries[i].state := state;
+    ld_entry := lq .entries[i];
+    if (ld_entry .instruction .seq_num = seq_num) then
+      lq_new .entries[i] .state := state;
 
       return lq_new;
     end;
@@ -1482,9 +1482,9 @@ begin
   --# write the val to the ld entry
   for i : LQ_idx_t do
     --# find matching st_num
-    ld_entry := lq.entries[i];
-    if (ld_entry.instruction.seq_num = seq_num) then
-      assert (lq_new.entries[i].state = state) "bad state";
+    ld_entry := lq .entries[i];
+    if (ld_entry .instruction .seq_num = seq_num) then
+      assert (lq_new .entries[i] .state = state) "bad state";
 
       --#return lq_new;
       return false;
@@ -1503,248 +1503,248 @@ begin
   undefine init_state;
 
   --# Memory & Interconnect
-  alias mem:init_state.mem_ do
+  alias mem:init_state .mem_ do
     for i : addr_idx_t do
-      mem.arr[i] := 0;
+      mem .arr[i] := 0;
     end;
-    --#mem.msg 
+    --#mem .msg 
   endalias;
 
-  alias ic: init_state.ic_ do
+  alias ic: init_state .ic_ do
     for i : ic_idx_t do
       --# init message entries
-      ic.buffer[i].addr := 0;
-      ic.buffer[i].r_w := read;
-      ic.buffer[i].value := 0;
+      ic .buffer[i] .addr := 0;
+      ic .buffer[i] .r_w := read;
+      ic .buffer[i] .value := 0;
       --# Key thing. invalid message
-      ic.buffer[i].valid := false;
+      ic .buffer[i] .valid := false;
 
       --# Destination info
       --# Core or Mem
       --# Core has seq_num
-      ic.buffer[i].dest := mem;
-      ic.buffer[i].dest_id := 0;
-      ic.buffer[i].seq_num := 0;
+      ic .buffer[i] .dest := mem;
+      ic .buffer[i] .dest_id := 0;
+      ic .buffer[i] .seq_num := 0;
 
       --# also have invalid for IC
       --# could combine with msg
       --# valid flag
-      ic.valid[i] := false;
+      ic .valid[i] := false;
     end;
-    ic.num_entries := 0;
+    ic .num_entries := 0;
   end;
 
   for core : cores_t do
     --# Mem Interface
-    alias mem_int:init_state.core_[core].mem_interface_ do
+    alias mem_int:init_state .core_[core] .mem_interface_ do
       --#init the mem interfaces
-      mem_int.out_msg.addr := 0;
-      mem_int.out_msg.r_w := read;
-      mem_int.out_msg.value := 0;
+      mem_int .out_msg .addr := 0;
+      mem_int .out_msg .r_w := read;
+      mem_int .out_msg .value := 0;
       --# Key thing. invalid message
-      mem_int.out_msg.valid := false;
+      mem_int .out_msg .valid := false;
 
       --# Destination info
       --# Core or Mem
       --# Core has seq_num
-      mem_int.out_msg.dest := mem;
-      mem_int.out_msg.dest_id := 0;
-      mem_int.out_msg.seq_num := 0;
+      mem_int .out_msg .dest := mem;
+      mem_int .out_msg .dest_id := 0;
+      mem_int .out_msg .seq_num := 0;
 
-      mem_int.in_msg.addr := 0;
-      mem_int.in_msg.r_w := read;
-      mem_int.in_msg.value := 0;
-      mem_int.in_msg.valid := false;
-      mem_int.in_msg.dest := mem;
-      mem_int.in_msg.dest_id := 0;
-      mem_int.in_msg.seq_num := 0;
+      mem_int .in_msg .addr := 0;
+      mem_int .in_msg .r_w := read;
+      mem_int .in_msg .value := 0;
+      mem_int .in_msg .valid := false;
+      mem_int .in_msg .dest := mem;
+      mem_int .in_msg .dest_id := 0;
+      mem_int .in_msg .seq_num := 0;
 
-      mem_int.out_busy := false;
-      mem_int.in_busy := false;
+      mem_int .out_busy := false;
+      mem_int .in_busy := false;
     end;
 
     -- #Load Queue
-    alias lq:init_state.core_[core].LQ_ do
+    alias lq:init_state .core_[core] .LQ_ do
       for i : LQ_idx_t do
         -- assume imm insts for now in litmus tests
-        lq.entries[i].instruction.seq_num := 0;
-        lq.entries[i].instruction.op := inval;
-        lq.entries[i].instruction.imm := 0;
-        lq.entries[i].instruction.dest_reg := 0;
+        lq .entries[i] .instruction .seq_num := 0;
+        lq .entries[i] .instruction .op := inval;
+        lq .entries[i] .instruction .imm := 0;
+        lq .entries[i] .instruction .dest_reg := 0;
 
-        lq.entries[i].read_value := 0;
-        lq.entries[i].virt_addr := 0;
-        lq.entries[i].phys_addr := 0;
-        -- lq.entries[i].commit := false;
-        lq.entries[i].st_seq_num := 0;
+        lq .entries[i] .read_value := 0;
+        lq .entries[i] .virt_addr := 0;
+        lq .entries[i] .phys_addr := 0;
+        -- lq .entries[i] .commit := false;
+        lq .entries[i] .st_seq_num := 0;
         -- # Technically, this is init'd
         -- # by setting things to 0
         -- # so.. move on to next state
-        lq.entries[i].state := await_creation;
+        lq .entries[i] .state := await_creation;
       end;
-      lq.head := 0;
-      lq.tail := 0;
-      lq.num_entries := 0;
+      lq .head := 0;
+      lq .tail := 0;
+      lq .num_entries := 0;
 
-      -- lq.search_busy := false;
-      -- lq.st_seq_num := 0;
-      -- lq.phys_addr := 0;
-      -- lq.ld_seq_num := 0;
+      -- lq .search_busy := false;
+      -- lq .st_seq_num := 0;
+      -- lq .phys_addr := 0;
+      -- lq .ld_seq_num := 0;
     end;
-    alias rename:init_state.core_[core].rename_ do
+    alias rename:init_state .core_[core] .rename_ do
       for i : 0 .. CORE_INST_NUM do
-        rename.test_insts[i].op := inval;
-        rename.test_insts[i].seq_num := 0;
+        rename .test_insts[i] .op := inval;
+        rename .test_insts[i] .seq_num := 0;
       end;
-      rename.rename_head := 0;
-      rename.rename_tail := 0;
-      rename.num_entries := 0;
+      rename .rename_head := 0;
+      rename .rename_tail := 0;
+      rename .num_entries := 0;
     end;
-    alias iq:init_state.core_[core].iq_ do
+    alias iq:init_state .core_[core] .iq_ do
       for i : 0 .. CORE_INST_NUM do
-        iq.iq_insts[i].op := inval;
-        iq.iq_insts[i].seq_num := 0;
-        iq.iq_valid[i] := invalid;
+        iq .iq_insts[i] .op := inval;
+        iq .iq_insts[i] .seq_num := 0;
+        iq .iq_valid[i] := invalid;
       end;
-      -- # iq.iq_head := 0;
-      -- # iq.iq_tail := 0;
-      iq.num_entries := 0;
-      -- iq.iq_valid[CORE_INST_NUM] := ready;
-      -- iq.iq_valid[CORE_INST_NUM-1] := ready;
+      -- # iq .iq_head := 0;
+      -- # iq .iq_tail := 0;
+      iq .num_entries := 0;
+      -- iq .iq_valid[CORE_INST_NUM] := ready;
+      -- iq .iq_valid[CORE_INST_NUM-1] := ready;
     end;
-    alias rf:init_state.core_[core].rf_ do
+    alias rf:init_state .core_[core] .rf_ do
       for i : reg_idx_t do
-        rf.rf[i] := 0;
+        rf .rf[i] := 0;
       end;
     end;
-    alias rob:init_state.core_[core].rob_ do
+    alias rob:init_state .core_[core] .rob_ do
       for i : 0 .. CORE_INST_NUM do
-        rob.rob_insts[i].op := inval;
-        rob.rob_insts[i].seq_num := 0;
-        rob.state[i] := commit_not_sent;
+        rob .rob_insts[i] .op := inval;
+        rob .rob_insts[i] .seq_num := 0;
+        rob .state[i] := commit_not_sent;
       end;
-      rob.rob_head := 0;
-      rob.rob_tail := 0;
-      rob.num_entries := 0;
+      rob .rob_head := 0;
+      rob .rob_tail := 0;
+      rob .num_entries := 0;
     end;
-    alias sq:init_state.core_[core].SQ_ do
+    alias sq:init_state .core_[core] .SQ_ do
       for i : SQ_idx_t do
         --# assume imm insts for now in litmus tests
-        sq.entries[i].instruction.seq_num := 0;
-        sq.entries[i].instruction.op := inval;
-        sq.entries[i].instruction.imm := 0;
-        sq.entries[i].instruction.dest_reg := 0;
+        sq .entries[i] .instruction .seq_num := 0;
+        sq .entries[i] .instruction .op := inval;
+        sq .entries[i] .instruction .imm := 0;
+        sq .entries[i] .instruction .dest_reg := 0;
 
-        sq.entries[i].write_value := 0;
-        sq.entries[i].virt_addr := 0;
-        sq.entries[i].phys_addr := 0;
-        -- sq.entries[i].commit := false;
+        sq .entries[i] .write_value := 0;
+        sq .entries[i] .virt_addr := 0;
+        sq .entries[i] .phys_addr := 0;
+        -- sq .entries[i] .commit := false;
         -- # Technically, this is init'd
         -- # by setting things to 0
         -- # so.. move on to next state
-        sq.entries[i].state := sq_await_creation;
+        sq .entries[i] .state := sq_await_creation;
       end;
-      sq.head := 0;
-      sq.tail := 0;
-      sq.num_entries := 0;
+      sq .head := 0;
+      sq .tail := 0;
+      sq .num_entries := 0;
 
       --# stuff for searching for fwding
-      -- sq.search_busy := false;
+      -- sq .search_busy := false;
     end;
-    alias sb:init_state.core_[core].SB_ do
+    alias sb:init_state .core_[core] .SB_ do
       for i : SB_idx_t do
         --# assume imm insts for now in litmus tests
-        sb.entries[i].instruction.seq_num := 0;
-        sb.entries[i].instruction.op := inval;
-        sb.entries[i].instruction.imm := 0;
-        sb.entries[i].instruction.dest_reg := 0;
+        sb .entries[i] .instruction .seq_num := 0;
+        sb .entries[i] .instruction .op := inval;
+        sb .entries[i] .instruction .imm := 0;
+        sb .entries[i] .instruction .dest_reg := 0;
 
-        sb.entries[i].write_value := 0;
-        sb.entries[i].virt_addr := 0;
-        sb.entries[i].phys_addr := 0;
+        sb .entries[i] .write_value := 0;
+        sb .entries[i] .virt_addr := 0;
+        sb .entries[i] .phys_addr := 0;
         -- # Technically, this is init'd
         -- # by setting things to 0
         -- # so.. move on to next state
-        sb.entries[i].state := sb_await_creation;
+        sb .entries[i] .state := sb_await_creation;
       end;
-      sb.head := 0;
-      sb.tail := 0;
-      sb.num_entries := 0;
+      sb .head := 0;
+      sb .tail := 0;
+      sb .num_entries := 0;
 
-      -- sb.search_busy := false;
-      -- sb.phys_addr := 0;
-      -- sb.ld_seq_num := 0;
+      -- sb .search_busy := false;
+      -- sb .phys_addr := 0;
+      -- sb .ld_seq_num := 0;
     end;
   end;
 
   -- # set up litmus test
-  alias rename_c0:init_state.core_[0].rename_ do
+  alias rename_c0:init_state .core_[0] .rename_ do
     --#for i : 0 .. CORE_INST_NUM do
-    --#  rename.test_insts[i].op := inval;
-    --#  rename.test_insts[i].seq_num := 0;
+    --#  rename .test_insts[i] .op := inval;
+    --#  rename .test_insts[i] .seq_num := 0;
     --#end;
 
     --#--# amd1 test
-    --#rename_c0.test_insts[0].op := st;
-    --#rename_c0.test_insts[0].seq_num := 1;
-    --#rename_c0.test_insts[0].dest_reg := 0;
-    --#rename_c0.test_insts[0].imm := 0; --# Addr
-    --#rename_c0.test_insts[0].write_value := 1;
+    --#rename_c0.test_insts[0] .op := st;
+    --#rename_c0.test_insts[0] .seq_num := 1;
+    --#rename_c0.test_insts[0] .dest_reg := 0;
+    --#rename_c0.test_insts[0] .imm := 0; --# Addr
+    --#rename_c0.test_insts[0] .write_value := 1;
 
-    --#rename_c0.test_insts[1].op := st;
-    --#rename_c0.test_insts[1].seq_num := 2;
-    --#rename_c0.test_insts[1].dest_reg := 1;
-    --#rename_c0.test_insts[1].imm := 1; --# Addr
-    --#rename_c0.test_insts[1].write_value := 1;
+    --#rename_c0.test_insts[1] .op := st;
+    --#rename_c0.test_insts[1] .seq_num := 2;
+    --#rename_c0.test_insts[1] .dest_reg := 1;
+    --#rename_c0.test_insts[1] .imm := 1; --# Addr
+    --#rename_c0.test_insts[1] .write_value := 1;
 
     --# iwp23b1 test
-    rename_c0.test_insts[0].op := st;
-    rename_c0.test_insts[0].seq_num := 1;
-    rename_c0.test_insts[0].dest_reg := 0;
-    rename_c0.test_insts[0].imm := 0; --# Addr
-    rename_c0.test_insts[0].write_value := 1;
+    rename_c0.test_insts[0] .op := st;
+    rename_c0.test_insts[0] .seq_num := 1;
+    rename_c0.test_insts[0] .dest_reg := 0;
+    rename_c0.test_insts[0] .imm := 0; --# Addr
+    rename_c0.test_insts[0] .write_value := 1;
 
-    rename_c0.test_insts[1].op := ld;
-    rename_c0.test_insts[1].seq_num := 2;
-    rename_c0.test_insts[1].dest_reg := 1;
-    rename_c0.test_insts[1].imm := 0; --# Addr
-    --#rename_c0.test_insts[1].write_value := 0;
+    rename_c0.test_insts[1] .op := ld;
+    rename_c0.test_insts[1] .seq_num := 2;
+    rename_c0.test_insts[1] .dest_reg := 1;
+    rename_c0.test_insts[1] .imm := 0; --# Addr
+    --#rename_c0.test_insts[1] .write_value := 0;
 
     rename_c0.rename_head := 0;
     rename_c0.rename_tail := 0;
     rename_c0.num_entries := 2;
   end;
-  alias rename_c1:init_state.core_[1].rename_ do
+  alias rename_c1:init_state .core_[1] .rename_ do
     --#for i : 0 .. CORE_INST_NUM do
-    --#  rename.test_insts[i].op := inval;
-    --#  rename.test_insts[i].seq_num := 0;
+    --#  rename .test_insts[i] .op := inval;
+    --#  rename .test_insts[i] .seq_num := 0;
     --#end;
 
     --#--# amd1 test
-    --#rename_c1.test_insts[0].op := ld;
-    --#rename_c1.test_insts[0].seq_num := 1;
-    --#rename_c1.test_insts[0].dest_reg := 0;
-    --#rename_c1.test_insts[0].imm := 1;
-    --#--#rename_c1.test_insts[0].write_value := 0;
+    --#rename_c1.test_insts[0] .op := ld;
+    --#rename_c1.test_insts[0] .seq_num := 1;
+    --#rename_c1.test_insts[0] .dest_reg := 0;
+    --#rename_c1.test_insts[0] .imm := 1;
+    --#--#rename_c1.test_insts[0] .write_value := 0;
 
-    --#rename_c1.test_insts[1].op := ld;
-    --#rename_c1.test_insts[1].seq_num := 2;
-    --#rename_c1.test_insts[1].dest_reg := 1;
-    --#rename_c1.test_insts[1].imm := 0;
-    --#--#rename_c1.test_insts[1].write_value := 0;
+    --#rename_c1.test_insts[1] .op := ld;
+    --#rename_c1.test_insts[1] .seq_num := 2;
+    --#rename_c1.test_insts[1] .dest_reg := 1;
+    --#rename_c1.test_insts[1] .imm := 0;
+    --#--#rename_c1.test_insts[1] .write_value := 0;
 
     --# iwp23b1 test
-    rename_c1.test_insts[0].op := st;
-    rename_c1.test_insts[0].seq_num := 1;
-    rename_c1.test_insts[0].dest_reg := 0;
-    rename_c1.test_insts[0].imm := 1;
-    rename_c1.test_insts[0].write_value := 1;
+    rename_c1.test_insts[0] .op := st;
+    rename_c1.test_insts[0] .seq_num := 1;
+    rename_c1.test_insts[0] .dest_reg := 0;
+    rename_c1.test_insts[0] .imm := 1;
+    rename_c1.test_insts[0] .write_value := 1;
 
-    rename_c1.test_insts[1].op := ld;
-    rename_c1.test_insts[1].seq_num := 2;
-    rename_c1.test_insts[1].dest_reg := 1;
-    rename_c1.test_insts[1].imm := 1;
-    --#rename_c1.test_insts[1].write_value := 0;
+    rename_c1.test_insts[1] .op := ld;
+    rename_c1.test_insts[1] .seq_num := 2;
+    rename_c1.test_insts[1] .dest_reg := 1;
+    rename_c1.test_insts[1] .imm := 1;
+    --#rename_c1.test_insts[1] .write_value := 0;
 
     rename_c1.rename_head := 0;
     rename_c1.rename_tail := 0;
@@ -1773,9 +1773,9 @@ end
 --# Insert from a mem interface into the IC
 ruleset j : cores_t do
 rule "move_msg_from_mem_interface_to_ic"
-  ( Sta.core_[j].mem_interface_.out_busy = true )
+  ( Sta .core_[j] .mem_interface_.out_busy = true )
   &
-  ( Sta.ic_.num_entries < ( IC_ENTRY_NUM + 1 ) )
+  ( Sta .ic_.num_entries < ( IC_ENTRY_NUM + 1 ) )
 ==>
   -- decls
   var next_state : STATE;
@@ -1784,16 +1784,16 @@ rule "move_msg_from_mem_interface_to_ic"
 begin
   next_state := Sta;
   --# move msg into ic from mem_int
-  mem_int := Sta.core_[j].mem_interface_;
-  ic := Sta.ic_;
+  mem_int := Sta .core_[j] .mem_interface_;
+  ic := Sta .ic_;
 
   --# copy msg into ic
-  ic := insert_msg_into_ic(ic, mem_int.out_msg);
+  ic := insert_msg_into_ic(ic, mem_int .out_msg);
 
-  mem_int.out_busy := false;
+  mem_int .out_busy := false;
 
-  next_state.core_[j].mem_interface_ := mem_int;
-  next_state.ic_ := ic;
+  next_state .core_[j] .mem_interface_ := mem_int;
+  next_state .ic_ := ic;
 
   Sta := next_state;
 end;
@@ -1805,13 +1805,13 @@ endruleset
 ruleset i : ic_idx_t do
 rule "perform_ic_msg"
   --# have some ic entries
-  ( Sta.ic_.num_entries > 0 )
+  ( Sta .ic_.num_entries > 0 )
   --# this particular entry is valid
   &
-  ( Sta.ic_.valid[i] = true )
+  ( Sta .ic_.valid[i] = true )
   --# this is going to memory
   &
-  ( Sta.ic_.buffer[i].dest = mem )
+  ( Sta .ic_.buffer[i] .dest = mem )
 ==>
 -- decls
   var next_state : STATE;
@@ -1821,24 +1821,24 @@ rule "perform_ic_msg"
 begin
   --# setup
   next_state := Sta;
-  ic := Sta.ic_;
-  mem := Sta.mem_;
-  addr := ic.buffer[i].addr;
+  ic := Sta .ic_;
+  mem := Sta .mem_;
+  addr := ic .buffer[i] .addr;
 
   --# perform the access
-  if ( ic.buffer[i].r_w = read )
+  if ( ic .buffer[i] .r_w = read )
     then
-    ic.buffer[i].value := mem.arr[addr];
-  elsif (ic.buffer[i].r_w = write)
+    ic .buffer[i] .value := mem .arr[addr];
+  elsif (ic .buffer[i] .r_w = write)
     then
-    mem.arr[addr] := ic.buffer[i].value;
+    mem .arr[addr] := ic .buffer[i] .value;
   endif;
 
   --# Reverse direction for acknowledgement
-  ic.buffer[i].dest := core;
+  ic .buffer[i] .dest := core;
 
-  next_state.ic_ := ic;
-  next_state.mem_ := mem;
+  next_state .ic_ := ic;
+  next_state .mem_ := mem;
 
   Sta := next_state;
 end;
@@ -1851,19 +1851,19 @@ ruleset j : cores_t do
 ruleset i : ic_idx_t do
 rule "acknowledge_ic_msg"
   --# have some ic entries
-  ( Sta.ic_.num_entries > 0 )
+  ( Sta .ic_.num_entries > 0 )
   --# this particular entry is valid
   &
-  ( Sta.ic_.valid[i] = true )
+  ( Sta .ic_.valid[i] = true )
   --# this is going to a core
   &
-  ( Sta.ic_.buffer[i].dest = core )
+  ( Sta .ic_.buffer[i] .dest = core )
   --# Current core j is the dest core
   &
-  ( j = Sta.ic_.buffer[i].dest_id )
+  ( j = Sta .ic_.buffer[i] .dest_id )
   --# receiving mem interface is not busy
   &
-  ( Sta.core_[j].mem_interface_.in_busy = false )
+  ( Sta .core_[j] .mem_interface_.in_busy = false )
 ==>
   -- decls
   var next_state : STATE;
@@ -1872,23 +1872,23 @@ rule "acknowledge_ic_msg"
 begin
   --# setup
   next_state := Sta;
-  ic := Sta.ic_;
-  mem_interface := Sta.core_[j].mem_interface_;
+  ic := Sta .ic_;
+  mem_interface := Sta .core_[j] .mem_interface_;
 
-  mem_interface.in_msg := ic.buffer[i];
-  mem_interface.in_busy := true;
+  mem_interface .in_msg := ic .buffer[i];
+  mem_interface .in_busy := true;
 
-  ic.buffer[i].addr := 0;
-  ic.buffer[i].r_w := read;
-  ic.buffer[i].value := 0;
-  ic.buffer[i].valid := false;
-  ic.buffer[i].dest := mem;
-  ic.buffer[i].dest_id := 0;
-  ic.valid[i] := false;
-  ic.num_entries := ic.num_entries - 1;
+  ic .buffer[i] .addr := 0;
+  ic .buffer[i] .r_w := read;
+  ic .buffer[i] .value := 0;
+  ic .buffer[i] .valid := false;
+  ic .buffer[i] .dest := mem;
+  ic .buffer[i] .dest_id := 0;
+  ic .valid[i] := false;
+  ic .num_entries := ic .num_entries - 1;
 
-  next_state.ic_ := ic;
-  next_state.core_[j].mem_interface_ := mem_interface;
+  next_state .ic_ := ic;
+  next_state .core_[j] .mem_interface_ := mem_interface;
 
   Sta := next_state;
 end; end;
@@ -1899,7 +1899,7 @@ endruleset
 --# Core checks input msgs to notify dest structure
 ruleset j : cores_t do
   rule "core_sends_in_msg_ack_to_structures"
-  ( Sta.core_[j].mem_interface_.in_busy = true )
+  ( Sta .core_[j] .mem_interface_.in_busy = true )
 ==>
   --# Decls
   var next_state : STATE;
@@ -1908,25 +1908,25 @@ ruleset j : cores_t do
   var mem_interface : MEM_INTERFACE;
 begin
   next_state := Sta;
-  lq := Sta.core_[j].LQ_;
-  sb := Sta.core_[j].SB_;
-  mem_interface := Sta.core_[j].mem_interface_;
+  lq := Sta .core_[j] .LQ_;
+  sb := Sta .core_[j] .SB_;
+  mem_interface := Sta .core_[j] .mem_interface_;
 
-  if ( mem_interface.in_msg.r_w = read )
+  if ( mem_interface .in_msg .r_w = read )
     then
-    lq := associative_assign_lq(lq, mem_interface.in_msg);
-  elsif ( mem_interface.in_msg.r_w = write )
+    lq := associative_assign_lq(lq, mem_interface .in_msg);
+  elsif ( mem_interface .in_msg .r_w = write )
     then
     --# advance SB state to ack'd
     --# basically clear'd
-    sb := associative_ack_sb(sb, mem_interface.in_msg);
+    sb := associative_ack_sb(sb, mem_interface .in_msg);
   endif;
 
-  mem_interface.in_busy := false;
+  mem_interface .in_busy := false;
 
-  next_state.core_[j].LQ_ := lq;
-  next_state.core_[j].SB_ := sb;
-  next_state.core_[j].mem_interface_ := mem_interface;
+  next_state .core_[j] .LQ_ := lq;
+  next_state .core_[j] .SB_ := sb;
+  next_state .core_[j] .mem_interface_ := mem_interface;
 
   Sta := next_state;
 end;
@@ -1936,7 +1936,7 @@ endruleset
 
 ruleset j : cores_t do
 rule "inject_inst_from_rename"
-  (Sta.core_[j].rename_.num_entries > 0)
+  (Sta .core_[j] .rename_.num_entries > 0)
 ==>
 -- #decls
   var nxt_state : STATE;
@@ -1950,28 +1950,28 @@ rule "inject_inst_from_rename"
 begin
   -- #init our vars
   nxt_state := Sta;
-  rename_q := Sta.core_[j].rename_;
-  lq_q := Sta.core_[j].LQ_;
-  sq_q := Sta.core_[j].SQ_;
-  -- #sq_q := sta.SQ_;
-  -- lsq_q := Sta.core_[j].lSQ_;
-  iq_q := Sta.core_[j].iq_;
-  rob_q := Sta.core_[j].rob_;
+  rename_q := Sta .core_[j] .rename_;
+  lq_q := Sta .core_[j] .LQ_;
+  sq_q := Sta .core_[j] .SQ_;
+  -- #sq_q := sta .SQ_;
+  -- lsq_q := Sta .core_[j] .lSQ_;
+  iq_q := Sta .core_[j] .iq_;
+  rob_q := Sta .core_[j] .rob_;
 --
   -- #NOTE! less than or equal
-  if (rob_q.num_entries <= CORE_INST_NUM)
+  if (rob_q .num_entries <= CORE_INST_NUM)
     then
-    if (iq_q.num_entries <= CORE_INST_NUM)
+    if (iq_q .num_entries <= CORE_INST_NUM)
       then
 
       inst := rename_read_head(rename_q);
-      if (inst.op = ld) then
+      if (inst .op = ld) then
         -- #check if Full!
         -- #also note that this should check
         -- #the IQ as well, and must stop if
         -- # either is full
 
-        if (lq_q.num_entries <= LQ_NUM_ENTRIES_ENUM_CONST)
+        if (lq_q .num_entries <= LQ_NUM_ENTRIES_ENUM_CONST)
           then
           -- #remove inst from rename,
           rename_q := rename_pop_head(rename_q);
@@ -1980,11 +1980,11 @@ begin
           iq_q := iq_insert(iq_q, inst);
           rob_q := rob_insert(rob_q, inst);
         endif;
-      elsif (inst.op = st) then
+      elsif (inst .op = st) then
         -- #remove inst from rename,
         -- rename_q := rename_pop_head(rename_q);
         -- # insert into sq...
-        if (sq_q.num_entries <= SQ_NUM_ENTRIES_ENUM_CONST)
+        if (sq_q .num_entries <= SQ_NUM_ENTRIES_ENUM_CONST)
           then
           -- #remove inst from rename,
           rename_q := rename_pop_head(rename_q);
@@ -1993,7 +1993,7 @@ begin
           iq_q := iq_insert(iq_q, inst);
           rob_q := rob_insert(rob_q, inst);
         endif;
-      elsif (inst.op = inval) then
+      elsif (inst .op = inval) then
         -- #remove inst from rename,
         -- rename_q := rename_pop_head(rename_q);
         error "shouldn't reach this??";
@@ -2007,23 +2007,23 @@ begin
 
   -- # finish and update all state
   -- # set rename
-  nxt_state.core_[j].rename_ := rename_q;
+  nxt_state .core_[j] .rename_ := rename_q;
   -- # set LSQ stuff
-  -- lsq_q.LQ_ := lq_q;
-  -- lsq_q.SQ_ := sq_q;
-  nxt_state.core_[j].LQ_ := lq_q;
-  nxt_state.core_[j].SQ_ := sq_q;
+  -- lsq_q .LQ_ := lq_q;
+  -- lsq_q .SQ_ := sq_q;
+  nxt_state .core_[j] .LQ_ := lq_q;
+  nxt_state .core_[j] .SQ_ := sq_q;
   -- # set IQ stuff
-  nxt_state.core_[j].iq_ := iq_q;
+  nxt_state .core_[j] .iq_ := iq_q;
   -- # set ROB stuff
-  nxt_state.core_[j].rob_ := rob_q;
+  nxt_state .core_[j] .rob_ := rob_q;
 
   -- # update state
   Sta := nxt_state;
   -- error "Trace?";
-  -- assert !((iq_q.iq_valid[0] = ready)
+  -- assert !((iq_q .iq_valid[0] = ready)
   --          &
-  --          (iq_q.iq_valid[1] = ready)
+  --          (iq_q .iq_valid[1] = ready)
   --         ) "both iq entries won't be assigned";
 end;
 endruleset
@@ -2039,9 +2039,9 @@ ruleset j : cores_t do
 ruleset i : IQ_MAX_INSTS do
 rule "schedule_iq_inst"
 -- # if IQ not empty, and entry i is valid
-  !( Sta.core_[j].iq_.num_entries = 0 )
+  (!( Sta .core_[j] .iq_.num_entries = 0 ))
   &
-  Sta.core_[j].iq_.iq_valid[i] = ready
+  (Sta .core_[j] .iq_.iq_valid[i] = ready)
 ==>
   -- overall state update
   var next_state : STATE;
@@ -2054,53 +2054,53 @@ rule "schedule_iq_inst"
 begin
   -- assign our vars
   next_state := Sta;
-  inst := Sta.core_[j].iq_.iq_insts[i];
-  lq := Sta.core_[j].LQ_;
-  sq := Sta.core_[j].SQ_;
-  iq := Sta.core_[j].iq_;
-  num_entries := Sta.core_[j].iq_.num_entries;
+  inst := Sta .core_[j] .iq_.iq_insts[i];
+  lq := Sta .core_[j] .LQ_;
+  sq := Sta .core_[j] .SQ_;
+  iq := Sta .core_[j] .iq_;
+  num_entries := Sta .core_[j] .iq_.num_entries;
   -- logic
   -- 1. read this instruction
   -- put it in var or alias For convenience
-  -- #alias inst:Sta.core_[j].iq_.iq_insts[i] do
+  -- #alias inst:Sta .core_[j] .iq_.iq_insts[i] do
   -- #End;
   -- 3. find it in LQ, and advance it's state
-  if ( inst.op = ld ) then
+  if ( inst .op = ld ) then
     -- #put "\n ================ \n";
     -- #put "IQ i: ";
     -- #put i;
     -- #put "\n";
     -- #put "seq_num: ";
-    -- #put iq.iq_insts[i].seq_num;
+    -- #put iq .iq_insts[i] .seq_num;
     -- #put "\n";
     -- #put "\n ================ \n";
-    seq_num := iq.iq_insts[i].seq_num;
+    seq_num := iq .iq_insts[i] .seq_num;
     lq := lq_schedule(lq, seq_num);
-  elsif (inst.op = st) then
-    seq_num := iq.iq_insts[i].seq_num;
+  elsif (inst .op = st) then
+    seq_num := iq .iq_insts[i] .seq_num;
     sq := sq_schedule(sq, seq_num);
-  elsif (inst.op = inval) then
+  elsif (inst .op = inval) then
     error "shouldn't have an inval inst in IQ?";
   endif;
 
   -- 2. de-alloc it
-  --#next_state.core_[j].iq_.iq_valid[i] := invalid;
-  inst.op := inval;
-  inst.seq_num := 0;
+  --#next_state .core_[j] .iq_.iq_valid[i] := invalid;
+  inst .op := inval;
+  inst .seq_num := 0;
   -- # NOTE: Must adjust rename insert func
   -- # so it sets IQ insts state to ready
   -- # AND! it searches for a spot to insert an inst in?
   -- # order doesn't matter any more,
   -- # just need arbitrary orderings
 
-  if Sta.core_[j].iq_.iq_insts[i].op = ld then
-    next_state.core_[j].LQ_ := lq;
-  elsif Sta.core_[j].iq_.iq_insts[i].op = st then
-    next_state.core_[j].SQ_ := sq;
+  if Sta .core_[j] .iq_.iq_insts[i] .op = ld then
+    next_state .core_[j] .LQ_ := lq;
+  elsif Sta .core_[j] .iq_.iq_insts[i] .op = st then
+    next_state .core_[j] .SQ_ := sq;
   endif;
-  next_state.core_[j].iq_.iq_insts[i] := inst;
-  next_state.core_[j].iq_.iq_valid[i] := invalid;
-  next_state.core_[j].iq_.num_entries := num_entries-1;
+  next_state .core_[j] .iq_.iq_insts[i] := inst;
+  next_state .core_[j] .iq_.iq_valid[i] := invalid;
+  next_state .core_[j] .iq_.num_entries := num_entries-1;
   Sta := next_state;
   -- error "trace";
 end;
@@ -2127,14 +2127,14 @@ ruleset j : cores_t do
 rule "rob_commit_head"
   -- pre cond
   -- have entries to commit
-  (Sta.core_[j].rob_.num_entries > 0)
+  (Sta .core_[j] .rob_.num_entries > 0)
   &
   -- and haven't tried commit this inst yet
   --# NOTE This is a trick, add state, to make sure
   --# this only runs once
   --# maybe different if we generate explicit
   --# substates (what andres was going to do?)
-  (Sta.core_[j].rob_.state[Sta.core_[j].rob_.rob_head] = commit_not_sent)
+  (Sta .core_[j] .rob_.state[Sta .core_[j] .rob_.rob_head] = commit_not_sent)
 ==>
   -- decls
   var next_state : STATE;
@@ -2147,29 +2147,29 @@ rule "rob_commit_head"
 begin
   next_state := Sta;
   -- directly change state of lq or sq
-  rob := Sta.core_[j].rob_;
+  rob := Sta .core_[j] .rob_;
 
   --check head inst type
-  head_inst := rob.rob_insts[rob.rob_head];
+  head_inst := rob .rob_insts[rob .rob_head];
 
-  lq_q := Sta.core_[j].LQ_;
+  lq_q := Sta .core_[j] .LQ_;
 
-  sb_q := Sta.core_[j].SB_;
-  sq_q := Sta.core_[j].SQ_;
+  sb_q := Sta .core_[j] .SB_;
+  sq_q := Sta .core_[j] .SQ_;
 
-  if (head_inst.op = ld) then
+  if (head_inst .op = ld) then
     -- #search for the load?
     --#lq_q := lq_commit(lq_q, head_inst);
 
     --# remove rob head if lq_entry was removed....
     --# This makes it all done atomically...
-    if (lq_q.entries[lq_q.head].state = await_committed)
+    if (lq_q .entries[lq_q .head] .state = await_committed)
       then
       rob := rob_remove(rob);
     else
       --# If inst wasn't directly committed
       -- # set state to commit sig sent
-      rob.state[rob.rob_head] := commit_sig_sent;
+      rob .state[rob .rob_head] := commit_sig_sent;
     endif;
 
     -- # should be the head load...
@@ -2178,23 +2178,23 @@ begin
     lq_q := lq_commit_head(lq_q);
 
 
-  elsif (head_inst.op = st) then
+  elsif (head_inst .op = st) then
     --# SB Must have free space!
-    if ( sb_q.num_entries < ( SB_NUM_ENTRIES_CONST ) )
+    if ( sb_q .num_entries < ( SB_NUM_ENTRIES_CONST ) )
       then
 
       --# Move inst into SB, remove from ROB
-      if (sq_q.entries[sq_q.head].state = sq_await_committed)
+      if (sq_q .entries[sq_q .head] .state = sq_await_committed)
         then
         rob := rob_remove(rob);
 
-        sq_entry := sq_q.entries[sq_q.head];
+        sq_entry := sq_q .entries[sq_q .head];
         sb_q := sb_insert(sb_q, sq_entry);
 
       else
         --# If inst wasn't directly committed
         -- # set state to commit sig sent
-        rob.state[rob.rob_head] := commit_sig_sent;
+        rob .state[rob .rob_head] := commit_sig_sent;
       endif;
 
       -- # should be the head load...
@@ -2206,17 +2206,17 @@ begin
       sq_q := sq_commit_head(sq_q);
     endif;
 
-  elsif (head_inst.op = inval) then
+  elsif (head_inst .op = inval) then
     error "shouldn't have an inval head inst??";
   endif;
 
-  next_state.core_[j].rob_ := rob;
+  next_state .core_[j] .rob_ := rob;
 
-  if (head_inst.op = ld) then
-    next_state.core_[j].LQ_ := lq_q;
-  elsif (head_inst.op = st) then
-    next_state.core_[j].SQ_ := sq_q;
-    next_state.core_[j].SB_ := sb_q;
+  if (head_inst .op = ld) then
+    next_state .core_[j] .LQ_ := lq_q;
+  elsif (head_inst .op = st) then
+    next_state .core_[j] .SQ_ := sq_q;
+    next_state .core_[j] .SB_ := sb_q;
   endif;
 
   Sta := next_state;
@@ -2242,18 +2242,18 @@ endruleset
 -- ruleset j : cores_t do
 -- rule "remove_ld_entry_already_got_commit_signal"
 --   -- # there are lq entries
---   ( Sta.core_[j].LQ_.num_entries > 0 )
+--   ( Sta .core_[j] .LQ_.num_entries > 0 )
 --   &
 --   -- -- # head saw commit signal already
 --   -- (
---   --   Sta.core_[j].LQ_.entries[Sta.core_[j].LQ_.head].commit
+--   --   Sta .core_[j] .LQ_.entries[Sta .core_[j] .LQ_.head] .commit
 --   --   =
 --   --   true
 --   -- )
 --   -- &
 --   -- # awaiting commit signal
 --   (
---     Sta.core_[j].LQ_.entries[Sta.core_[j].LQ_.head].state
+--     Sta .core_[j] .LQ_.entries[Sta .core_[j] .LQ_.head] .state
 --     =
 --     await_committed
 --   )
@@ -2265,22 +2265,22 @@ endruleset
 --   var curr_tail : LQ_idx_t;
 -- begin
 --   NxtSta := Sta;
---   rob := Sta.core_[j].rob_;
---   lq_q := Sta.core_[j].LQ_;
---   --#curr_head := lq_q.head;
---   --#curr_tail := lq_q.tail;
+--   rob := Sta .core_[j] .rob_;
+--   lq_q := Sta .core_[j] .LQ_;
+--   --#curr_head := lq_q .head;
+--   --#curr_tail := lq_q .tail;
 -- --
---   --#lq_q.entries[curr_head].instruction.seq_num := 0;
---   --#lq_q.entries[curr_head].instruction.op := inval;
---   --#lq_q.entries[curr_head].state := await_creation;
---   --#lq_q.head := (curr_head + 1) % ( LQ_NUM_ENTRIES_CONST);
---   --#lq_q.num_entries := (lq_q.num_entries - 1);
+--   --#lq_q .entries[curr_head] .instruction .seq_num := 0;
+--   --#lq_q .entries[curr_head] .instruction .op := inval;
+--   --#lq_q .entries[curr_head] .state := await_creation;
+--   --#lq_q .head := (curr_head + 1) % ( LQ_NUM_ENTRIES_CONST);
+--   --#lq_q .num_entries := (lq_q .num_entries - 1);
 --   lq_q := lq_clear_head(lq_q);
---   assert (lq_q.num_entries >= 0) "num entries should be non-negative";
+--   assert (lq_q .num_entries >= 0) "num entries should be non-negative";
 
 --   rob := rob_remove(rob);
---   NxtSta.core_[j].rob_ := rob;
---   NxtSta.core_[j].LQ_ := lq_q;
+--   NxtSta .core_[j] .rob_ := rob;
+--   NxtSta .core_[j] .LQ_ := lq_q;
 -- --
 --   Sta := NxtSta;
 -- end;
@@ -2292,18 +2292,18 @@ endruleset
 -- ruleset j : cores_t do
 -- rule "remove_st_entry_already_got_commit_signal"
 --   -- # there are lq entries
---   ( Sta.core_[j].SQ_.num_entries > 0 )
+--   ( Sta .core_[j] .SQ_.num_entries > 0 )
 --   &
 --   -- -- # head saw commit signal already
 --   -- (
---   --   Sta.core_[j].SQ_.entries[Sta.core_[j].SQ_.head].commit
+--   --   Sta .core_[j] .SQ_.entries[Sta .core_[j] .SQ_.head] .commit
 --   --   =
 --   --   true
 --   -- )
 --   -- &
 --   -- # awaiting commit signal
 --   (
---     Sta.core_[j].SQ_.entries[Sta.core_[j].SQ_.head].state
+--     Sta .core_[j] .SQ_.entries[Sta .core_[j] .SQ_.head] .state
 --     =
 --     sq_await_committed
 --   )
@@ -2317,27 +2317,27 @@ endruleset
 --   var sq_entry : SQ_entry_values;
 -- begin
 --   NxtSta := Sta;
---   rob := Sta.core_[j].rob_;
---   sq_q := Sta.core_[j].SQ_;
---   sb_q := Sta.core_[j].SB_;
+--   rob := Sta .core_[j] .rob_;
+--   sq_q := Sta .core_[j] .SQ_;
+--   sb_q := Sta .core_[j] .SB_;
 
 --   --# insert sq entry into sb
---   sq_entry := sq_q.entries[sq_q.head];
---   if (sb_q.num_entries < ( SB_NUM_ENTRIES_CONST))
+--   sq_entry := sq_q .entries[sq_q .head];
+--   if (sb_q .num_entries < ( SB_NUM_ENTRIES_CONST))
 --     then
 --     sb_q := sb_insert(sb_q, sq_entry);
 
 --     --# remove sq entry
 --     sq_q := sq_clear_head(sq_q);
---     assert (sq_q.num_entries >= 0) "num entries should be non-negative";
+--     assert (sq_q .num_entries >= 0) "num entries should be non-negative";
 
 --     --# "signal back" to rob & remove the head
 --     rob := rob_remove(rob);
 --   endif;
 
---   NxtSta.core_[j].rob_ := rob;
---   NxtSta.core_[j].SQ_ := sq_q;
---   NxtSta.core_[j].SB_ := sb_q;
+--   NxtSta .core_[j] .rob_ := rob;
+--   NxtSta .core_[j] .SQ_ := sq_q;
+--   NxtSta .core_[j] .SB_ := sb_q;
 -- --
 --   Sta := NxtSta;
 -- end;
@@ -2350,15 +2350,15 @@ endruleset
 ruleset j : cores_t do
 rule "sb_await_send_mem_req_to_await_mem_resp"
   --# when head SB entry is waiting to send out it's request
-  ( Sta.core_[j].SB_.entries[Sta.core_[j].SB_.head].state = sb_await_send_mem_req )
+  ( Sta .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] .state = sb_await_send_mem_req )
   &
   --# have sb entries
-  ( Sta.core_[j].SB_.num_entries > 0)
+  ( Sta .core_[j] .SB_.num_entries > 0)
   --# this is a condition: mem's msg buffer is empty
-  --# i.e. mem is free
+  --# i .e. mem is free
   &
   (
-    Sta.core_[j].mem_interface_.out_busy = false
+    Sta .core_[j] .mem_interface_.out_busy = false
   )
 ==>
   -- decls
@@ -2372,34 +2372,34 @@ rule "sb_await_send_mem_req_to_await_mem_resp"
   var mem_inter : MEM_INTERFACE;
 begin
   next_state := Sta;
-  sb := Sta.core_[j].SB_;
-  sb_entry := sb.entries[sb.head];
-  --#mem := Sta.mem_;
-  mem_inter := Sta.core_[j].mem_interface_;
+  sb := Sta .core_[j] .SB_;
+  sb_entry := sb .entries[sb .head];
+  --#mem := Sta .mem_;
+  mem_inter := Sta .core_[j] .mem_interface_;
 
   -- Update state
-  sb_entry.state := sb_await_mem_response;
+  sb_entry .state := sb_await_mem_response;
 
   -- Write to memory
   -- # Issue, wasn't using Imm before
   -- # could update it to write imm to virt/phys
-  phys_addr := sb_entry.phys_addr;
-  --#mem.arr[phys_addr] := sb_entry.write_value;
+  phys_addr := sb_entry .phys_addr;
+  --#mem .arr[phys_addr] := sb_entry .write_value;
 
   --# NOTE: send to the mem interface
-  mem_inter.out_msg := insert_st_in_mem_interface(
+  mem_inter .out_msg := insert_st_in_mem_interface(
                                                   sb_entry,
                                                   j
                                                  );
-  mem_inter.out_busy := true;
+  mem_inter .out_busy := true;
 
-  next_state.core_[j].SB_.entries[Sta.core_[j].SB_.head] := sb_entry;
-  next_state.core_[j].mem_interface_ := mem_inter;
+  next_state .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] := sb_entry;
+  next_state .core_[j] .mem_interface_ := mem_inter;
 
   --# AZ NOTE: This is a decent way to check if something went
   --# wrong, if an illegal inst (seq_num = 0) tries to
   --# perform any action while in any structure!!!
-  assert ( sb.entries[sb.head].instruction.seq_num != 0 ) "invalid st";
+  assert ( sb .entries[sb .head] .instruction .seq_num != 0 ) "invalid st";
 
   Sta := next_state;
 end;
@@ -2410,11 +2410,11 @@ endruleset
 
 ruleset j : cores_t do
 invariant "test_invariant"
-  (Sta.core_[j].LQ_.num_entries = 1)
+  (Sta .core_[j] .LQ_.num_entries = 1)
   ->
-  ( Sta.core_[j].LQ_.tail
+  ( Sta .core_[j] .LQ_.tail
     =
-    ( ( Sta.core_[j].LQ_.head + 1 ) % (LQ_NUM_ENTRIES_CONST) )
+    ( ( Sta .core_[j] .LQ_.head + 1 ) % (LQ_NUM_ENTRIES_CONST) )
   )
 endruleset
 ],
@@ -2422,29 +2422,29 @@ endruleset
 
 rule "reset"
   (
-    ( Sta.core_[0].rename_.num_entries = 0 )
+    ( Sta .core_[0] .rename_.num_entries = 0 )
     &
-    ( Sta.core_[0].rob_.num_entries = 0 )
+    ( Sta .core_[0] .rob_.num_entries = 0 )
     &
-    ( Sta.core_[0].SB_.num_entries = 0 )
+    ( Sta .core_[0] .SB_.num_entries = 0 )
     &
-    ( Sta.core_[0].iq_.num_entries = 0 )
+    ( Sta .core_[0] .iq_.num_entries = 0 )
     &
-    ( Sta.core_[0].LQ_.num_entries = 0 )
+    ( Sta .core_[0] .LQ_.num_entries = 0 )
     &
-    ( Sta.core_[0].SQ_.num_entries = 0 )
+    ( Sta .core_[0] .SQ_.num_entries = 0 )
     &
-    ( Sta.core_[1].rename_.num_entries = 0 )
+    ( Sta .core_[1] .rename_.num_entries = 0 )
     &
-    ( Sta.core_[1].rob_.num_entries = 0 )
+    ( Sta .core_[1] .rob_.num_entries = 0 )
     &
-    ( Sta.core_[1].SB_.num_entries = 0 )
+    ( Sta .core_[1] .SB_.num_entries = 0 )
     &
-    ( Sta.core_[1].iq_.num_entries = 0 )
+    ( Sta .core_[1] .iq_.num_entries = 0 )
     &
-    ( Sta.core_[1].LQ_.num_entries = 0 )
+    ( Sta .core_[1] .LQ_.num_entries = 0 )
     &
-    ( Sta.core_[1].SQ_.num_entries = 0 )
+    ( Sta .core_[1] .SQ_.num_entries = 0 )
   )
 ==>
   -- decls
@@ -2461,56 +2461,56 @@ end
 
 --#invariant "amd1_verif"
 --#  (
---#    ( Sta.core_[0].rename_.num_entries = 0 )
+--#    ( Sta .core_[0] .rename_.num_entries = 0 )
 --#    &
---#    ( Sta.core_[0].rob_.num_entries = 0 )
+--#    ( Sta .core_[0] .rob_.num_entries = 0 )
 --#    &
---#    ( Sta.core_[0].SB_.num_entries = 0 )
+--#    ( Sta .core_[0] .SB_.num_entries = 0 )
 --#    &
---#    ( Sta.core_[1].rename_.num_entries = 0 )
+--#    ( Sta .core_[1] .rename_.num_entries = 0 )
 --#    &
---#    ( Sta.core_[1].rob_.num_entries = 0 )
+--#    ( Sta .core_[1] .rob_.num_entries = 0 )
 --#    &
---#    ( Sta.core_[1].SB_.num_entries = 0 )
+--#    ( Sta .core_[1] .SB_.num_entries = 0 )
 --#  )
 --#  ->
 --#--# AMD1 test from pipecheck
 --#    !(
---#      --#( Sta.core_[0].rf_.rf[0] = 0 )
+--#      --#( Sta .core_[0] .rf_.rf[0] = 0 )
 --#      --#&
---#      --#( Sta.core_[0].rf_.rf[1] = 0 )
+--#      --#( Sta .core_[0] .rf_.rf[1] = 0 )
 --#      --#&
---#      ( Sta.core_[1].rf_.rf[0] = 1 )
+--#      ( Sta .core_[1] .rf_.rf[0] = 1 )
 --#      &
---#      ( Sta.core_[1].rf_.rf[1] = 0 )
+--#      ( Sta .core_[1] .rf_.rf[1] = 0 )
 --#    )
 
 invariant "iwp23b1"
 (
-  ( Sta.core_[0].rename_.num_entries = 0 )
+  ( Sta .core_[0] .rename_.num_entries = 0 )
   &
-  ( Sta.core_[0].rob_.num_entries = 0 )
+  ( Sta .core_[0] .rob_.num_entries = 0 )
   &
-  ( Sta.core_[0].SB_.num_entries = 0 )
+  ( Sta .core_[0] .SB_.num_entries = 0 )
   &
-  ( Sta.core_[1].rename_.num_entries = 0 )
+  ( Sta .core_[1] .rename_.num_entries = 0 )
   &
-  ( Sta.core_[1].rob_.num_entries = 0 )
+  ( Sta .core_[1] .rob_.num_entries = 0 )
   &
-  ( Sta.core_[1].SB_.num_entries = 0 )
+  ( Sta .core_[1] .SB_.num_entries = 0 )
 )
 ->
  --#iwp23b1 REQUIRED OUTPUT test from pipecheck
  --#Note it's reg 1 since I just follow the inst #
  --#Should have this result, always!
 (
-  ( Sta.core_[0].rf_.rf[0] = 0 )
+  ( Sta .core_[0] .rf_.rf[0] = 0 )
   &
-  ( Sta.core_[0].rf_.rf[1] = 1 )
+  ( Sta .core_[0] .rf_.rf[1] = 1 )
   &
-  ( Sta.core_[1].rf_.rf[0] = 0 )
+  ( Sta .core_[1] .rf_.rf[0] = 0 )
   &
-  ( Sta.core_[1].rf_.rf[1] = 1 )
+  ( Sta .core_[1] .rf_.rf[1] = 1 )
 )
 ]
 ]
