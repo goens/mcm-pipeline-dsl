@@ -2244,13 +2244,13 @@ endruleset
 --   -- # there are lq entries
 --   ( Sta .core_[j] .LQ_.num_entries > 0 )
 --   &
---   -- -- # head saw commit signal already
---   -- (
---   --   Sta .core_[j] .LQ_.entries[Sta .core_[j] .LQ_.head] .commit
---   --   =
---   --   true
---   -- )
---   -- &
+--   -- # head saw commit signal already
+--   (
+--     Sta .core_[j] .LQ_.entries[Sta .core_[j] .LQ_.head] .commit
+--     =
+--     true
+--   )
+--   &
 --   -- # awaiting commit signal
 --   (
 --     Sta .core_[j] .LQ_.entries[Sta .core_[j] .LQ_.head] .state
@@ -2294,13 +2294,13 @@ endruleset
 --   -- # there are lq entries
 --   ( Sta .core_[j] .SQ_.num_entries > 0 )
 --   &
---   -- -- # head saw commit signal already
---   -- (
---   --   Sta .core_[j] .SQ_.entries[Sta .core_[j] .SQ_.head] .commit
---   --   =
---   --   true
---   -- )
---   -- &
+--   -- # head saw commit signal already
+--   (
+--     Sta .core_[j] .SQ_.entries[Sta .core_[j] .SQ_.head] .commit
+--     =
+--     true
+--   )
+--   &
 --   -- # awaiting commit signal
 --   (
 --     Sta .core_[j] .SQ_.entries[Sta .core_[j] .SQ_.head] .state

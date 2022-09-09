@@ -156,6 +156,7 @@ def dsl_type_to_murphi_type
   -- packet     |    N/A
   -- seq_num    |    inst_idx_t
   -- inst       |    INST
+  -- boolean    |    boolean
   let murphi_type_name : ID :=
   if dsl_type == "address" then
   "addr_idx_t"
@@ -165,6 +166,8 @@ def dsl_type_to_murphi_type
   "inst_idx_t"
   else if dsl_type == "inst" then
   "INST"
+  -- else if dsl_type == "boolean" then
+  -- "boolean"
   else
   panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
 
