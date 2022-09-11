@@ -1281,9 +1281,14 @@ partial def check_if_transition_stmt_blk_has_an_await
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map check_if_transition_stmt_blk_has_an_await)
     | Conditional.if_statement expr1 stmt1 => check_if_transition_stmt_blk_has_an_await stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map check_if_transition_stmt_blk_has_an_await)
-  | Statement.await _ lst_stmt1 =>
+  | Statement.await none lst_stmt1 =>
   -- List.join (lst_stmt1.map get_stmts_with_transitions)
+  -- Treat the none case as an "await state" for now
+  -- since await with term executes the code atomically right now..
     [true]
+  | Statement.await term lst_stmt1 =>
+  -- List.join (lst_stmt1.map get_stmts_with_transitions)
+    []
   | Statement.when qname list_idens stmt => check_if_transition_stmt_blk_has_an_await stmt
   -- | Statement.listen_handle  => 
   | _ => []
