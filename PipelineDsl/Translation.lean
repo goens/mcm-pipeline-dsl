@@ -5043,98 +5043,100 @@ lst_stmts_decls
     else
       empty_stmt_decl_lsts
 
-  | Statement.when _ _ _ =>
+  | Statement.when qual_name lst_ident stmt' =>
   -- TODO : Implement this case
     -- match when_stmt with
     -- | Pipeline.Statement.when qual_name lst_ident stmt =>
-    --   let qual_name_list :=
-    --   match qual_name with
-    --   | QualifiedName.mk lst_idents =>
-    --     lst_idents
-    --   let qual_name_len_2 := qual_name_list.length == 2
+    let qual_name_list :=
+    match qual_name with
+    | QualifiedName.mk lst_idents =>
+      lst_idents
+    -- i.e. ctrler & function
+    let qual_name_len_2 := qual_name_list.length == 2
 
-    --   let sanity_check :=
-    --   if qual_name_len_2
-    --   then
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "PASS: qualified name, is len 2!"
-    --     true
-    --   else
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "FAIL: qualified name, is not len 2!"
-    --     false
-      
-    --   dbg_trace "== This was also len 2 checked! =="
-    --   let struct_name : Identifier := qual_name_list[0]!
-    --   let when_func_name : Identifier := qual_name_list[1]!
-    --   let struct_name_sanity := struct_name == ctrler_name
-    --   let when_func_name_sanity := when_func_name == func_name
+    let dest_ctrler_name := qual_name_list[0]?
 
-    --   let struct_sanity_check :=
-    --   if struct_name_sanity
-    --   then
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "PASS: first identifier is the curr_ctrler_name"
-    --     true
-    --   else
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
-    --     false
+    let sanity_check :=
+    if qual_name_len_2
+    then
+      dbg_trace "translating insert func!"
+      dbg_trace "PASS: qualified name, is len 2!"
+      true
+    else
+      dbg_trace "translating insert func!"
+      dbg_trace "FAIL: qualified name, is not len 2!"
+      false
+    
+    dbg_trace "== This was also len 2 checked! =="
+    let struct_name : Identifier := qual_name_list[0]!
+    let when_func_name : Identifier := qual_name_list[1]!
+    let struct_name_sanity := struct_name == ctrler_name
+    let when_func_name_sanity := when_func_name == func_name
 
-    --   let func_sanity_check :=
-    --   if when_func_name_sanity
-    --   then
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "PASS: second identifier is the 'insert' func"
-    --     true
-    --   else
-    --     dbg_trace "translating insert func!"
-    --     dbg_trace "FAIL: second identifier is not the 'insert' func"
-    --     false
+    let struct_sanity_check :=
+    if struct_name_sanity
+    then
+      dbg_trace "translating insert func!"
+      dbg_trace "PASS: first identifier is the curr_ctrler_name"
+      true
+    else
+      dbg_trace "translating insert func!"
+      dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
+      false
+
+    let func_sanity_check :=
+    if when_func_name_sanity
+    then
+      dbg_trace "translating insert func!"
+      dbg_trace "PASS: second identifier is the 'insert' func"
+      true
+    else
+      dbg_trace "translating insert func!"
+      dbg_trace "FAIL: second identifier is not the 'insert' func"
+      false
 
 
-    --   -- After any sanity messages, try to map the stmts
-    --   -- Create the required info object:
-    --   let trans_info : stmt_translation_info := (
-    --     -- info
-    --     stmt_translation_info.mk
-    --     stmt
-    --     ctrlers_lst
-    --     dest_ctrler_name
-    --     struct_name
-    --     lst_ident
-    --     (Option.some api_func_name)
-    --     (await_or_not_state.not_await)
-    --     none
-    --     stmt_trans_info.trans_obj
-    --     none
-    --     stmt_trans_info.lst_decls
-    --   )
+    -- After any sanity messages, try to map the stmts
+    -- Create the required info object:
+    let trans_info : stmt_translation_info := {
+      -- info
+      -- stmt_translation_info.mk
+      stmt := stmt',
+      lst_ctrlers := stmt_trans_info.lst_ctrlers,
+      ctrler_name := stmt_trans_info.ctrler_name,
+      src_ctrler := dest_ctrler_name,
+      lst_src_args := lst_ident,
+      func := stmt_trans_info.func,
+      is_await := stmt_trans_info.is_await,
+      entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+      trans_obj := stmt_trans_info.trans_obj,
+      specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+      lst_decls := stmt_trans_info.lst_decls
+    }
 
-    --   -- let murphi_stmts : List Murϕ.Statement :=
-    --   let murphi_stmts : lst_stmts_decls :=
-    --   ast_stmt_to_murphi_stmts trans_info
+    -- let murphi_stmts : List Murϕ.Statement :=
+    let murphi_stmts : lst_stmts_decls :=
+    ast_stmt_to_murphi_stmts trans_info
 
-    --   murphi_stmts
-    --   -- map the stmt (stmt blk) to Murphi stmts,
-    --   -- but also consider that it's assigned vars
-    --   -- should be generated with the ctrler's designators
+    murphi_stmts
+    -- map the stmt (stmt blk) to Murphi stmts,
+    -- but also consider that it's assigned vars
+    -- should be generated with the ctrler's designators
 
-    --   -- The Decl gen process shouldn't be affected, since
-    --   -- the desginators will start with the structure
-    --   -- as the decl to generate...
-    --   -- So i think this should be ok...
+    -- The Decl gen process shouldn't be affected, since
+    -- the desginators will start with the structure
+    -- as the decl to generate...
+    -- So i think this should be ok...
 
-    --   -- TODO: This should also be translated by a 
-    --   -- function which will explicitly take the
-    --   -- dest structure name as an input arg, so it
-    --   -- can translate it and reference it's entry tail
-    --   -- as needed
+    -- TODO: This should also be translated by a 
+    -- function which will explicitly take the
+    -- dest structure name as an input arg, so it
+    -- can translate it and reference it's entry tail
+    -- as needed
 
-    -- | _ => dbg_trace "shouldn't get another stmt type"
-    --   -- []
-    --   empty_stmt_decl_lsts
-    empty_stmt_decl_lsts
+  -- | _ => dbg_trace "shouldn't get another stmt type"
+  --   -- []
+  --   empty_stmt_decl_lsts
 
 end -- END mutually recursive func region --
 
