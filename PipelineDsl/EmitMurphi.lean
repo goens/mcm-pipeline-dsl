@@ -1625,7 +1625,7 @@ begin
         rob .rob_insts[i] .op := inval;
         rob .rob_insts[i] .seq_num := 0;
         -- rob .state[i] := commit_not_sent;
-        rob.is_executed[i] := false;
+        rob .is_executed[i] := false;
       end;
       rob .rob_head := 0;
       rob .rob_tail := 0;
@@ -2173,8 +2173,8 @@ begin
     --# This makes it all done atomically...
     if (lq_q .entries[lq_q .head] .state = await_committed)
       then
+      rob .is_executed[Sta .core_[j] .rob_ .rob_head] := false;
       rob := rob_remove(rob);
-      rob .is_executed[rob .rob_head] := false;
     else
       --# If inst wasn't directly committed
       -- # set state to commit sig sent
