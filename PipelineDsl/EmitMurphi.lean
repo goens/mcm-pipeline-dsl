@@ -2196,8 +2196,8 @@ begin
       --# Move inst into SB, remove from ROB
       if (sq_q .entries[sq_q .head] .state = sq_await_committed)
         then
+        rob .is_executed[Sta .core_[j] .rob_ .rob_head] := false;
         rob := rob_remove(rob);
-        rob .is_executed[rob .rob_head] := false;
 
         sq_entry := sq_q .entries[sq_q .head];
         sb_q := sb_insert(sb_q, sq_entry);
