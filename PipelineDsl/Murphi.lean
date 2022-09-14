@@ -225,6 +225,10 @@ structure Program where
   procdecls  : List ProcDecl
   rules   : List Rule
 
+def indent : Nat → String
+  | Nat.zero => ""
+  | Nat.succ n => "  " ++ indent n
+
 mutual
 private partial def typeExprToString : TypeExpr → String
   | .previouslyDefined id => s!"{id}"
@@ -284,34 +288,35 @@ private partial def quantifierToString : Quantifier → String
       | some byexp => "by " ++ exprToString byexp
     s!"{id} := {expS} to {toexpS} {byexpS}"
 
-private partial def statementToString : Statement → String
+private partial def statementToString ( indentationLevel := 0) (inputStatement : Statement)  : String :=
+  let recCall := statementToString (indentationLevel := indentationLevel + 1)
+  match inputStatement with
   | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
   | .ifstmt cond thenstmts eliflist elsestmts =>
-    let thenS := String.join (( thenstmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) --";\n".intercalate $ thenstmts.map statementToString
+    let thenS := String.join (( thenstmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) --";\n".intercalate $ thenstmts.map recCall
     let elseS :=
      if elsestmts.length == 0 then "\n"
      else "else\n" ++
-     String.join (( elsestmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (elsestmts.map statementToString)
+     String.join (( elsestmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) -- ";\n".intercalate (elsestmts.map recCall)
     let elifS := String.intercalate " " $ eliflist.map λ (elifexp, elifstmts) =>
       s!" elsif {exprToString elifexp} then\n"
-      ++ String.join (( elifstmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (elifstmts.map statementToString)
+      ++ String.join (( elifstmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) -- ";\n".intercalate (elifstmts.map recCall)
     s!"if {exprToString cond} then\n" ++ thenS ++ "\n" ++ elifS ++ "\n" ++ elseS ++ "\nend"
   | .switchstmt exp cases elsestmts =>
     let casesS := "\n".intercalate $ cases.map
       λ (exps,stmts) => ",".intercalate (exps.map exprToString) ++ " : "
-        ++ ";\n".intercalate (stmts.map statementToString)
+        ++ ";\n".intercalate (stmts.map recCall)
     let elseS := if elsestmts.length == 0 then ""
-        else "else " ++ ";\n".intercalate (elsestmts.map statementToString)
+        else "else " ++ ";\n".intercalate (elsestmts.map recCall)
     s!"switch {exprToString exp}{casesS}{elseS} endswitch"
   | .forstmt quant stmts =>
-    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
     s!"for {quantifierToString quant} do\n{stmtsS} endfor"
   | .whilestmt cond stmts =>
-    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
-
+    let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
     s!"while {exprToString cond} do\n{stmtsS} end"
   | .aliasstmt aliases stmts =>
-    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
     "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS} end"
   | .proccall id args => s!"{id} (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
   | .clearstmt des => s!"clear {designatorToString des}"
