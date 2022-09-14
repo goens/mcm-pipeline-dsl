@@ -1329,12 +1329,13 @@ partial def get_api_with_guard_function_calls
           -- dbg_trace "===== END List of Func Identifiers ====\n"
 
           if
-          -- (or
+          (or
           (or
           (lst_ident.contains "insert")
-          (lst_ident.contains "send_memory_request"))
+          (lst_ident.contains "send_load_request"))
           -- (lst_ident.contains "set_executed")
-          -- )
+          (lst_ident.contains "send_store_request")
+          )
           then
             [lst_ident]
           else
@@ -5253,7 +5254,7 @@ def qualified_name_to_sta_murphi_expr
   let is_mem_access := or (lst_idents.contains "send_load_request") (lst_idents.contains "send_store_request")
   let is_set_executed := lst_idents.contains "set_executed"
 
-  let ruleset_core_elem_idx := "i"
+  let ruleset_core_elem_idx := "j"
   let core_idx_designator :=
   Murϕ.Expr.designator (
     Designator.mk ruleset_core_elem_idx []
