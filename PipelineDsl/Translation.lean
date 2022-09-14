@@ -6119,6 +6119,9 @@ def dsl_trans_descript_to_murphi_rule
   let calls_which_can_guard :=
     get_api_with_guard_function_calls trans_stmt_blk
 
+  dbg_trace "------ BEGIN CHECK list of GUARDS ------"
+  dbg_trace calls_which_can_guard
+  dbg_trace "------ END CHECK list of GUARDS ------"
   -- for each of these func calls (list of idents)
   -- we want to get their guard,
   -- i.e. put this "insert" or "memory-access"
@@ -6128,6 +6131,9 @@ def dsl_trans_descript_to_murphi_rule
 
   let exception_murphi_guard_exprs := 
     calls_which_can_guard.map qualified_name_to_sta_murphi_expr
+  dbg_trace "------ BEGIN GUARD EXPRS------"
+  dbg_trace exception_murphi_guard_exprs
+  dbg_trace "------ END GUARD EXPRS ------"
 
   let murphi_guard_exprs : List Murϕ.Expr := 
     exception_murphi_guard_exprs.map (
