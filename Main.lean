@@ -2,6 +2,7 @@ import PipelineDsl
 import Lean
 -- import PipelineDsl.Preprocess
 import PipelineDsl.AnalysisHelpers
+import PipelineDsl.LitmusTests
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
@@ -132,8 +133,19 @@ def main (args : List String): IO Unit := do
 -- ( func_decls : List Murϕ.ProcDecl)
 -- ( rules : List Murϕ.Rule)
 -- : Murϕ.Program
-  let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
-  IO.FS.writeFile output_file murphi_file.toString
+
+  -- Just for testing one thing, make sure to provide a Litmus
+  -- and import the litmustests...
+  -- let murphi_file : Murϕ.Program := compose_murphi_file_components const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
+  -- IO.FS.writeFile output_file murphi_file.toString
+
+  let murphi_files : List MurphiFile := --Murϕ.Program :=
+  gen_murphi_litmus_test_programs const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
+
+  let _ ← murphi_files.mapM (
+    fun file =>
+      IO.FS.writeFile (file.filename.append ".m") file.program.toString
+  )
 
   -- AZ TODO:
   -- add code to filter for certain controllers (LSQ ctrlers)

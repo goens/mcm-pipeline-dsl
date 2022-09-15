@@ -4,6 +4,10 @@ import PipelineDsl.Murphi
 open Pipeline
 open Murϕ
 
+structure file_name_and_output where
+name : String
+murphi_code : Murϕ.Program
+
 structure controller_info where
   -- Name, like LQ, SQ, SB, etc.
   name : Identifier

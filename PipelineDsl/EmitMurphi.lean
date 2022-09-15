@@ -4,6 +4,8 @@ import PipelineDsl.Murphi
 
 import PipelineDsl.AST
 
+import PipelineDsl.LitmusTests
+
 import PipelineDsl.Translation
 set_option maxHeartbeats 500000
 open Pipeline
@@ -153,6 +155,7 @@ def compose_murphi_file_components
 ( func_decls : List Murϕ.ProcDecl)
 ( rules : List Murϕ.Rule)
 ( ctrler_list : List controller_info )
+( litmus_test : LitmusTest )
 : Murϕ.Program
 :=
   let list_const_decls := [murϕ_const_decls|
@@ -249,32 +252,7 @@ type ---- Type declarations ----
 
   MSG_DEST : enum {core, mem};
 
-  --# So far haven't found use case for
-  --# symmetry stuff
-  -- LQ_idx_t : scalarset(LQ_NUM_ENTRIES_ENUM_CONST);
-
-  -- LQ_idx_t : LQ_idx_t;
   IQ_MAX_INSTS : inst_idx_t;
-
-  -- Is there a point using the enum?
-  -- can I simply not just model
-  -- it similar to the DSL as well?
-  -- instead of as a state machine?
-
-  -- LQ_state : enum {await_creation,
-  --                     await_scheduled,
-  --                     await_fwd_check,
-  --                     await_sb_fwd_check,
-  --                     await_translation,
-  --                     await_check_forwarding_or_load_response,
-  --                     await_sb_fwd_check_response,
-  --                     build_packet,
-  --                     send_memory_request,
-  --                     await_mem_response,
-  --                     squashed_await_ld_mem_resp,
-  --                     write_result,
-  --                     await_committed
-  --                    };
 
   -- insts are either load or stores
   INST_TYPE : enum {ld, st, inval};
@@ -324,68 +302,6 @@ type ---- Type declarations ----
 
   £type_decls;
   -- just a 'dumb' copy of the state vars
-
-  -- LQ_entry_values : record
-  -- state : LQ_state;
-  -- --#seq_num : inst_count_t; --#val_t;
-  -- instruction : INST;
-  -- virt_addr : addr_idx_t;
-  -- phys_addr : addr_idx_t;
-  -- read_value : val_t;
-  -- commit : boolean;
-  -- -- latest_store_seq_num : val_t;
-  -- st_seq_num : inst_count_t;
-  -- end;
-
-  ---------------------- SQ_ENTRY ----------------------
-
-  --# Murphi doesn't like the same enum names?
-
-  -- ST_ENTRY_STATE : enum {st_init,
-  --                        sq_await_creation,
-  --                        sq_await_scheduled,
-  --                        sq_await_translation,
-  --                        sq_await_lq_squash,
-  --                        st_build_packet,
-  --                        -- #send_memory_request,
-  --                        -- #await_mem_response,
-  --                        -- #write_result,
-  --                        sq_await_committed
-  --                       };
-
-  -- SQ_entry_values : record
-  -- state : ST_ENTRY_STATE;
-  -- --#seq_num : inst_count_t; --#val_t;
-  -- instruction : INST;
-  -- virt_addr : addr_idx_t;
-  -- phys_addr : addr_idx_t;
-  -- write_value : val_t;
-  -- commit : boolean;
-  -- -- latest_load_seq_num : val_t;
-  -- ld_seq_num : inst_count_t;
-  -- end;
-
-  ---------------------- SB_ENTRY ----------------------
-
-  --# Murphi doesn't like the same enum names?
-
-  -- SB_ENTRY_STATE : enum {
-  --                        sb_await_creation,
-  --                        sb_await_send_mem_req,
-  --                        sb_await_mem_response
-  --                       };
-
-  -- SB_entry_values : record
-  -- sb_state : SB_ENTRY_STATE;
-  -- --#seq_num : inst_count_t; --#val_t;
-  -- instruction : INST;
-  -- --#TODO: ideally, replace phys_addr
-  -- --# with the packet.
-  -- --# more "accurate" to generated code
-  -- virt_addr : addr_idx_t;
-  -- phys_addr : addr_idx_t;
-  -- write_value : val_t;
-  -- end;
 
   ---------------------- Rename ----------------------
   -- # Rename inserts insts into LSQ #(LQ for now)
@@ -550,72 +466,53 @@ type ---- Type declarations ----
   rf : array [reg_idx_t] of val_t;
   end;
 
-  -- Other # TODO
-  -- Try to understand what theyre using MSG and MSG_CMD for
-  -- I dont think I need it? maybe. might be a decent way to
-  -- send messages
-
-
-  -- organize this slightly better
-  -- arrange core stuff into a "core"
-  -- compose "multi-core-system" from "core"
-  -- instantiate "multi-core-system" as state
-
-  -- LQ : record
-  -- entries : array [LQ_idx_t] of LQ_entry_values;
-  -- head : LQ_idx_t;
-  -- tail : LQ_idx_t;
-  -- num_entries : LQ_count_t;
-  -- --# Search related things
-  -- --# consider creating a record
-  -- search_busy : boolean;
-  -- --# LQ doesn't need to know which store sent a req
-  -- --# No wait it does, to send the completion
-  -- --# and let the store know it can move states or sth
-  -- st_seq_num : inst_count_t;
-  -- phys_addr : addr_idx_t;
-  -- ld_seq_num : inst_count_t;
-  -- end;
-
   ---------------------- SQ ----------------------
-
-  -- SQ : record
-  -- entries : array [SQ_idx_t] of SQ_entry_values;
-  -- head : SQ_idx_t;
-  -- tail : SQ_idx_t;
-  -- num_entries : SQ_count_t;
-  -- --# Search related things
-  -- --# consider creating a record
-  -- search_busy : boolean;
-  -- st_seq_num : inst_count_t;
-  -- phys_addr : addr_idx_t;
-  -- ld_seq_num : inst_count_t;
-  -- end;
-
   -- ---------------------- SB ----------------------
-  -- SB : record
-  -- sb_entries : array [SB_idx_t] of SB_entry_values;
-  -- sb_head : SB_idx_t;
-  -- sb_tail : SB_idx_t;
-  -- num_entries : SB_count_t;
-
-  -- --# Search related things
-  -- --# consider creating a record
-  -- search_busy : boolean;
-  -- phys_addr : addr_idx_t;
-  -- ld_seq_num : inst_count_t;
-  -- end;
-
-  -- LSQ : record
-  -- LQ_ : LQ;
-  -- SQ_ : SQ;
-  -- end;
   ] ++ core_and_state_type_decl
 
   let list_var_decls : List Murϕ.Decl := [murϕ_var_decls|
   var -- state vars - explicit overall state --
 
   Sta :STATE
+  ]
+
+  let list_rename_init_insts : List Murϕ.Statement :=
+  litmus_test.insts_in_cores.map core_insts_to_emit_murphi_alias
+
+  let expected_core_reg_file_states : List Murϕ.Expr :=
+  litmus_test.expected.per_core_reg_file.map CoreRegState_to_emit_murphi_expr
+  let all_reg_file_states : Murϕ.Expr :=
+  match expected_core_reg_file_states with
+  | [] => dbg_trace "An invariant with no condition?? THROW"
+    panic! "Invariant with no condition!"
+  | [one] => one
+  | h::t =>
+    t.foldl (fun expr1 expr2 => Murϕ.Expr.binop "&" expr1 expr2) h
+
+  let cond_to_check : Murϕ.Expr :=
+  match litmus_test.expected.negate_or_not with
+  | ForbiddenOrRequired.forbidden => Murϕ.Expr.negation all_reg_file_states
+  | ForbiddenOrRequired.required => all_reg_file_states
+
+  let ordering_invariant : Murϕ.Rule :=
+  -- litmus_test
+  [murϕ_rule|
+    invariant £litmus_test.test_name
+    (
+      ( Sta .core_[0] .rename_.num_entries = 0 )
+      &
+      ( Sta .core_[0] .rob_.num_entries = 0 )
+      &
+      ( Sta .core_[0] .SB_.num_entries = 0 )
+      &
+      ( Sta .core_[1] .rename_.num_entries = 0 )
+      &
+      ( Sta .core_[1] .rob_.num_entries = 0 )
+      &
+      ( Sta .core_[1] .SB_.num_entries = 0 )
+    )
+    ->
+    (£cond_to_check)
   ]
 
 -- # ------------ HELPER FUNCTIONS --------------------
@@ -686,14 +583,6 @@ begin
   curr_tail_entry .state := await_scheduled;
   --# AZ TODO: do the store_queue check
 
-  --# Consider placing the Check Store_queue latest
-  --# Entry here!
-  --# Though if I do, this means this action is atomic,
-  --# and no other message passing operations 
-  --# NOTE should be add the assert in automatically?
-  --# or allow the user to specify asserts as well?
-  --# Or both?
-  --# Generated asserts shouldn't cause problems for the user
   assert (curr_tail_entry .st_seq_num = 0) "should first be 0?";
   if (sq .num_entries != 0) then
     --#NOTE: REMEMBER TO CLEAR ST SEQ NUM
@@ -735,15 +624,6 @@ function lq_schedule(
   lq_iter := lq .head;
   lq_count := lq .num_entries;
 
-  --#for i:0 .. lq_count do
-  --# actually interesting,
-  --# since if there's a collision
-  --# it'll likely be because we
-  --# didn't clear old LQ entries'
-  --# seq_num var!
-  --# or include condition on if
-  --# so it must be in await state?
-  --# Could use a while loop instead
   for i:0 .. LQ_NUM_ENTRIES_ENUM_CONST do
     -- error "trace load schedule?";
     -- Use i
@@ -1682,78 +1562,80 @@ begin
   end;
 
   -- # set up litmus test
-  alias rename_c0:init_state .core_[0] .rename_ do
-    --#for i : 0 .. CORE_INST_NUM do
-    --#  rename .test_insts[i] .op := inval;
-    --#  rename .test_insts[i] .seq_num := 0;
-    --#end;
+  £list_rename_init_insts
 
-    --#--# amd1 test
-    --#rename_c0.test_insts[0] .op := st;
-    --#rename_c0.test_insts[0] .seq_num := 1;
-    --#rename_c0.test_insts[0] .dest_reg := 0;
-    --#rename_c0.test_insts[0] .imm := 0; --# Addr
-    --#rename_c0.test_insts[0] .write_value := 1;
+  -- alias rename_c0:init_state .core_[0] .rename_ do
+  --   --#for i : 0 .. CORE_INST_NUM do
+  --   --#  rename .test_insts[i] .op := inval;
+  --   --#  rename .test_insts[i] .seq_num := 0;
+  --   --#end;
 
-    --#rename_c0.test_insts[1] .op := st;
-    --#rename_c0.test_insts[1] .seq_num := 2;
-    --#rename_c0.test_insts[1] .dest_reg := 1;
-    --#rename_c0.test_insts[1] .imm := 1; --# Addr
-    --#rename_c0.test_insts[1] .write_value := 1;
+  --   --#--# amd1 test
+  --   --#rename_c0.test_insts[0] .op := st;
+  --   --#rename_c0.test_insts[0] .seq_num := 1;
+  --   --#rename_c0.test_insts[0] .dest_reg := 0;
+  --   --#rename_c0.test_insts[0] .imm := 0; --# Addr
+  --   --#rename_c0.test_insts[0] .write_value := 1;
 
-    --# iwp23b1 test
-    rename_c0.test_insts[0] .op := st;
-    rename_c0.test_insts[0] .seq_num := 1;
-    rename_c0.test_insts[0] .dest_reg := 0;
-    rename_c0.test_insts[0] .imm := 0; --# Addr
-    rename_c0.test_insts[0] .write_value := 1;
+  --   --#rename_c0.test_insts[1] .op := st;
+  --   --#rename_c0.test_insts[1] .seq_num := 2;
+  --   --#rename_c0.test_insts[1] .dest_reg := 1;
+  --   --#rename_c0.test_insts[1] .imm := 1; --# Addr
+  --   --#rename_c0.test_insts[1] .write_value := 1;
 
-    rename_c0.test_insts[1] .op := ld;
-    rename_c0.test_insts[1] .seq_num := 2;
-    rename_c0.test_insts[1] .dest_reg := 1;
-    rename_c0.test_insts[1] .imm := 0; --# Addr
-    --#rename_c0.test_insts[1] .write_value := 0;
+  --   --# iwp23b1 test
+  --   rename_c0.test_insts[0] .op := st;
+  --   rename_c0.test_insts[0] .seq_num := 1;
+  --   rename_c0.test_insts[0] .dest_reg := 0;
+  --   rename_c0.test_insts[0] .imm := 0; --# Addr
+  --   rename_c0.test_insts[0] .write_value := 1;
 
-    rename_c0.rename_head := 0;
-    rename_c0.rename_tail := 0;
-    rename_c0.num_entries := 2;
-  end;
-  alias rename_c1:init_state .core_[1] .rename_ do
-    --#for i : 0 .. CORE_INST_NUM do
-    --#  rename .test_insts[i] .op := inval;
-    --#  rename .test_insts[i] .seq_num := 0;
-    --#end;
+  --   rename_c0.test_insts[1] .op := ld;
+  --   rename_c0.test_insts[1] .seq_num := 2;
+  --   rename_c0.test_insts[1] .dest_reg := 1;
+  --   rename_c0.test_insts[1] .imm := 0; --# Addr
+  --   --#rename_c0.test_insts[1] .write_value := 0;
 
-    --#--# amd1 test
-    --#rename_c1.test_insts[0] .op := ld;
-    --#rename_c1.test_insts[0] .seq_num := 1;
-    --#rename_c1.test_insts[0] .dest_reg := 0;
-    --#rename_c1.test_insts[0] .imm := 1;
-    --#--#rename_c1.test_insts[0] .write_value := 0;
+  --   rename_c0.rename_head := 0;
+  --   rename_c0.rename_tail := 0;
+  --   rename_c0.num_entries := 2;
+  -- end;
+  -- alias rename_c1:init_state .core_[1] .rename_ do
+  --   --#for i : 0 .. CORE_INST_NUM do
+  --   --#  rename .test_insts[i] .op := inval;
+  --   --#  rename .test_insts[i] .seq_num := 0;
+  --   --#end;
 
-    --#rename_c1.test_insts[1] .op := ld;
-    --#rename_c1.test_insts[1] .seq_num := 2;
-    --#rename_c1.test_insts[1] .dest_reg := 1;
-    --#rename_c1.test_insts[1] .imm := 0;
-    --#--#rename_c1.test_insts[1] .write_value := 0;
+  --   --#--# amd1 test
+  --   --#rename_c1.test_insts[0] .op := ld;
+  --   --#rename_c1.test_insts[0] .seq_num := 1;
+  --   --#rename_c1.test_insts[0] .dest_reg := 0;
+  --   --#rename_c1.test_insts[0] .imm := 1;
+  --   --#--#rename_c1.test_insts[0] .write_value := 0;
 
-    --# iwp23b1 test
-    rename_c1.test_insts[0] .op := st;
-    rename_c1.test_insts[0] .seq_num := 1;
-    rename_c1.test_insts[0] .dest_reg := 0;
-    rename_c1.test_insts[0] .imm := 1;
-    rename_c1.test_insts[0] .write_value := 1;
+  --   --#rename_c1.test_insts[1] .op := ld;
+  --   --#rename_c1.test_insts[1] .seq_num := 2;
+  --   --#rename_c1.test_insts[1] .dest_reg := 1;
+  --   --#rename_c1.test_insts[1] .imm := 0;
+  --   --#--#rename_c1.test_insts[1] .write_value := 0;
 
-    rename_c1.test_insts[1] .op := ld;
-    rename_c1.test_insts[1] .seq_num := 2;
-    rename_c1.test_insts[1] .dest_reg := 1;
-    rename_c1.test_insts[1] .imm := 1;
-    --#rename_c1.test_insts[1] .write_value := 0;
+  --   --# iwp23b1 test
+  --   rename_c1.test_insts[0] .op := st;
+  --   rename_c1.test_insts[0] .seq_num := 1;
+  --   rename_c1.test_insts[0] .dest_reg := 0;
+  --   rename_c1.test_insts[0] .imm := 1;
+  --   rename_c1.test_insts[0] .write_value := 1;
 
-    rename_c1.rename_head := 0;
-    rename_c1.rename_tail := 0;
-    rename_c1.num_entries := 2;
-  end;
+  --   rename_c1.test_insts[1] .op := ld;
+  --   rename_c1.test_insts[1] .seq_num := 2;
+  --   rename_c1.test_insts[1] .dest_reg := 1;
+  --   rename_c1.test_insts[1] .imm := 1;
+  --   --#rename_c1.test_insts[1] .write_value := 0;
+
+  --   rename_c1.rename_head := 0;
+  --   rename_c1.rename_tail := 0;
+  --   rename_c1.num_entries := 2;
+  -- end;
 
   return init_state;
 end
@@ -2467,66 +2349,67 @@ begin
   --#Sta := next_state;
   Sta := init_state_fn();
 end
-],
-[murϕ_rule|
-
-
---#invariant "amd1_verif"
---#  (
---#    ( Sta .core_[0] .rename_.num_entries = 0 )
---#    &
---#    ( Sta .core_[0] .rob_.num_entries = 0 )
---#    &
---#    ( Sta .core_[0] .SB_.num_entries = 0 )
---#    &
---#    ( Sta .core_[1] .rename_.num_entries = 0 )
---#    &
---#    ( Sta .core_[1] .rob_.num_entries = 0 )
---#    &
---#    ( Sta .core_[1] .SB_.num_entries = 0 )
---#  )
---#  ->
---#--# AMD1 test from pipecheck
---#    !(
---#      --#( Sta .core_[0] .rf_.rf[0] = 0 )
---#      --#&
---#      --#( Sta .core_[0] .rf_.rf[1] = 0 )
---#      --#&
---#      ( Sta .core_[1] .rf_.rf[0] = 1 )
---#      &
---#      ( Sta .core_[1] .rf_.rf[1] = 0 )
---#    )
-
-invariant "iwp23b1"
-(
-  ( Sta .core_[0] .rename_.num_entries = 0 )
-  &
-  ( Sta .core_[0] .rob_.num_entries = 0 )
-  &
-  ( Sta .core_[0] .SB_.num_entries = 0 )
-  &
-  ( Sta .core_[1] .rename_.num_entries = 0 )
-  &
-  ( Sta .core_[1] .rob_.num_entries = 0 )
-  &
-  ( Sta .core_[1] .SB_.num_entries = 0 )
-)
-->
- --#iwp23b1 REQUIRED OUTPUT test from pipecheck
- --#Note it's reg 1 since I just follow the inst #
- --#Should have this result, always!
-(
-  ( Sta .core_[0] .rf_.rf[0] = 0 )
-  &
-  ( Sta .core_[0] .rf_.rf[1] = 1 )
-  &
-  ( Sta .core_[1] .rf_.rf[0] = 0 )
-  &
-  ( Sta .core_[1] .rf_.rf[1] = 1 )
-)
 ]
+-- ,
+-- [murϕ_rule|
+
+
+-- --#invariant "amd1_verif"
+-- --#  (
+-- --#    ( Sta .core_[0] .rename_.num_entries = 0 )
+-- --#    &
+-- --#    ( Sta .core_[0] .rob_.num_entries = 0 )
+-- --#    &
+-- --#    ( Sta .core_[0] .SB_.num_entries = 0 )
+-- --#    &
+-- --#    ( Sta .core_[1] .rename_.num_entries = 0 )
+-- --#    &
+-- --#    ( Sta .core_[1] .rob_.num_entries = 0 )
+-- --#    &
+-- --#    ( Sta .core_[1] .SB_.num_entries = 0 )
+-- --#  )
+-- --#  ->
+-- --#--# AMD1 test from pipecheck
+-- --#    !(
+-- --#      --#( Sta .core_[0] .rf_.rf[0] = 0 )
+-- --#      --#&
+-- --#      --#( Sta .core_[0] .rf_.rf[1] = 0 )
+-- --#      --#&
+-- --#      ( Sta .core_[1] .rf_.rf[0] = 1 )
+-- --#      &
+-- --#      ( Sta .core_[1] .rf_.rf[1] = 0 )
+-- --#    )
+
+-- invariant "iwp23b1"
+-- (
+--   ( Sta .core_[0] .rename_.num_entries = 0 )
+--   &
+--   ( Sta .core_[0] .rob_.num_entries = 0 )
+--   &
+--   ( Sta .core_[0] .SB_.num_entries = 0 )
+--   &
+--   ( Sta .core_[1] .rename_.num_entries = 0 )
+--   &
+--   ( Sta .core_[1] .rob_.num_entries = 0 )
+--   &
+--   ( Sta .core_[1] .SB_.num_entries = 0 )
+-- )
+-- ->
+--  --#iwp23b1 REQUIRED OUTPUT test from pipecheck
+--  --#Note it's reg 1 since I just follow the inst #
+--  --#Should have this result, always!
+-- (
+--   ( Sta .core_[0] .rf_.rf[0] = 0 )
+--   &
+--   ( Sta .core_[0] .rf_.rf[1] = 1 )
+--   &
+--   ( Sta .core_[1] .rf_.rf[0] = 0 )
+--   &
+--   ( Sta .core_[1] .rf_.rf[1] = 1 )
+-- )
+-- ]
 ]
-) ++ rules
+) ++ rules ++ [ordering_invariant]
 
   let murphi_file : Murϕ.Program := {
     constdecls := list_const_decls,
@@ -2537,3 +2420,28 @@ invariant "iwp23b1"
   }
 
   murphi_file
+
+def gen_murphi_litmus_test_programs
+-- Consts, like num entries per buffer-type ctrler
+( const_decls : List Murϕ.Decl)
+-- Types, like ctrler defns
+( type_decls : List Murϕ.Decl)
+( func_decls : List Murϕ.ProcDecl)
+( rules : List Murϕ.Rule)
+( ctrler_list : List controller_info )
+-- ( litmus_tests : List LitmusTest )
+: List MurphiFile
+:=
+  let murphi_files : List MurphiFile :=
+  ActiveLitmusTests.map (
+    λ litmus_test =>
+      let name' := "generated-".append (litmus_test.test_name)
+      let program' := compose_murphi_file_components const_decls type_decls func_decls rules ctrler_list litmus_test
+      let murphi_file : MurphiFile := {
+        filename := name',
+        program := program'
+      }
+      murphi_file
+  )
+
+  murphi_files
