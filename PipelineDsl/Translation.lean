@@ -1796,7 +1796,7 @@ partial def ast_term_to_murphi_expr
         dbg_trace "specific dest expr"
         dbg_trace term_trans_info.specific_murphi_dest_expr
         let tail_entry :=
-        if specific_murphi_dest_expr_is_some then
+        if and term_trans_info.is_rhs specific_murphi_dest_expr_is_some then
           dbg_trace "CUSTOM ENTRY"
           tail_or_entry.custom_entry
         else
@@ -2603,7 +2603,7 @@ List (Murϕ.Expr × lst_stmts_decls)
         -- i.e. ROB if doing a squash to LQ
         -- and so I assume the caller has provided this..?
         -- or I set the manually here.
-        src_ctrler := trans_and_func.stmt_trans_info.src_ctrler,
+        src_ctrler := trans_and_func.stmt_trans_info.src_ctrler, -- expected_struct,
         lst_src_args := args,
         func := expected_func,
         is_await := trans_and_func.stmt_trans_info.is_await,
@@ -2614,13 +2614,12 @@ List (Murϕ.Expr × lst_stmts_decls)
         lst_decls := trans_and_func.stmt_trans_info.lst_decls,
         is_rhs := trans_and_func.stmt_trans_info.is_rhs
       }
+      dbg_trace "## BEGIN THE PASSED SPECIFIC ACCESSOR"
+      dbg_trace trans_and_func.specific_murphi_dest_expr
+      dbg_trace "##  END THE PASSED SPECIFIC ACCESSOR"
       -- TODO NOTE: THIS MUST BE TESTED!
 
       let if_blk_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts stmt_trans_info
-      dbg_trace "## BEGIN THE PASSED SPECIFIC ACCESSOR"
-      dbg_trace trans_and_func.specific_murphi_dest_expr
-      dbg_trace if_blk_stmts.stmts
-      dbg_trace "##  END THE PASSED SPECIFIC ACCESSOR"
 
       -- Okay, this means I need to know how to index into the
       -- current entry as well!
@@ -4327,7 +4326,7 @@ partial def api_term_func_to_murphi_func
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr := curr_idx,
+    specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
     lst_decls := term_trans_info.lst_decls,
     is_rhs := term_trans_info.is_rhs
   }
@@ -5070,11 +5069,45 @@ lst_stmts_decls
 
       let entries := "entries"
 
-      let ruleset_entry_elem_idx := "i"
+      let tail_entry :=
+        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        dbg_trace "CUSTOM ENTRY"
+        tail_or_entry.custom_entry
+        else
+        dbg_trace "BASIC ENTRY"
+        tail_or_entry.entry
+      -- AZ TODO: Use the specific entry thing
+      -- let ruleset_entry_elem_idx := "i"
+      let queue_idx :=
+        match tail_entry with
+        | tail_or_entry.entry => "i"
+        | tail_or_entry.custom_entry => ""
+        | tail_or_entry.tail => "tail"
+
       let entry_idx_designator :=
-      Murϕ.Expr.designator (
-        Designator.mk ruleset_entry_elem_idx []
-      )
+      -- Murϕ.Expr.designator (
+      --   Designator.mk ruleset_entry_elem_idx []
+      -- )
+      match tail_entry with
+        | tail_or_entry.tail =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk "next_state" [
+        -- entries
+        -- Assume the buffer entries are
+        -- referred to as 'i'
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl (ctrler_name.append "_"),
+        Sum.inl queue_idx
+        ])
+        | tail_or_entry.entry =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk queue_idx [])
+        | tail_or_entry.custom_entry =>
+        dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
+        dbg_trace stmt_trans_info.specific_murphi_dest_expr
+
+        stmt_trans_info.specific_murphi_dest_expr.get!
 
       let state := "state"
 
