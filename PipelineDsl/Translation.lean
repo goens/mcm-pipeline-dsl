@@ -144,7 +144,7 @@ entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
--- assign var?
+is_rhs : Bool
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -159,6 +159,7 @@ entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
+is_rhs : Bool
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -173,6 +174,7 @@ entry_keyword_dest : Option Identifier
 trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
+is_rhs : Bool
 
 structure trans_and_expected_func where
 expected_func : Identifier
@@ -204,6 +206,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -223,6 +226,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -242,6 +246,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 
 partial def assn_expr_to_term_translation_info
@@ -262,6 +267,7 @@ term_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 
 partial def assn_term_to_term_translation_info
@@ -282,6 +288,7 @@ term_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 
 partial def assn_term_to_expr_translation_info
@@ -302,6 +309,7 @@ expr_translation_info
   translation_info.trans_obj
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
+  translation_info.is_rhs
 )
 --- =========== CUT FROM TRANSFORMATION ================
 
@@ -1553,6 +1561,11 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           Murϕ.Expr.designator (
           Murϕ.Designator.mk idx [])
         | tail_or_entry.custom_entry =>
+          dbg_trace "PRINT THE SPECIFIC MURPHI EXTRACTED EXPR!!"
+          dbg_trace specific_murphi_dest_extracted
+          dbg_trace "PRINT THE SPECIFIC MURPHI EXPR!!"
+          dbg_trace specific_murphi_dest_expr
+
           specific_murphi_dest_extracted
 
         let murphi_designator :=
@@ -1761,6 +1774,7 @@ partial def ast_term_to_murphi_expr
       
       if ident_in_args
       then
+        dbg_trace " IDENT_IN_ARGS TRANSLATION CASE"
         -- Then we check if it's one of the
         -- src ctrler's state vars.
 
@@ -1774,21 +1788,34 @@ partial def ast_term_to_murphi_expr
         -- ctrler's args
         let bool_thing : Bool :=
         if src_ctrler_extracted == "" then
-        dbg_trace "===== BLANK STRING CTRLER NAME ====="
-        false
+          dbg_trace "===== BLANK STRING CTRLER NAME ====="
+          false
         else
-        true
+          true
+
+        dbg_trace "specific dest expr"
+        dbg_trace term_trans_info.specific_murphi_dest_expr
+        let tail_entry :=
+        if specific_murphi_dest_expr_is_some then
+          dbg_trace "CUSTOM ENTRY"
+          tail_or_entry.custom_entry
+        else
+          dbg_trace "BASIC ENTRY"
+          tail_or_entry.entry
+
+        
 
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           [ident]
-        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) none
+        ) (lst_ctrlers) src_ctrler_extracted (tail_entry) term_trans_info.specific_murphi_dest_expr
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
 
         murphi_expr_designator
       else
+        dbg_trace " DEFAULT IDENT TRANSLATION CASE"
         -- default case, can just copy here..
 
         -- if it is from the state vars, then
@@ -1803,8 +1830,10 @@ partial def ast_term_to_murphi_expr
         -- specify tail or entry here
         let tail_or_entry_or_custom :=
         if specific_murphi_dest_expr_is_some then
+          dbg_trace " CUSTOM ENTRY "
           tail_or_entry.custom_entry
         else
+          dbg_trace " BASIC ENTRY "
           tail_or_entry.entry
 
         let murphi_designator := (
@@ -1824,15 +1853,18 @@ partial def ast_term_to_murphi_expr
 
         murphi_expr_designator
     else
-      let specific_murphi_dest_expr_is_some : Bool :=
-      term_trans_info.specific_murphi_dest_expr.isSome
+      -- let specific_murphi_dest_expr_is_some : Bool :=
+      -- term_trans_info.specific_murphi_dest_expr.isSome
 
-      let tail_or_entry_or_custom :=
-      if specific_murphi_dest_expr_is_some then
-        -- dbg_trace "THIS IS UNIMPLEMENTED?"
-        tail_or_entry.custom_entry
-      else
-        tail_or_entry.entry
+      -- let tail_or_entry_or_custom :=
+      -- if specific_murphi_dest_expr_is_some then
+      --   -- dbg_trace "THIS IS UNIMPLEMENTED?"
+      --   dbg_trace " CUSTOM ENTRY "
+      --   tail_or_entry.custom_entry
+      -- else
+      --   dbg_trace " BASIC ENTRY "
+      --   tail_or_entry.entry
+      let tail_or_entry_or_custom := tail_or_entry.entry
 
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
@@ -2002,11 +2034,12 @@ partial def ast_term_to_murphi_expr
         else
         true
 
-      let tail_or_entry_or_custom :=
-      if specific_murphi_dest_expr_is_some then
-        tail_or_entry.custom_entry
-      else
-        tail_or_entry.entry
+      -- let tail_or_entry_or_custom :=
+      -- if specific_murphi_dest_expr_is_some then
+      --   tail_or_entry.custom_entry
+      -- else
+      --   tail_or_entry.entry
+      let tail_or_entry_or_custom := tail_or_entry.entry
 
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
@@ -2570,7 +2603,7 @@ List (Murϕ.Expr × lst_stmts_decls)
         -- i.e. ROB if doing a squash to LQ
         -- and so I assume the caller has provided this..?
         -- or I set the manually here.
-        src_ctrler := expected_struct,
+        src_ctrler := trans_and_func.stmt_trans_info.src_ctrler,
         lst_src_args := args,
         func := expected_func,
         is_await := trans_and_func.stmt_trans_info.is_await,
@@ -2578,11 +2611,16 @@ List (Murϕ.Expr × lst_stmts_decls)
         entry_keyword_dest := trans_and_func.dest_ctrler_name,
         trans_obj := trans_and_func.trans,
         specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr,
-        lst_decls := trans_and_func.stmt_trans_info.lst_decls
+        lst_decls := trans_and_func.stmt_trans_info.lst_decls,
+        is_rhs := trans_and_func.stmt_trans_info.is_rhs
       }
       -- TODO NOTE: THIS MUST BE TESTED!
 
       let if_blk_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts stmt_trans_info
+      dbg_trace "## BEGIN THE PASSED SPECIFIC ACCESSOR"
+      dbg_trace trans_and_func.specific_murphi_dest_expr
+      dbg_trace if_blk_stmts.stmts
+      dbg_trace "##  END THE PASSED SPECIFIC ACCESSOR"
 
       -- Okay, this means I need to know how to index into the
       -- current entry as well!
@@ -2686,8 +2724,9 @@ lst_stmts_decls
     is_await := stmt_trans_info.is_await,
     entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
     trans_obj := stmt_trans_info.trans_obj,
-    specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
-    lst_decls := stmt_trans_info.lst_decls
+    specific_murphi_dest_expr := ctrler_squash_idx -- stmt_trans_info.specific_murphi_dest_expr,
+    lst_decls := stmt_trans_info.lst_decls,
+    is_rhs := stmt_trans_info.is_rhs
   }
   let handle_trans_info_lst : List trans_and_expected_func :=
   this_ctrler.transition_list.map (
@@ -3101,6 +3140,7 @@ lst_stmts_decls
                 stmt_trans_info.trans_obj
                 none
                 stmt_trans_info.lst_decls
+                stmt_trans_info.is_rhs
               )
 
               -- let murphi_stmts : List Murϕ.Statement :=
@@ -3535,7 +3575,8 @@ lst_stmts_decls
             entry_keyword_dest := Option.some dest_ctrler_name,
             trans_obj := stmt_trans_info.trans_obj,
             specific_murphi_dest_expr := none,
-            lst_decls := stmt_trans_info.lst_decls
+            lst_decls := stmt_trans_info.lst_decls,
+            is_rhs := stmt_trans_info.is_rhs
             }
 
 -- (
@@ -3967,13 +4008,56 @@ lst_stmts_decls
             let set_exec_template : List Murϕ.Statement :=
             [murϕ|
               -- set the is_executed bool in the ROB
-              rob := Sta.core_[j].rob_;
+              -- AZ NOTE: This leads to a
+              -- subtle bug when chained together
+              -- with other API templates;
+              -- i.e. it overwrites any changes...
+              -- rob := Sta.core_[j].rob_;
+              -- rob := Sta.core_[j].rob_;
+              rob := next_state.core_[j].rob_;
 
               --# process msg
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
               assert (rob .is_executed[rob_id] = false) "why isn't it false?";
               rob .is_executed[rob_id] := true;
+
+              -- rob .valid_access_msg := false;
+
+              next_state .core_[j] .rob_ := rob;
+            ]
+            let set_exec_decls : List Murϕ.Decl := [
+              (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
+              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+            ]
+
+            let stmts_decls : lst_stmts_decls := {
+            stmts := set_exec_template,
+            decls := set_exec_decls
+            }
+            stmts_decls
+          else
+          if (and (api_func_name == "set_unexecuted")
+          (dest_ctrler_name == "rob"))
+          then
+            dbg_trace "@@@@@ FOUND SET_UNEXECUTED"
+            let ctrler_name_ : String := ctrler_name.append "_"
+
+            let set_exec_template : List Murϕ.Statement :=
+            [murϕ|
+              -- set the is_executed bool in the ROB
+              -- AZ NOTE: This leads to a
+              -- subtle bug when chained together
+              -- with other API templates;
+              -- i.e. it overwrites any changes...
+              -- rob := Sta.core_[j].rob_;
+              rob := next_state.core_[j].rob_;
+
+              --# process msg
+              rob_id := search_rob_seq_num_idx(rob,
+                        next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
+              assert (rob .is_executed[rob_id] = true) "why isn't it true?";
+              rob .is_executed[rob_id] := false;
 
               -- rob .valid_access_msg := false;
 
@@ -4156,7 +4240,8 @@ partial def api_term_func_to_murphi_func
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr :=  curr_idx,
-    lst_decls := term_trans_info.lst_decls
+    lst_decls := term_trans_info.lst_decls,
+    is_rhs := term_trans_info.is_rhs
   }
 
   -- (
@@ -4229,7 +4314,8 @@ partial def api_term_func_to_murphi_func
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := curr_idx,
-    lst_decls := term_trans_info.lst_decls
+    lst_decls := term_trans_info.lst_decls,
+    is_rhs := term_trans_info.is_rhs
   }
   let when_search_fail_trans_info : stmt_translation_info := {
     stmt := when_search_fail,
@@ -4242,11 +4328,15 @@ partial def api_term_func_to_murphi_func
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := curr_idx,
-    lst_decls := term_trans_info.lst_decls
+    lst_decls := term_trans_info.lst_decls,
+    is_rhs := term_trans_info.is_rhs
   }
 
+dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
   let when_search_success_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
   let when_search_fail_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+  dbg_trace "(((***((( END TAIL SEARCH WHEN TRANSLATION ))))))"
+
   dbg_trace "&&&&& BEGIN Murϕ tail_search when_success &&&&&"
   dbg_trace when_search_success_murphi_stmts.stmts
   dbg_trace when_search_success_murphi_stmts.decls
@@ -4468,7 +4558,20 @@ lst_stmts_decls
     -- Which murphi expr AST is the right match up? 
     -- Must match DSL Expr to Murphi Expr.
     -- Perhaps I should make a func for this :)
-    let expr_trans_info := assn_stmt_to_expr_translation_info stmt_trans_info expr
+    let expr_trans_info : expr_translation_info := {
+      expr := expr,
+      ctrler_name := stmt_trans_info.ctrler_name,
+      lst_ctrlers := stmt_trans_info.lst_ctrlers,
+      src_ctrler := stmt_trans_info.src_ctrler
+      lst_src_args := stmt_trans_info.lst_src_args
+      func := stmt_trans_info.func
+      is_await := stmt_trans_info.is_await
+      entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+      trans_obj := stmt_trans_info.trans_obj
+      specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+      lst_decls := stmt_trans_info.lst_decls
+      is_rhs := true
+    }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
     
@@ -4835,8 +4938,22 @@ lst_stmts_decls
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
 -- add the structure name stuff..
-    let expr_trans_info := 
-      assn_stmt_to_expr_translation_info stmt_trans_info expr
+    -- let expr_trans_info := 
+    --   assn_stmt_to_expr_translation_info stmt_trans_info expr
+    let expr_trans_info : expr_translation_info := {
+    expr := expr,
+    ctrler_name := stmt_trans_info.ctrler_name,
+    lst_ctrlers := stmt_trans_info.lst_ctrlers,
+    src_ctrler := stmt_trans_info.src_ctrler
+    lst_src_args := stmt_trans_info.lst_src_args
+    func := stmt_trans_info.func
+    is_await := stmt_trans_info.is_await
+    entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+    trans_obj := stmt_trans_info.trans_obj
+    specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+    lst_decls := stmt_trans_info.lst_decls
+    is_rhs := true
+    }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
     
@@ -5101,6 +5218,9 @@ lst_stmts_decls
       dbg_trace "FAIL: second identifier is not the 'insert' func"
       false
 
+    dbg_trace "(((((( BEGIN SPECIFIC MURPHI EXPR ))))))"
+    dbg_trace stmt_trans_info.specific_murphi_dest_expr
+    dbg_trace "(((((( END SPECIFIC MURPHI EXPR ))))))"
 
     -- After any sanity messages, try to map the stmts
     -- Create the required info object:
@@ -5117,7 +5237,8 @@ lst_stmts_decls
       entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
       trans_obj := stmt_trans_info.trans_obj,
       specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
-      lst_decls := stmt_trans_info.lst_decls
+      lst_decls := stmt_trans_info.lst_decls,
+      is_rhs := stmt_trans_info.is_rhs
     }
 
     -- let murphi_stmts : List Murϕ.Statement :=
@@ -6233,6 +6354,7 @@ def dsl_trans_descript_to_murphi_rule
     trans_obj := trans
     specific_murphi_dest_expr := none
     lst_decls := []
+    is_rhs := false
   }
 
   let murphi_stmts_decls : lst_stmts_decls :=
