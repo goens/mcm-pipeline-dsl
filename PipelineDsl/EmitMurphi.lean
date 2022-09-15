@@ -1562,7 +1562,7 @@ begin
   end;
 
   -- # set up litmus test
-  £list_rename_init_insts
+  £list_rename_init_insts;
 
   -- alias rename_c0:init_state .core_[0] .rename_ do
   --   --#for i : 0 .. CORE_INST_NUM do
