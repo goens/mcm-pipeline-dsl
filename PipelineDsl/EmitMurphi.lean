@@ -494,26 +494,30 @@ type ---- Type declarations ----
   | ForbiddenOrRequired.forbidden => Murϕ.Expr.negation all_reg_file_states
   | ForbiddenOrRequired.required => all_reg_file_states
 
-  let ordering_invariant : Murϕ.Rule :=
   -- litmus_test
-  [murϕ_rule|
-    invariant £litmus_test.test_name
+  let the_test_name := litmus_test.test_name
+  let ordering_invariant_expr : Murϕ.Expr :=
+  [murϕ_expr|
     (
-      ( Sta .core_[0] .rename_.num_entries = 0 )
-      &
-      ( Sta .core_[0] .rob_.num_entries = 0 )
-      &
-      ( Sta .core_[0] .SB_.num_entries = 0 )
-      &
-      ( Sta .core_[1] .rename_.num_entries = 0 )
-      &
-      ( Sta .core_[1] .rob_.num_entries = 0 )
-      &
-      ( Sta .core_[1] .SB_.num_entries = 0 )
+      (
+        ( Sta .core_[0] .rename_.num_entries = 0 )
+        &
+        ( Sta .core_[0] .rob_.num_entries = 0 )
+        &
+        ( Sta .core_[0] .SB_.num_entries = 0 )
+        &
+        ( Sta .core_[1] .rename_.num_entries = 0 )
+        &
+        ( Sta .core_[1] .rob_.num_entries = 0 )
+        &
+        ( Sta .core_[1] .SB_.num_entries = 0 )
+      )
+      ->
+      (£cond_to_check)
     )
-    ->
-    (£cond_to_check)
   ]
+  let ordering_invariant : Murϕ.Rule :=
+  Murϕ.Rule.invariant the_test_name ordering_invariant_expr
 
 -- # ------------ HELPER FUNCTIONS --------------------
   let list_func_decls := List.join ([
