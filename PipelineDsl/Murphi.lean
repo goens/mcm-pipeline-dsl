@@ -258,16 +258,19 @@ private partial def exprToString : Expr → String
 private partial def formalToString : Formal → String
   | .mk var ids type => (if var then "var " else "") ++ ", ".intercalate ids ++ " : " ++ typeExprToString type
 
-private partial def procDeclToString : ProcDecl → String
+private partial def procDeclToString (inputProcDecl : ProcDecl) : String :=
+  let indentationLevel : Nat := 1
+  let recCall := statementToString (indentationLevel := indentationLevel + 1)
+  match inputProcDecl with
   | .procedure id formals decls statements => s!"procedure {id} (" ++ "; ".intercalate (formals.map formalToString) ++ ");\n"
-    ++ "\n".intercalate (decls.map declToString) ++ "begin\n" ++ ";\n".intercalate (statements.map statementToString)
+    ++ "\n".intercalate (decls.map declToString) ++ "begin\n" ++ ";\n".intercalate (statements.map recCall)
     ++ ";\n end;"
   | .function id formals type decls statements => s!"function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ")"
     ++ " : " ++ typeExprToString type ++ ";\n" ++
     -- Function Variables, Syntax: var <var_name> : <var_type> ;
     String.join (( decls.map declToString ).map fun str => String.join ["  var ", str, ";\n"] ) -- "\n".intercalate (decls.map declToString)
     ++ "\nbegin\n"
-    ++ String.join (( statements.map statementToString ).map fun str => String.join ["  ", str, ";\n"] )
+    ++ String.join (( statements.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] )
     -- ";\n".intercalate (statements.map statementToString)
     ++ "end"
 
@@ -289,35 +292,36 @@ private partial def quantifierToString : Quantifier → String
     s!"{id} := {expS} to {toexpS} {byexpS}"
 
 private partial def statementToString ( indentationLevel := 0) (inputStatement : Statement)  : String :=
+  let end_indents : String := indent (indentationLevel - 1)
   let recCall := statementToString (indentationLevel := indentationLevel + 1)
   match inputStatement with
   | .assignment des expr => (designatorToString des) ++ " := " ++ (exprToString expr)
   | .ifstmt cond thenstmts eliflist elsestmts =>
     let thenS := String.join (( thenstmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) --";\n".intercalate $ thenstmts.map recCall
     let elseS :=
-     if elsestmts.length == 0 then "\n"
-     else "else\n" ++
+     if elsestmts.length == 0 then ""
+     else end_indents ++ "else\n" ++
      String.join (( elsestmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) -- ";\n".intercalate (elsestmts.map recCall)
     let elifS := String.intercalate " " $ eliflist.map λ (elifexp, elifstmts) =>
-      s!" elsif {exprToString elifexp} then\n"
+      s!"{end_indents}elsif {exprToString elifexp} then\n"
       ++ String.join (( elifstmts.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] ) -- ";\n".intercalate (elifstmts.map recCall)
-    s!"if {exprToString cond} then\n" ++ thenS ++ "\n" ++ elifS ++ "\n" ++ elseS ++ "\nend"
+    s!"if {exprToString cond} then\n" ++ thenS ++ elifS ++ elseS ++ end_indents ++ "end"
   | .switchstmt exp cases elsestmts =>
     let casesS := "\n".intercalate $ cases.map
       λ (exps,stmts) => ",".intercalate (exps.map exprToString) ++ " : "
         ++ ";\n".intercalate (stmts.map recCall)
     let elseS := if elsestmts.length == 0 then ""
         else "else " ++ ";\n".intercalate (elsestmts.map recCall)
-    s!"switch {exprToString exp}{casesS}{elseS} endswitch"
+    s!"switch {exprToString exp}{casesS}{elseS}" ++ end_indents ++ "endswitch"
   | .forstmt quant stmts =>
     let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
-    s!"for {quantifierToString quant} do\n{stmtsS} endfor"
+    s!"for {quantifierToString quant} do\n{stmtsS}" ++ end_indents ++ "endfor"
   | .whilestmt cond stmts =>
     let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
-    s!"while {exprToString cond} do\n{stmtsS} end"
+    s!"while {exprToString cond} do\n{stmtsS}" ++ end_indents ++ "end"
   | .aliasstmt aliases stmts =>
     let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
-    "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS} end"
+    "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS}" ++ end_indents ++ "end"
   | .proccall id args => s!"{id} (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
   | .clearstmt des => s!"clear {designatorToString des}"
   | .errorstmt msg => s!"error \"{msg}\""
@@ -330,9 +334,11 @@ private partial def statementToString ( indentationLevel := 0) (inputStatement :
 private partial def aliasToString : Alias → String
   | .mk id exp => s!"{id} : {exprToString exp}"
 
-private partial def ruleToString : Rule → String
+private partial def ruleToString ( indentationLevel := 0) (inputRule : Rule) : String :=
+  let recCall := statementToString (indentationLevel := indentationLevel + 1)
+  match inputRule with
   | .simplerule opName opExp decls stmts =>
-    let stmtsS := String.join (( stmts.map statementToString ).map fun str => String.join ["  ", str, ";\n"] ) -- ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := String.join (( stmts.map recCall ).map fun str => String.join [(indent ( indentationLevel + 1 )), str, ";\n"] ) -- ";\n".intercalate (stmts.map statementToString)
     let declsS := (String.join (( decls.map declToString ).map (fun str => String.join ["  var ", str, ";\n"]) )) -- String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
