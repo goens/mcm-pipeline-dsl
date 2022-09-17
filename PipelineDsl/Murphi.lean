@@ -265,11 +265,11 @@ private partial def procDeclToString (inputProcDecl : ProcDecl) : String :=
   | .procedure id formals decls statements => s!"procedure {id} (" ++ "; ".intercalate (formals.map formalToString) ++ ");\n"
     ++ "\n".intercalate (decls.map declToString) ++ "begin\n" ++ ";\n".intercalate (statements.map recCall)
     ++ ";\n end;"
-  | .function id formals type decls statements => s!"function {id} (" ++ ";\n".intercalate (formals.map formalToString) ++ ")"
+  | .function id formals type decls statements => s!"function {id} (\n  " ++ ";\n  ".intercalate (formals.map formalToString) ++ "\n)"
     ++ " : " ++ typeExprToString type ++ ";\n" ++
     -- Function Variables, Syntax: var <var_name> : <var_type> ;
     String.join (( decls.map declToString ).map fun str => String.join ["  var ", str, ";\n"] ) -- "\n".intercalate (decls.map declToString)
-    ++ "\nbegin\n"
+    ++ "begin\n"
     ++ String.join (( statements.map recCall ).map fun str => String.join [(indent indentationLevel), str, ";\n"] )
     -- ";\n".intercalate (statements.map statementToString)
     ++ "end"
@@ -321,7 +321,7 @@ private partial def statementToString ( indentationLevel := 0) (inputStatement :
     s!"while {exprToString cond} do\n{stmtsS}" ++ end_indents ++ "end"
   | .aliasstmt aliases stmts =>
     let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join [(indent indentationLevel), str, ";\n"]) )) -- ";\n".intercalate (stmts.map recCall)
-    "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do {stmtsS}" ++ end_indents ++ "end"
+    "alias " ++ ("; ".intercalate $ aliases.map aliasToString) ++ s!" do\n{stmtsS}" ++ end_indents ++ "end"
   | .proccall id args => s!"{id} (" ++ (", ".intercalate $ args.map exprToString) ++ ")"
   | .clearstmt des => s!"clear {designatorToString des}"
   | .errorstmt msg => s!"error \"{msg}\""
@@ -334,7 +334,8 @@ private partial def statementToString ( indentationLevel := 0) (inputStatement :
 private partial def aliasToString : Alias → String
   | .mk id exp => s!"{id} : {exprToString exp}"
 
-private partial def ruleToString ( indentationLevel := 0) (inputRule : Rule) : String :=
+private partial def ruleToString (inputRule : Rule) : String :=
+  let indentationLevel : Nat := 1
   let recCall := statementToString (indentationLevel := indentationLevel + 1)
   match inputRule with
   | .simplerule opName opExp decls stmts =>
@@ -362,7 +363,7 @@ private partial def ruleToString ( indentationLevel := 0) (inputRule : Rule) : S
   | .ruleset quants rules =>
     let quantsS := "; ".intercalate (quants.map quantifierToString)
     let rulesS := (String.join (( rules.map ruleToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- String.intercalate ";\n" $ rules.map ruleToString
-    s!"\nruleset {quantsS} do \n{rulesS}\nend"
+    s!"\nruleset {quantsS} do \n{rulesS}  end"
   | .aliasrule aliases rules =>
     let aliasesS := "; ".intercalate (aliases.map aliasToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
