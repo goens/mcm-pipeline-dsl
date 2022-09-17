@@ -145,6 +145,10 @@ trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
 is_rhs : Bool
+-- Do we use specific_murphi_dest_expr in sth
+-- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+-- or just LQ.entries[ i ].state := state_
+use_specific_dest_in_transition : Bool
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -160,6 +164,7 @@ trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
 is_rhs : Bool
+use_specific_dest_in_transition : Bool
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -175,6 +180,7 @@ trans_obj : Description
 specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
 is_rhs : Bool
+use_specific_dest_in_transition : Bool
 
 structure trans_and_expected_func where
 expected_func : Identifier
@@ -207,6 +213,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -227,6 +234,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -247,6 +255,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 
 partial def assn_expr_to_term_translation_info
@@ -268,6 +277,7 @@ term_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 
 partial def assn_term_to_term_translation_info
@@ -289,6 +299,7 @@ term_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 
 partial def assn_term_to_expr_translation_info
@@ -310,6 +321,7 @@ expr_translation_info
   translation_info.specific_murphi_dest_expr
   translation_info.lst_decls
   translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
 )
 --- =========== CUT FROM TRANSFORMATION ================
 
@@ -2612,7 +2624,8 @@ List (Murϕ.Expr × lst_stmts_decls)
         trans_obj := trans_and_func.trans,
         specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr,
         lst_decls := trans_and_func.stmt_trans_info.lst_decls,
-        is_rhs := trans_and_func.stmt_trans_info.is_rhs
+        is_rhs := trans_and_func.stmt_trans_info.is_rhs,
+        use_specific_dest_in_transition := trans_and_func.stmt_trans_info.use_specific_dest_in_transition
       }
       dbg_trace "## BEGIN THE PASSED SPECIFIC ACCESSOR"
       dbg_trace trans_and_func.specific_murphi_dest_expr
@@ -2725,7 +2738,8 @@ lst_stmts_decls
     trans_obj := stmt_trans_info.trans_obj,
     specific_murphi_dest_expr := ctrler_squash_idx -- stmt_trans_info.specific_murphi_dest_expr,
     lst_decls := stmt_trans_info.lst_decls,
-    is_rhs := stmt_trans_info.is_rhs
+    is_rhs := stmt_trans_info.is_rhs,
+    use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
   }
   let handle_trans_info_lst : List trans_and_expected_func :=
   this_ctrler.transition_list.map (
@@ -3140,6 +3154,7 @@ lst_stmts_decls
                 none
                 stmt_trans_info.lst_decls
                 stmt_trans_info.is_rhs
+                stmt_trans_info.use_specific_dest_in_transition
               )
 
               -- let murphi_stmts : List Murϕ.Statement :=
@@ -3575,7 +3590,8 @@ lst_stmts_decls
             trans_obj := stmt_trans_info.trans_obj,
             specific_murphi_dest_expr := none,
             lst_decls := stmt_trans_info.lst_decls,
-            is_rhs := stmt_trans_info.is_rhs
+            is_rhs := stmt_trans_info.is_rhs,
+            use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
             }
 
 -- (
@@ -3658,9 +3674,25 @@ lst_stmts_decls
             let expected_func := "squash"
             let expected_struct := "ROB"
 
+            let if_stmt_trans_info : stmt_translation_info := {
+              stmt := stmt_trans_info.stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := stmt_trans_info.ctrler_name,
+              src_ctrler := stmt_trans_info.src_ctrler,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+            }
+
             let ld_trans_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
-              stmt_trans_info) speculative_ld_unit_name squash_ld_id (
+              if_stmt_trans_info) speculative_ld_unit_name squash_ld_id (
               dest_ctrler_name) expected_func expected_struct
             )
             dbg_trace "===== BEGIN LQ Handle finder ====="
@@ -4240,7 +4272,8 @@ partial def api_term_func_to_murphi_func
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr :=  curr_idx,
     lst_decls := term_trans_info.lst_decls,
-    is_rhs := term_trans_info.is_rhs
+    is_rhs := term_trans_info.is_rhs,
+    use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
   }
 
   -- (
@@ -4314,7 +4347,8 @@ partial def api_term_func_to_murphi_func
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := curr_idx,
     lst_decls := term_trans_info.lst_decls,
-    is_rhs := term_trans_info.is_rhs
+    is_rhs := term_trans_info.is_rhs,
+    use_specific_dest_in_transition := false
   }
   let when_search_fail_trans_info : stmt_translation_info := {
     stmt := when_search_fail,
@@ -4328,7 +4362,8 @@ partial def api_term_func_to_murphi_func
     trans_obj := term_trans_info.trans_obj,
     specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
     lst_decls := term_trans_info.lst_decls,
-    is_rhs := term_trans_info.is_rhs
+    is_rhs := term_trans_info.is_rhs,
+    use_specific_dest_in_transition := false
   }
 
 dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
@@ -4424,7 +4459,7 @@ dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
         endif;
   
         -- This is not really necessary
-        if (offset != (difference + 1)) then
+        if (offset != difference) then
           offset := offset + 1;
         else
           while_break := true;
@@ -4570,6 +4605,7 @@ lst_stmts_decls
       specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
       lst_decls := stmt_trans_info.lst_decls
       is_rhs := true
+      use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
     }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
@@ -4952,6 +4988,7 @@ lst_stmts_decls
     specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
     lst_decls := stmt_trans_info.lst_decls
     is_rhs := true
+    use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
     }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
@@ -5081,7 +5118,11 @@ lst_stmts_decls
       let queue_idx :=
         match tail_entry with
         | tail_or_entry.entry => "i"
-        | tail_or_entry.custom_entry => ""
+        | tail_or_entry.custom_entry =>
+          if stmt_trans_info.use_specific_dest_in_transition then
+            ""
+          else
+            "i"
         | tail_or_entry.tail => "tail"
 
       let entry_idx_designator :=
@@ -5107,7 +5148,11 @@ lst_stmts_decls
         dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
         dbg_trace stmt_trans_info.specific_murphi_dest_expr
 
-        stmt_trans_info.specific_murphi_dest_expr.get!
+        if stmt_trans_info.use_specific_dest_in_transition then
+          stmt_trans_info.specific_murphi_dest_expr.get!
+        else
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk queue_idx [])
 
       let state := "state"
 
@@ -5272,6 +5317,7 @@ lst_stmts_decls
       specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
       lst_decls := stmt_trans_info.lst_decls,
       is_rhs := stmt_trans_info.is_rhs
+      use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
     }
 
     -- let murphi_stmts : List Murϕ.Statement :=
@@ -6388,6 +6434,7 @@ def dsl_trans_descript_to_murphi_rule
     specific_murphi_dest_expr := none
     lst_decls := []
     is_rhs := false
+    use_specific_dest_in_transition := false
   }
 
   let murphi_stmts_decls : lst_stmts_decls :=
