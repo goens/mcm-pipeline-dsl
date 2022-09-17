@@ -1002,30 +1002,54 @@ end
 ],
 [murϕ_proc_decl|
 
-function sb_insert(
-             sb : SB;
-             sq_entry : SQ_entry_values;
-           ) : SB;
+function sb_insert (sb : SB;
+sq_entry : SQ_entry_values) : SB;
   var sb_new : SB;
   var sb_tail : SB_idx_t;
-  begin
-  --
+
+begin
   sb_new := sb;
-  sb_tail := sb .tail;
+  assert (sb.num_entries < SB_NUM_ENTRIES_CONST) "can't add more!";
+  sb_new.num_entries := (sb.num_entries + 1);
 
-  assert sb_new .entries[sb .tail] .state = sb_await_creation "to insert into SB, store should be awaiting creation";
-  -- AZ NOTE: CUSTOMIZATION PT?
-  sb_new .entries[sb .tail] .state := sb_await_send_mem_req;
-
-  sb_new .entries[sb .tail] .instruction := sq_entry  .instruction;
-  sb_new .entries[sb .tail] .virt_addr := sq_entry .virt_addr;
-  sb_new .entries[sb .tail] .phys_addr := sq_entry .phys_addr;
-  sb_new .entries[sb .tail] .write_value := sq_entry .write_value;
-  sb_new .tail := ( sb .tail + 1 ) % (SB_NUM_ENTRIES_CONST);
-  sb_new .num_entries := sb .num_entries + 1;
-  --
-  assert (sb .num_entries < ( SB_NUM_ENTRIES_CONST)) "can't add more!";
-  return sb_new;
+  for i : SB_idx_t do
+    if (sb_new.entries[ i ].state = sb_await_creation) then
+      sb_new.entries[ i ].state := sb_await_send_mem_req;
+      sb_new.entries[ i ].instruction := sq_entry.instruction;
+      sb_new.entries[ i ].virt_addr := sq_entry.virt_addr;
+      sb_new.entries[ i ].phys_addr := sq_entry.phys_addr;
+      sb_new.entries[ i ].write_value := sq_entry.write_value;
+      return sb_new;
+    end;
+  endfor;
+end
+],
+[murϕ_proc_decl|
+function sb_clear_entry (
+  sb : SB;
+  seq_num : inst_count_t
+) : SB;
+  var sb_new : SB;
+  var curr_head : SB_idx_t;
+begin
+  sb_new := sb;
+  -- curr_head := sb.head;
+  for i : SB_idx_t do
+    if (sb_new.entries[ i ].instruction.seq_num = seq_num) then
+      sb_new.entries[ i ].instruction.seq_num := 0;
+      sb_new.entries[ i ].instruction.op := inval;
+      sb_new.entries[ i ].instruction.dest_reg := 0;
+      sb_new.entries[ i ].instruction.imm := 0;
+      sb_new.entries[ i ].state := sb_await_creation;
+      sb_new.entries[ i ].write_value := 0;
+      sb_new.entries[ i ].virt_addr := 0;
+      sb_new.entries[ i ].phys_addr := 0;
+      -- NOTE: Make sure to check if there's space before inserting
+      sb_new.num_entries := (sb_new.num_entries - 1);
+      return sb_new;
+    end;
+  endfor;
+  error "Couldn't find the SB entry to clear!!!";
 end
 ],
 [murϕ_proc_decl|
@@ -1213,12 +1237,14 @@ function associative_ack_sb(
       then
       assert ( curr_entry .state = sb_await_mem_response ) "ACK SB: Should be in await mem resp?";
       --# curr_entry .state := sb_await_creation;
-      assert (curr_entry .instruction .seq_num = sb_new .entries[sb_new .head] .instruction .seq_num) "should be de-queuing the head!!";
+      -- NOTE: comment this out, since this checks for in-order stores!
+      -- but we just use the test to 
+      -- assert (curr_entry .instruction .seq_num = sb_new .entries[sb_new .head] .instruction .seq_num) "should be de-queuing the head!!";
 
       --#sb_new .entries[curr_entry_id] := curr_entry;
       --# Should implement a de-queue operation
       --# that's based on matching a field
-      sb_new := sb_clear_head(sb_new);
+      sb_new := sb_clear_entry(sb_new, seq_num);
 
       -- error "trace load schedule?";
       return sb_new;
