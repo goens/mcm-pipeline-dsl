@@ -339,7 +339,7 @@ private partial def ruleToString (inputRule : Rule) : String :=
   let recCall := statementToString (indentationLevel := indentationLevel + 1)
   match inputRule with
   | .simplerule opName opExp decls stmts =>
-    let stmtsS := String.join (( stmts.map recCall ).map fun str => String.join [(indent ( indentationLevel + 1 )), str, ";\n"] ) -- ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := String.join (( stmts.map recCall ).map fun str => String.join [(indent ( indentationLevel )), str, ";\n"] ) -- ";\n".intercalate (stmts.map statementToString)
     let declsS := (String.join (( decls.map declToString ).map (fun str => String.join ["  var ", str, ";\n"]) )) -- String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
@@ -349,7 +349,7 @@ private partial def ruleToString (inputRule : Rule) : String :=
       | some exp => exprToString exp ++ "\n==>\n"
       s!"rule \"{nameS}\" \n{expS} \n{declsS}\nbegin\n{stmtsS}\nend"
   | .startstate opName decls stmts =>
-    let stmtsS := (String.join (( stmts.map statementToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
+    let stmtsS := (String.join (( stmts.map recCall ).map (fun str => String.join ["  ", str, ";\n"]) )) -- ";\n".intercalate (stmts.map statementToString)
     let declsS := (String.join (( decls.map declToString ).map (fun str => String.join ["  var ", str, ";\n"]) )) -- String.intercalate ";\n" $ decls.map declToString
     let nameS := match opName with
       | none => ""
