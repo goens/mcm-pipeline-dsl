@@ -13,15 +13,10 @@ import PipelineDsl.AST
 -- (3) Match state_queue/controller to transitions
 -- (4) break up transitions at await
 
--- TODO: Write Objects to represent Murphi code as well
 -- (5) Convert entries into records
 -- (6) Convert controllers into Murphi records
 --     consisting of an array of entries
 -- (7) Convert transitions into Rules
---     
-
--- pick structure_descriptions, to get controllers
-
 
 -- The error message you were getting here is not so helpful.
 -- It seems that for some reason it was getting confused with the
@@ -1534,12 +1529,12 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       let ctrler_ordering :=
         get_ctrler_elem_ordering this_ctrler
 
-      let is_fifo : Bool :=
-        ctrler_ordering == "FIFO"
+      let is_indexable : Bool :=
+        IndexableCtrlerTypesStrings.contains ctrler_ordering
       -- AZ CHECKPOINT TODO:
       -- finish this
 
-      if is_fifo
+      if is_indexable
       then
         -- if fifo, then make it with 
         -- the <struct_name>.<entries>[<struct>.tail]
@@ -1618,15 +1613,15 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       let ctrler_ordering :=
         get_ctrler_elem_ordering this_ctrler
 
-      let is_fifo : Bool :=
-        ctrler_ordering == "FIFO"
+      let is_indexable : Bool :=
+        IndexableCtrlerTypesStrings.contains ctrler_ordering
       -- AZ CHECKPOINT TODO:
       -- is there a case where I want to
       -- replace "i" with "<structure>.tail?"
 
-      if is_fifo
+      if is_indexable
       then
-        -- if fifo, then make it with 
+        -- if ctrler is indexable, then gen the name with
         -- the <struct_name>.<entries>[<struct>.tail]
 
         let idx : Identifier :=
@@ -1687,8 +1682,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 
       -- already have ctrler_name
       let entries := "entries"
+      -- let idx : Murϕ.Designator := match specific_murphi_dest_expr with
+      -- | Murϕ.Expr.designator desig =>
+      --   dbg_trace "===== BEGIN The Designator!!! "
+      --   dbg_trace specific_murphi_dest_expr
+      --   -- dbg_trace desig
+      --   dbg_trace "===== END The Designator!!! "
+      --   desig
+      -- | _ => dbg_trace "Throw!!! Didn't pass an expr with a designator!!!"
+      --   default
+
       let curr_idx_designator_expr :=
       Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+      -- Murϕ.Expr.designator idx
 
       let sum_list : List (String ⊕ Murϕ.Expr)
       := List.append [
@@ -1697,7 +1703,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
         Sum.inl (ctrler_name.append "_"),
         Sum.inl entries,
-        Sum.inr curr_idx_designator_expr
+        Sum.inr (if specific_murphi_dest_expr.isNone then curr_idx_designator_expr else specific_murphi_dest_expr.get!)
       ] (list_ident_to_murphi_ID t)
 
       -- AZ TODO: Use dest ctrler!
@@ -1707,6 +1713,12 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       Murϕ.Designator.mk "next_state" sum_list
       -- Murϕ.Designator.
 
+        dbg_trace "===== BEGIN OVERALL Designator!!! "
+        dbg_trace specific_murphi_dest_expr
+        dbg_trace "-----------"
+        dbg_trace murphi_designator
+        -- dbg_trace desig
+        dbg_trace "===== END OVERALL Designator!!! "
       murphi_designator
     else
       Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
@@ -1942,7 +1954,7 @@ partial def ast_term_to_murphi_expr
       let murphi_designator : Designator :=
       list_ident_to_murphi_designator_ctrler_var_check (
         lst_ident
-      ) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry) none
+      ) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry) term_trans_info.specific_murphi_dest_expr
 
       let murphi_expr_designator : Murϕ.Expr := 
       Murϕ.Expr.designator murphi_designator
@@ -1999,7 +2011,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           lst_ident
-        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) none
+        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) term_trans_info.specific_murphi_dest_expr
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -3224,15 +3236,15 @@ lst_stmts_decls
             let ctrler_ordering :=
               get_ctrler_elem_ordering this_ctrler
 
-            let is_fifo : Bool :=
-              ctrler_ordering == "FIFO"
+            let is_indexable : Bool :=
+              IndexableCtrlerTypesStrings.contains ctrler_ordering
             
             -- if it's fifo, then
             -- index to this rule's entry j
             -- else,
             -- we need to access the entry info in some other way?
             let ld_or_st_inst_info : List Murϕ.Statement :=
-            if is_fifo
+            if is_indexable
             then
               -- get info by accessing
               -- <structure>.entries[j]
@@ -3386,15 +3398,15 @@ lst_stmts_decls
             let ctrler_ordering :=
               get_ctrler_elem_ordering this_ctrler
 
-            let is_fifo : Bool :=
-              ctrler_ordering == "FIFO"
+            let is_indexable : Bool :=
+              IndexableCtrlerTypesStrings.contains ctrler_ordering
             
             -- if it's fifo, then
             -- index to this rule's entry j
             -- else,
             -- we need to access the entry info in some other way?
             let ld_or_st_inst_info : List Murϕ.Statement :=
-            if is_fifo
+            if is_indexable
             then
               -- get info by accessing
               -- <structure>.entries[j]
@@ -4226,7 +4238,8 @@ partial def api_term_func_to_murphi_func
   -- the ast_expr_to_murphi_expr actually!
   let is_await := term_trans_info.is_await
 
-  let dsl_func_info : (QualifiedName × List Pipeline.Expr) :=
+  -- let dsl_func_info : (QualifiedName × List Pipeline.Expr) :=
+  let (qual_name, lst_exprs) : (QualifiedName × List Pipeline.Expr) :=
   match term with
   | Pipeline.Term.function_call qual_name lst_exprs =>
     -- translate this specific call..
@@ -4234,7 +4247,7 @@ partial def api_term_func_to_murphi_func
     (qual_name, lst_exprs)
   | _ => dbg_trace "this would be an error"
     default
-  let qual_name : QualifiedName := dsl_func_info.1
+  -- let qual_name : QualifiedName := dsl_func_info.1
   let lst_names : List Identifier := match qual_name with
   | QualifiedName.mk lst_idents => lst_idents
 
@@ -4242,24 +4255,305 @@ partial def api_term_func_to_murphi_func
   let api_name : Identifier := lst_names[1]!
 
   let dest_ctrler_name : Identifier := lst_names[0]!
-  let lst_exprs : List Pipeline.Expr := dsl_func_info.2
+  -- let lst_exprs : List Pipeline.Expr := dsl_func_info.2
 
   -- Extract info, gen the murphi func code
   -- this is mostly setting up the Murphi Template
-  let tail_search : Bool := lst_names.contains "tail_search"
-  dbg_trace "&&&&& BEGIN is await function tail_search? &&&&&"
-  dbg_trace tail_search
-  dbg_trace "&&&&& END is await function tail_search? &&&&&"
-  
-  -- AZ TODO: This we know should have the one expr,
-  -- we could techinically use Except and 'throw' here
-  -- if the len isn't 1
-  -- dbg_trace "== trying to get expr from func call arg list =="
-  let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+  let is_tail_search : Bool := lst_names.contains "tail_search"
+  let is_unordered_search : Bool := lst_names.contains "search"
 
-  let match_cond : Pipeline.Expr := lst_exprs[0]!
-  let match_cond_trans_info : expr_translation_info :=  {
-    expr := match_cond
+  dbg_trace "&&&&& BEGIN is await function tail_search? &&&&&"
+  dbg_trace is_tail_search
+  dbg_trace "&&&&& END is await function tail_search? &&&&&"
+
+  if is_tail_search then
+    -- AZ TODO: This we know should have the one expr,
+    -- we could techinically use Except and 'throw' here
+    -- if the len isn't 1
+    -- dbg_trace "== trying to get expr from func call arg list =="
+    let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+
+    let match_cond : Pipeline.Expr := lst_exprs[0]!
+    let match_cond_trans_info : expr_translation_info :=  {
+      expr := match_cond
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      -- The "main ctrler to translate with"
+      -- is it the 
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr :=  curr_idx,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+    }
+
+    -- (
+    -- assn_term_to_expr_translation_info term_trans_info match_cond)
+
+    let murphi_match_cond_expr := ast_expr_to_murphi_expr match_cond_trans_info
+    dbg_trace "&&&&& BEGIN match if cond &&&&&"
+    dbg_trace murphi_match_cond_expr
+    dbg_trace "&&&&& END match if cond &&&&&"
+
+    -- AZ TODO: Identify the "search success case"
+    -- and the "search failure case"
+    -- translate them accordingly
+    -- take the stmts in await, should be 2, the 2 whens?
+    let when_stmts : List Pipeline.Statement := stmts_in_await.filter (
+      λ stmt =>
+        match stmt with
+        | Pipeline.Statement.when _ _ _ =>
+          true
+        | _ => false
+    )
+    dbg_trace "&&&&& BEGIN when_stmts &&&&&"
+    dbg_trace when_stmts
+    dbg_trace "&&&&& END when_stmts &&&&&"
+        -- qual name is probably the structure -- ... list idents is the args list!
+        -- so take the qual name and check for search_success / fail
+    let when_search_success_list : List Pipeline.Statement := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName :=
+      match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error here?"
+        default
+
+      let is_search_success : Bool :=
+      match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => (
+      lst_idents.contains "search_success")
+
+      is_search_success
+    )
+    let when_search_fail_list := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName := match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error?"
+        default
+      let is_search_fail : Bool := match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
+      is_search_fail
+    )
+    dbg_trace "&&&&& BEGIN when_success &&&&&"
+    dbg_trace when_search_success_list
+    dbg_trace "&&&&& END when_success &&&&&"
+    dbg_trace "&&&&& BEGIN when_fail &&&&&"
+    dbg_trace when_search_fail_list
+    dbg_trace "&&&&& END when_fail &&&&&"
+    -- dbg_trace "== assuming there are when search success/fail stmts found! =="
+    let when_search_success := when_search_success_list[0]!
+    let when_search_fail := when_search_fail_list[0]!
+
+    let when_search_success_trans_info : stmt_translation_info := {
+      stmt := when_search_success,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := curr_idx,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+    }
+
+    let when_search_fail_trans_info : stmt_translation_info := {
+      stmt := when_search_fail,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+    }
+
+    dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
+    let when_search_success_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
+    let when_search_fail_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+    dbg_trace "(((***((( END TAIL SEARCH WHEN TRANSLATION ))))))"
+
+    dbg_trace "&&&&& BEGIN Murϕ tail_search when_success &&&&&"
+    dbg_trace when_search_success_murphi_stmts.stmts
+    dbg_trace when_search_success_murphi_stmts.decls
+    dbg_trace "&&&&& END Murϕ tail_search when_success &&&&&"
+    dbg_trace "&&&&& BEGIN Murϕ tail_search when_fail &&&&&"
+    dbg_trace when_search_fail_murphi_stmts.stmts
+    dbg_trace when_search_fail_murphi_stmts.decls
+    dbg_trace "&&&&& END Murϕ tail_search when_fail &&&&&"
+
+    -- ex. SQ_NUM_ETNRIES_CONST
+    let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
+
+    -- AZ NOTE: Use this point to build a different template
+    -- based on the specific API call...
+    -- Or maybe earlier, but i'm not 100% sure
+    -- what the "common code" segments are just yet...
+
+    let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+    let decls : List Murϕ.Decl := [
+      (Murϕ.Decl.var ["while_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      -- [murϕ_var_decls|
+      --   var found_entry : boolean
+      -- ],
+      (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
+      -- [murϕ_var_decls|
+      --   var curr_idx : £ctrler_idx_t
+      -- ]
+    ]
+    let dest_ctrler_name_ := dest_ctrler_name.append "_"
+    let overall_murphi_tail_search_template : List Murϕ.Statement :=
+    [
+      -- AZ TODO: introduce a type for the ACCESS_HASH
+      -- or ACCESS_TAIL and just set it at the beginning
+
+      -- [murϕ| next_state := Sta]
+      -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
+      -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
+      [murϕ|  while_break := false],
+      [murϕ|  found_entry := false],
+      [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
+          while_break := true;
+        endif],
+        -- AZ TODO:
+        -- no, can just map the condition check
+
+      -- [murϕ|  if (£dest_ctrler_name .sq_msg_enum = £dest_ctrler_name_ACCESS_HASH) then
+      --     st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
+      --                                      £dest_ctrler_name .st_seq_num);
+      --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
+      --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+      --   endif],
+      [murϕ|  entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+      [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
+      [murϕ|  offset := 0],
+      [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
+          curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
+          if (
+            -- AZ TODO:
+            -- THIS IS WHERE TO TRANSLATE THE "API ARGS LIST"
+            -- INTO CONDITIONS
+            -- Keeping the code here as an example of
+            -- what to expect kind of
+
+            -- £dest_ctrler_name_ .entries[curr_idx] .phys_addr
+            --   =
+            --   £dest_ctrler_name_ .phys_addr
+            £murphi_match_cond_expr
+
+              ) then
+    
+            -- AZ TODO:
+            -- This should be replaced with "this" ctrler's
+            -- code
+            -- Note that "entry" indicates access to the dest ctrler's
+            -- fields
+            -- So that we can even use entry in the when block...
+            £when_search_success_murphi_stmts.stmts;
+
+            -- value := £dest_ctrler_name_ .entries[curr_idx] .write_value;
+    
+            found_entry := true;
+          endif;
+    
+          -- This is not really necessary
+          if (offset != difference) then
+            offset := offset + 1;
+          else
+            while_break := true;
+          endif;
+        end],
+      [murϕ|
+        if (found_entry = false) then
+          £when_search_fail_murphi_stmts.stmts
+        endif]
+    ]
+
+--   AZ NOTE: Move this to the func call, instead of
+--   in this await-when func call block
+--   since the squash func here for the first LSQ doesn't
+--   check for the return when cases...
+--   update this to work generically..?
+
+    -- 0
+    let stmts_decls : lst_stmts_decls := {
+      stmts := overall_murphi_tail_search_template,
+      decls := (
+        when_search_success_murphi_stmts.decls ++
+        when_search_fail_murphi_stmts.decls ++
+        decls
+      )
+    }
+    stmts_decls
+    -- default
+  else if is_unordered_search then
+    let dest_ctrler_name_ : String := dest_ctrler_name.append "_"
+    let dest_ctrler_iter : String := dest_ctrler_name.append "_iter"
+    let dest_ctrler_idx_t : String := dest_ctrler_name.append "_idx_t"
+    let dest_ctrler_iter_desig_expr : Murϕ.Expr := [murϕ_expr| £dest_ctrler_iter ]
+    dbg_trace "$$$$$ BEGIN Desig Iter"
+      dbg_trace dest_ctrler_iter_desig_expr
+    dbg_trace "$$$$$ END Desig Iter"
+
+    -- (API Argument 1)
+    let match_cond : Pipeline.Expr := lst_exprs[0]!
+    let match_cond_trans_info : expr_translation_info :=  {
+      expr := match_cond
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      -- The "main ctrler to translate with"
+      -- is it the 
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := dest_ctrler_iter_desig_expr,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+    }
+    let condition : Murϕ.Expr := ast_expr_to_murphi_expr match_cond_trans_info
+
+    let (lst_idents, exprs) : (List Identifier × List Pipeline.Expr) := match (lst_exprs[1]!) with
+    | Pipeline.Expr.some_term term =>
+      match term with
+      | Term.function_call qual_name exprs =>
+        match qual_name with
+        | QualifiedName.mk lst_idents => (lst_idents, exprs)
+      | _ => dbg_trace "throw!"
+        default
+    | _ => dbg_trace "throw!"
+      default
+
+    let less_or_greater : String := if lst_idents[0]! == "min" then "<"
+      else --lst_idents[0]! == "max"
+        ">"
+
+    -- (API Argument 2)
+    let match_overall_cond : Pipeline.Expr := exprs[0]!
+    let match_overall_cond_trans_info : expr_translation_info :=  {
+    expr := match_overall_cond
     lst_ctrlers := term_trans_info.lst_ctrlers,
     -- The "main ctrler to translate with"
     -- is it the 
@@ -4270,224 +4564,163 @@ partial def api_term_func_to_murphi_func
     is_await := term_trans_info.is_await,
     entry_keyword_dest := Option.some dest_ctrler_name,
     trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr :=  curr_idx,
+    specific_murphi_dest_expr :=  dest_ctrler_iter_desig_expr,
     lst_decls := term_trans_info.lst_decls,
     is_rhs := term_trans_info.is_rhs,
     use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
-  }
+    }
+    let overall_condition : Murϕ.Expr := ast_expr_to_murphi_expr match_overall_cond_trans_info
 
-  -- (
-  -- assn_term_to_expr_translation_info term_trans_info match_cond)
+    let update_found_idx_expr : Murϕ.Expr := Murϕ.Expr.binop less_or_greater overall_condition [murϕ_expr| found_element]
+    -- [murϕ_expr| (£overall_condition) £less_or_greater found_element]
 
-  let murphi_match_cond_expr := ast_expr_to_murphi_expr match_cond_trans_info
-  dbg_trace "&&&&& BEGIN match if cond &&&&&"
-  dbg_trace murphi_match_cond_expr
-  dbg_trace "&&&&& END match if cond &&&&&"
-
-  -- AZ TODO: Identify the "search success case"
-  -- and the "search failure case"
-  -- translate them accordingly
-  -- take the stmts in await, should be 2, the 2 whens?
-  let when_stmts : List Pipeline.Statement := stmts_in_await.filter (
-    λ stmt =>
-      match stmt with
-      | Pipeline.Statement.when _ _ _ =>
-        true
-      | _ => false
-  )
-  dbg_trace "&&&&& BEGIN when_stmts &&&&&"
-  dbg_trace when_stmts
-  dbg_trace "&&&&& END when_stmts &&&&&"
-      -- qual name is probably the structure -- ... list idents is the args list!
-      -- so take the qual name and check for search_success / fail
-  let when_search_success_list : List Pipeline.Statement := when_stmts.filter (
-    λ when_stmt =>
-    let qual_name_from_when : QualifiedName :=
-    match when_stmt with
-    | Pipeline.Statement.when qual_name _ _ => qual_name
-    | _ => dbg_trace "place an error here?"
-      default
-
-    let is_search_success : Bool :=
-    match qual_name_from_when with
-    | Pipeline.QualifiedName.mk lst_idents => (
-    lst_idents.contains "search_success")
-
-    is_search_success
-  )
-  let when_search_fail_list := when_stmts.filter (
-    λ when_stmt =>
-    let qual_name_from_when : QualifiedName := match when_stmt with
-    | Pipeline.Statement.when qual_name _ _ => qual_name
-    | _ => dbg_trace "place an error?"
-      default
-    let is_search_fail : Bool := match qual_name_from_when with
-    | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
-    is_search_fail
-  )
-  dbg_trace "&&&&& BEGIN when_success &&&&&"
-  dbg_trace when_search_success_list
-  dbg_trace "&&&&& END when_success &&&&&"
-  dbg_trace "&&&&& BEGIN when_fail &&&&&"
-  dbg_trace when_search_fail_list
-  dbg_trace "&&&&& END when_fail &&&&&"
-  -- dbg_trace "== assuming there are when search success/fail stmts found! =="
-  let when_search_success := when_search_success_list[0]!
-  let when_search_fail := when_search_fail_list[0]!
-
-  let when_search_success_trans_info : stmt_translation_info := {
-    stmt := when_search_success,
-    lst_ctrlers := term_trans_info.lst_ctrlers,
-    ctrler_name := term_trans_info.ctrler_name,
-    src_ctrler := term_trans_info.src_ctrler,
-    lst_src_args := term_trans_info.lst_src_args,
-    func := term_trans_info.func,
-    is_await := term_trans_info.is_await,
-    entry_keyword_dest := Option.some dest_ctrler_name,
-    trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr := curr_idx,
-    lst_decls := term_trans_info.lst_decls,
-    is_rhs := term_trans_info.is_rhs,
-    use_specific_dest_in_transition := false
-  }
-  let when_search_fail_trans_info : stmt_translation_info := {
-    stmt := when_search_fail,
-    lst_ctrlers := term_trans_info.lst_ctrlers,
-    ctrler_name := term_trans_info.ctrler_name,
-    src_ctrler := term_trans_info.src_ctrler,
-    lst_src_args := term_trans_info.lst_src_args,
-    func := term_trans_info.func,
-    is_await := term_trans_info.is_await,
-    entry_keyword_dest := Option.some dest_ctrler_name,
-    trans_obj := term_trans_info.trans_obj,
-    specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
-    lst_decls := term_trans_info.lst_decls,
-    is_rhs := term_trans_info.is_rhs,
-    use_specific_dest_in_transition := false
-  }
-
-dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
-  let when_search_success_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
-  let when_search_fail_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
-  dbg_trace "(((***((( END TAIL SEARCH WHEN TRANSLATION ))))))"
-
-  dbg_trace "&&&&& BEGIN Murϕ tail_search when_success &&&&&"
-  dbg_trace when_search_success_murphi_stmts.stmts
-  dbg_trace when_search_success_murphi_stmts.decls
-  dbg_trace "&&&&& END Murϕ tail_search when_success &&&&&"
-  dbg_trace "&&&&& BEGIN Murϕ tail_search when_fail &&&&&"
-  dbg_trace when_search_fail_murphi_stmts.stmts
-  dbg_trace when_search_fail_murphi_stmts.decls
-  dbg_trace "&&&&& END Murϕ tail_search when_fail &&&&&"
-
-  -- ex. SQ_NUM_ETNRIES_CONST
-  let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
-
-  -- AZ NOTE: Use this point to build a different template
-  -- based on the specific API call...
-  -- Or maybe earlier, but i'm not 100% sure
-  -- what the "common code" segments are just yet...
-
-  let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
-  let decls : List Murϕ.Decl := [
-    (Murϕ.Decl.var ["while_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
-    (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
-    -- [murϕ_var_decls|
-    --   var found_entry : boolean
-    -- ],
-    (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-    (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-    (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-    (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
-    -- [murϕ_var_decls|
-    --   var curr_idx : £ctrler_idx_t
-    -- ]
-  ]
-  let dest_ctrler_name_ := dest_ctrler_name.append "_"
-  let overall_murphi_tail_search_template : List Murϕ.Statement :=
-  [
-    -- AZ TODO: introduce a type for the ACCESS_HASH
-    -- or ACCESS_TAIL and just set it at the beginning
-
-    -- [murϕ| next_state := Sta]
-    -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
-    -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
-    [murϕ|  while_break := false],
-    [murϕ|  found_entry := false],
-    [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
-        while_break := true;
-      endif],
-      -- AZ TODO:
-      -- no, can just map the condition check
-
-    -- [murϕ|  if (£dest_ctrler_name .sq_msg_enum = £dest_ctrler_name_ACCESS_HASH) then
-    --     st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
-    --                                      £dest_ctrler_name .st_seq_num);
-    --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
-    --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
-    --   endif],
-    [murϕ|  entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-    [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
-    [murϕ|  offset := 0],
-    [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
-        curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
-        if (
-          -- AZ TODO:
-          -- THIS IS WHERE TO TRANSLATE THE "API ARGS LIST"
-          -- INTO CONDITIONS
-          -- Keeping the code here as an example of
-          -- what to expect kind of
-
-          -- £dest_ctrler_name_ .entries[curr_idx] .phys_addr
-          --   =
-          --   £dest_ctrler_name_ .phys_addr
-          £murphi_match_cond_expr
-
-            ) then
-  
-          -- AZ TODO:
-          -- This should be replaced with "this" ctrler's
-          -- code
-          -- Note that "entry" indicates access to the dest ctrler's
-          -- fields
-          -- So that we can even use entry in the when block...
-          £when_search_success_murphi_stmts.stmts;
-
-          -- value := £dest_ctrler_name_ .entries[curr_idx] .write_value;
-  
-          found_entry := true;
-        endif;
-  
-        -- This is not really necessary
-        if (offset != difference) then
-          offset := offset + 1;
-        else
-          while_break := true;
-        endif;
-      end],
-    [murϕ|
-      if (found_entry = false) then
-        £when_search_fail_murphi_stmts.stmts
-      endif]
-  ]
-
--- AZ NOTE: Move this to the func call, instead of
--- in this await-when func call block
--- since the squash func here for the first LSQ doesn't
--- check for the return when cases...
--- update this to work generically..?
-
-  -- 0
-  let stmts_decls : lst_stmts_decls := {
-    stmts := overall_murphi_tail_search_template,
-    decls := (
-      when_search_success_murphi_stmts.decls ++
-      when_search_fail_murphi_stmts.decls ++
-      decls
+    let when_stmts : List Pipeline.Statement := stmts_in_await.filter (
+      λ stmt =>
+        match stmt with
+        | Pipeline.Statement.when _ _ _ =>
+          true
+        | _ => false
     )
-  }
-  stmts_decls
-  -- default
+    dbg_trace "&&&&& BEGIN when_stmts &&&&&"
+    dbg_trace when_stmts
+    dbg_trace "&&&&& END when_stmts &&&&&"
+        -- qual name is probably the structure -- ... list idents is the args list!
+        -- so take the qual name and check for search_success / fail
+    let when_search_success_list : List Pipeline.Statement := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName :=
+      match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error here?"
+        default
+
+      let is_search_success : Bool :=
+      match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => (
+      lst_idents.contains "search_success")
+
+      is_search_success
+    )
+    let when_search_fail_list := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName := match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error?"
+        default
+      let is_search_fail : Bool := match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
+      is_search_fail
+    )
+    dbg_trace "&&&&& BEGIN when_success &&&&&"
+    dbg_trace when_search_success_list
+    dbg_trace "&&&&& END when_success &&&&&"
+    dbg_trace "&&&&& BEGIN when_fail &&&&&"
+    dbg_trace when_search_fail_list
+    dbg_trace "&&&&& END when_fail &&&&&"
+    -- dbg_trace "== assuming there are when search success/fail stmts found! =="
+    let when_search_success := when_search_success_list[0]!
+    let when_search_fail := when_search_fail_list[0]!
+
+    let when_search_success_trans_info : stmt_translation_info := {
+      stmt := when_search_success,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := [murϕ_expr| found_idx],
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+    }
+
+    let when_search_fail_trans_info : stmt_translation_info := {
+      stmt := when_search_fail,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler,
+      lst_src_args := term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := [murϕ_expr| found_idx],
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+    }
+
+    dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
+    let when_search_success : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
+    let when_search_fail : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+    dbg_trace "(((***((( END TAIL SEARCH WHEN TRANSLATION ))))))"
+    -- Setup the code £
+    let murphi_template_stmts := [murϕ_statements|
+  found_entry := false;
+  for £dest_ctrler_iter : £dest_ctrler_idx_t do
+    -- TODO: Put an if condition which checks if the seq_num if invalid (i.e. is 0)
+    if (Sta .core_[ j ] .£dest_ctrler_name_ .entries[ £dest_ctrler_iter ] .instruction .seq_num != 0) then
+    -- if seq_num is invalid, don't do anything.
+      -- TODO: £condition (API Argument 1)
+      if ( £condition ) then
+        -- TODO: The first time we find a match, we write a value to the recorded value we check
+        if found_entry = false then
+          -- TODO: £overall_condition (API Argument 2)
+          found_element := (£overall_condition);
+          -- TODO: We can record the element idx that has the closest value here..
+          found_idx := £dest_ctrler_iter;
+        else
+          -- check if it meets the "overall" condition?
+          -- TODO: This is the "overall condition" or the second argument to our generic Unordered buffer/set container search function
+          -- TODO: £overall_condition (API Argument 2) < found_entry 
+          -- if (£overall_condition) < found_element then
+          if £update_found_idx_expr then
+            found_element := (£overall_condition);
+            found_idx := £dest_ctrler_iter;
+          endif;
+        endif;
+        -- TODO: NOTE: Move this into an if block that does something based on
+        -- if an element was found...
+        -- next_state.core_[ j ].LQ_.entries[ i ].state := write_result;
+        found_entry := true;
+      endif;
+    endif;
+  endfor;
+
+  if (found_entry = false) then
+    -- TODO: £when_fail
+    £when_search_fail.stmts
+    -- the metaprogramming doesn't allow for justparam with else at the moment
+  elsif (found_entry = true) then
+    -- NOTE: This is what this would look like... 
+    -- TODO: Remember to use found_idx for the accessor in the translation 
+    -- TODO: £when_success 
+    £when_search_success.stmts
+  endif;
+    ]
+ 
+    let decls : List Murϕ.Decl := [
+      (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      (Murϕ.Decl.var ["found_element"] (Murϕ.TypeExpr.previouslyDefined "val_t")),
+      (Murϕ.Decl.var ["found_idx"] (Murϕ.TypeExpr.previouslyDefined dest_ctrler_idx_t))
+    ]
+
+    let stmts_decls : lst_stmts_decls := {
+      stmts := murphi_template_stmts,
+      decls := (
+        when_search_success.decls ++
+        when_search_fail.decls ++
+        decls
+      )
+    }
+    stmts_decls
+  else
+    -- TODO: THROW!
+    dbg_trace "The API Term Function didn't match any expected API names!"
+    empty_stmt_decl_lsts
 
 partial def dsl_type_to_murphi_type_string
 ( dsl_type : Identifier )
@@ -4968,7 +5201,7 @@ lst_stmts_decls
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
-        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry none
+        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry stmt_trans_info.specific_murphi_dest_expr
 
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
@@ -5089,10 +5322,10 @@ lst_stmts_decls
       let ctrler_ordering :=
         get_ctrler_elem_ordering this_ctrler
 
-      let is_fifo : Bool :=
-        ctrler_ordering == "FIFO"
+      let is_indexable : Bool :=
+        IndexableCtrlerTypesStrings.contains ctrler_ordering
 
-      if is_fifo
+      if is_indexable
       then
       -- we access the specific entry i for the rule
 
