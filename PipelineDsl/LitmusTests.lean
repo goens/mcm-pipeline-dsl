@@ -231,6 +231,37 @@ def amd2 : LitmusTest := {
   orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
 }
 
+-- Do not use until I can generate tests which can check for an existing trace
+-- But this test isn't that important..
+-- The other amd tests are store-buffer type tests which allow for other cores
+-- not to see stores, i.e. store - > load isn't enforced (i.e. TSO)
+def amd3 : LitmusTest := {
+  test_name := "amd3",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 1, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  -- TODO NOTE: Should be a "permitted test". i.e. this result should be observable, but don't have a nice way
+  -- to enforce this in Murphi
+  -- Either there's a way to express "there exists an execution where this is true"
+  -- or check with Nicolai if there's another way to express it in murphi..
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := ForbiddenOrRequired.forbidden},
+  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+}
+
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1,
 amd1
