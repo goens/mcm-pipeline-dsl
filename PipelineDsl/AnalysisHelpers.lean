@@ -4,6 +4,20 @@ import PipelineDsl.Murphi
 open Pipeline
 open Murϕ
 
+-- Just defining as string for now
+-- might be nicer to define them as structs later with meta-data
+
+structure CtrlerType where
+name : String
+deriving Inhabited, BEq
+
+def FIFO : CtrlerType := {name := "FIFO"}
+def Unordered : CtrlerType := {name := "Unordered"}
+
+def IndexableCtrlerTypes : List CtrlerType := [FIFO, Unordered]
+def IndexableCtrlerTypesStrings : List String := IndexableCtrlerTypes.map (fun ctrler_type => ctrler_type.name )
+
+
 structure file_name_and_output where
 name : String
 murphi_code : Murϕ.Program
@@ -331,45 +345,55 @@ def ast0048_generate_controller_murphi_record
 
   -- Now we can build a Decl for the controller record
   let murphi_ctrler_record_name := "entries"
+  let decl_lst : List Murϕ.Decl := [
+    Decl.var [
+      -- Name of this array of entries
+      murphi_ctrler_record_name
+      ]
+    (
+    -- and the array entries and number of entries
+    TypeExpr.array
+    (
+      TypeExpr.previouslyDefined
+      ctrler_entries_range_decl_name
+    )
+    (
+    TypeExpr.previouslyDefined
+    murphi_entry_record_decl_name
+    )
+    ),
+    -- Decl.var ["state"] (
+    --   TypeExpr.previouslyDefined
+    --   (ctrl.name.append "_state")
+    --   ),
+    -- Head, tail, and num_entries counter
+    Decl.var ["num_entries"] (
+    TypeExpr.previouslyDefined
+    ctrler_entries_count_decl_name
+    )
+  ]
+
+  let ctrler_ordering := get_ctrler_elem_ordering ctrl
+  let is_fifo : Bool := ctrler_ordering == FIFO.name
+  let total_decl_lst : List Murϕ.Decl :=
+    if is_fifo then
+      decl_lst ++ [
+      Decl.var ["head"] (
+      TypeExpr.previouslyDefined
+      ctrler_entries_range_decl_name
+      ),
+      Decl.var ["tail"] (
+      TypeExpr.previouslyDefined
+      ctrler_entries_range_decl_name
+      )]
+    else
+      decl_lst
+
   let murphi_ctrler_record :=
     Decl.var [ctrl.name] (
-      TypeExpr.record [
+      TypeExpr.record total_decl_lst
         -- The array of entries, which is also a record
-        Decl.var [
-          -- Name of this array of entries
-          murphi_ctrler_record_name
-          ]
-          (
-            -- and the array entries and number of entries
-            TypeExpr.array
-            (
-              TypeExpr.previouslyDefined
-              ctrler_entries_range_decl_name
-            )
-            (
-              TypeExpr.previouslyDefined
-              murphi_entry_record_decl_name
-            )
-          ),
-        -- Decl.var ["state"] (
-        --   TypeExpr.previouslyDefined
-        --   (ctrl.name.append "_state")
-        --   ),
-        -- Head, tail, and num_entries counter
-        Decl.var ["head"] (
-          TypeExpr.previouslyDefined
-          ctrler_entries_range_decl_name
-          ),
-        Decl.var ["tail"] (
-          TypeExpr.previouslyDefined
-          ctrler_entries_range_decl_name
-          ),
-        Decl.var ["num_entries"] (
-          TypeExpr.previouslyDefined
-          ctrler_entries_count_decl_name
-          )
         -- NOTE: don't do msg buffers!
-      ]
     )
 
   -- We must also send back the supporting Decl's
