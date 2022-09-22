@@ -263,6 +263,7 @@ def amd2 : LitmusTest := {
 -- But this test isn't that important..
 -- The other amd tests are store-buffer type tests which allow for other cores
 -- not to see stores, i.e. store - > load isn't enforced (i.e. TSO)
+-- SO: I could just mark it as forbidden to see if it hits this case or not..
 def amd3 : LitmusTest := {
   test_name := "amd3",
   insts_in_cores := [
@@ -338,7 +339,7 @@ def n2 : LitmusTest := {
     {core_idx := 3, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+  orderings := [MCMOrdering.load_to_load]
 }
 
 -- Definition n4
@@ -353,28 +354,31 @@ def n2 : LitmusTest := {
 --     mkev 5 (mkiiid 1 2) (Access R 0 2)
 --   ].
 
--- def n4 : LitmusTest := {
---   test_name := "n4",
---   insts_in_cores := [
---     {core_idx := 0, insts := [
---       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
---       {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
---       {inst := {inst_type := load, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
---       ]},
---     {core_idx := 1, insts := [
---       {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
---       {inst := {inst_type := store, addr := 1, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
---       {inst := {inst_type := load, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
---       ]}
---   ],
---   expected := {
---     per_core_reg_file := [
---     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
---     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
---     ],
---     negate_or_not := ForbiddenOrRequired.forbidden},
---   orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
--- }
+-- This shouldn't happen with a SB
+-- This *might* happen if stores are speculative + they can just write to a speculative cache
+-- but if this is the case then the read also should be able to read from the addr 0 immediately
+def n4 : LitmusTest := {
+  test_name := "n4",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 2}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 1}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 2}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 2}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 1}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 2}]}
+    ],
+    negate_or_not := ForbiddenOrRequired.forbidden},
+  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+}
 
 -- Definition n5
 --   (pipeline : Pipeline)
@@ -385,6 +389,28 @@ def n2 : LitmusTest := {
 --     mkev 2 (mkiiid 1 0) (Access W 0 2);
 --     mkev 3 (mkiiid 1 1) (Access R 0 1)
 --   ].
+
+def n5 : LitmusTest := {
+  test_name := "n5",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 2}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
+    ],
+    negate_or_not := ForbiddenOrRequired.forbidden},
+  orderings := [MCMOrdering.store_to_load]
+}
+
 
 -- (** Ensure that po-loc is respected *)
 -- Definition d1
@@ -419,7 +445,9 @@ def n2 : LitmusTest := {
 
 
 def ActiveLitmusTests : List LitmusTest := [
-iwp23b1,
+iwp23b1, -- should pass, is for single core correctness
 amd1,
-n2
+n2,
+n4,
+n5
 ]
