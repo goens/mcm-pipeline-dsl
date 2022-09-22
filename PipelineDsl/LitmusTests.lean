@@ -102,6 +102,8 @@ def core_insts_to_emit_murphi_alias
   let rename_alias_id := "rename_c" ++ (toString core_idx)
 
   let num_entries := toString core_insts.insts.length
+  let tail_idx := (toString (core_insts.insts.length)).append " % (CORE_INST_NUM + 1)"
+
   let list_inst_assignments : List Murϕ.Statement :=
   (List.join (core_insts.insts.map (
     fun inst =>
@@ -124,7 +126,7 @@ def core_insts_to_emit_murphi_alias
   ))) ++ (
   [murϕ_statements|
   £rename_alias_id .rename_head := 0;
-  £rename_alias_id .rename_tail := 0;
+  £rename_alias_id .rename_tail := £tail_idx;
   £rename_alias_id .num_entries := £num_entries;
   ]
   )
@@ -137,6 +139,32 @@ def core_insts_to_emit_murphi_alias
   ]
 
   rename_alias
+
+open Murϕ in
+def litmus_test_core_empty_murphi_expr
+(litmus_test : LitmusTest)
+: Murϕ.Expr
+:=
+  let core_ids : List Nat := List.range litmus_test.insts_in_cores.length
+  let empty_core_buffer_exprs : List Murϕ.Expr := core_ids.map (λ core_id =>
+    let core_idx : String := toString core_id
+    [murϕ_expr| 
+      ( Sta .core_[£core_idx] .rename_.num_entries = 0 )
+      &
+      ( Sta .core_[£core_idx] .rob_.num_entries = 0 )
+      &
+      ( Sta .core_[£core_idx] .SB_.num_entries = 0 )
+    ]
+  )
+
+  let empty_core_exprs : Murϕ.Expr := match empty_core_buffer_exprs with
+  | [] => dbg_trace "This test sholdn't have no cores...? Throw" 
+    panic! "ERROR: was the passed number of cores 0?"
+  | [one] => one
+  -- | h::t => List.foldl (λ expr1 expr2 => [murϕ_expr| £expr1 & £expr2]) h t
+  | h::t => List.foldl (λ expr1 expr2 => Murϕ.Expr.binop "&" expr1 expr2) h t
+
+  empty_core_exprs
 
 open Murϕ in
 def CoreRegState_to_emit_murphi_expr
@@ -253,6 +281,8 @@ def amd3 : LitmusTest := {
   -- to enforce this in Murphi
   -- Either there's a way to express "there exists an execution where this is true"
   -- or check with Nicolai if there's another way to express it in murphi..
+  -- Or we could just use an invariant to check if this is ever the case, and just say,
+  -- 'this is observable!' if the invariant is triggered
   expected := {
     per_core_reg_file := [
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
@@ -262,7 +292,134 @@ def amd3 : LitmusTest := {
   orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
 }
 
+-- Definition n2
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "n2" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access W 1 1);
+--     mkev 1 (mkiiid 0 1) (Access W 0 1);
+--     mkev 2 (mkiiid 1 0) (Access W 0 2);
+--     mkev 3 (mkiiid 1 1) (Access W 2 1);
+--     mkev 4 (mkiiid 2 0) (Access R 0 1);
+--     mkev 5 (mkiiid 2 1) (Access R 0 2);
+--     mkev 6 (mkiiid 3 0) (Access R 2 1);
+--     mkev 7 (mkiiid 3 1) (Access R 1 0)
+--   ].
+
+def n2 : LitmusTest := {
+  test_name := "n2",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 2, write_val := 1, dest_reg := 0}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 2, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 3, insts := [
+      {inst := {inst_type := load, addr := 2, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  -- TODO NOTE: Should be a "permitted test". i.e. this result should be observable, but don't have a nice way
+  -- to enforce this in Murphi
+  -- Either there's a way to express "there exists an execution where this is true"
+  -- or check with Nicolai if there's another way to express it in murphi..
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 2, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 2}]},
+    {core_idx := 3, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := ForbiddenOrRequired.forbidden},
+  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+}
+
+-- Definition n4
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "n4" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access R 0 2);
+--     mkev 1 (mkiiid 0 1) (Access W 0 1);
+--     mkev 2 (mkiiid 0 2) (Access R 0 1);
+--     mkev 3 (mkiiid 1 0) (Access R 0 1);
+--     mkev 4 (mkiiid 1 1) (Access W 0 2);
+--     mkev 5 (mkiiid 1 2) (Access R 0 2)
+--   ].
+
+-- def n4 : LitmusTest := {
+--   test_name := "n4",
+--   insts_in_cores := [
+--     {core_idx := 0, insts := [
+--       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+--       {inst := {inst_type := store, addr := 0, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+--       {inst := {inst_type := load, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
+--       ]},
+--     {core_idx := 1, insts := [
+--       {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+--       {inst := {inst_type := store, addr := 1, write_val := 2, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+--       {inst := {inst_type := load, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
+--       ]}
+--   ],
+--   expected := {
+--     per_core_reg_file := [
+--     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+--     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+--     ],
+--     negate_or_not := ForbiddenOrRequired.forbidden},
+--   orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+-- }
+
+-- Definition n5
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "n5" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access W 0 1);
+--     mkev 1 (mkiiid 0 1) (Access R 0 2);
+--     mkev 2 (mkiiid 1 0) (Access W 0 2);
+--     mkev 3 (mkiiid 1 1) (Access R 0 1)
+--   ].
+
+-- (** Ensure that po-loc is respected *)
+-- Definition d1
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "d1" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access W 0 1);
+--     mkev 1 (mkiiid 0 1) (Access W 0 2);
+--     mkev 2 (mkiiid 0 2) (Access R 0 1)
+--   ].
+
+-- (** Same-address version of amd1/iwp2.1 *)
+-- Definition d3
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "d3" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access W 0 1);
+--     mkev 1 (mkiiid 0 1) (Access W 0 2);
+--     mkev 2 (mkiiid 1 0) (Access R 0 2);
+--     mkev 3 (mkiiid 1 1) (Access R 0 1)
+--   ].
+
+-- (** Ensure that po-loc is respected *)
+-- Definition d4
+--   (pipeline : Pipeline)
+--   : list (string * string) :=
+--   LitmusTest "d4" Forbidden pipeline [
+--     mkev 0 (mkiiid 0 0) (Access W 0 1);
+--     mkev 1 (mkiiid 0 1) (Access R 0 1);
+--     mkev 2 (mkiiid 0 2) (Access R 0 0)
+--   ].
+
+
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1,
-amd1
+amd1,
+n2
 ]

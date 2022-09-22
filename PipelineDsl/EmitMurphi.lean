@@ -158,24 +158,38 @@ def compose_murphi_file_components
 ( litmus_test : LitmusTest )
 : Murϕ.Program
 :=
+  let core_count : String := toString ( litmus_test.insts_in_cores.length - 1 ) --1
+  let max_insts : String := toString ( ( litmus_test.insts_in_cores.map (fun core => core.insts.length) ).maximum?.get! - 1)
+  let max_regs : String := max_insts;
+  let max_val : String := toString (
+    (List.join (
+      ( litmus_test.insts_in_cores.map (fun core => core.insts.map (fun inst_ => inst_.inst.write_val)) )
+    )).maximum?.get!
+  )
+  let max_addr : String := toString (
+    (List.join (
+      ( litmus_test.insts_in_cores.map (fun core => core.insts.map (fun inst_ => inst_.inst.addr)) )
+    )).maximum?.get!
+  )
+
   let list_const_decls := [murϕ_const_decls|
   const ---- Configuration parameters ----
   -- LQ_NUM_ENTRIES_ENUM_CONST : 1;
   -- SQ_NUM_ENTRIES_ENUM_CONST : 1;
   -- SB_NUM_ENTRIES_ENUM_CONST : 1;
-  DATA_NUM : 2;
-  CORE_INST_NUM : 1;
+  -- DATA_NUM : 2;
+  CORE_INST_NUM : £max_insts;
 
-  IC_ENTRY_NUM : 1;
+  IC_ENTRY_NUM : 1; -- set to 1 for letting 2 in-flight mem ops in the overall system
   --# 2 cores..
-  CORE_NUM : 1;
+  CORE_NUM : £core_count; -- Tests could be up to 4 cores generally?
 
   --# model a simple atomic memory
-  ADDR_NUM : 1; --# 2 addrs
+  ADDR_NUM : £max_addr; -- use 1, to represent 2 addrs (0 and 1)
   --# num of reg file entries
-  REG_NUM : 1;
+  REG_NUM : £max_regs; -- Just set to num insts...
   --# max value
-  MAX_VALUE : 1;
+  MAX_VALUE : £max_val; -- 2 also works..
   -- £const_decls;
   ] ++ const_decls
 
@@ -494,24 +508,14 @@ type ---- Type declarations ----
   | ForbiddenOrRequired.forbidden => Murϕ.Expr.negation all_reg_file_states
   | ForbiddenOrRequired.required => all_reg_file_states
 
+  let empty_core_exprs : Murϕ.Expr := litmus_test_core_empty_murphi_expr litmus_test
+
   -- litmus_test
   let the_test_name := litmus_test.test_name
   let ordering_invariant_expr : Murϕ.Expr :=
   [murϕ_expr|
     (
-      (
-        ( Sta .core_[0] .rename_.num_entries = 0 )
-        &
-        ( Sta .core_[0] .rob_.num_entries = 0 )
-        &
-        ( Sta .core_[0] .SB_.num_entries = 0 )
-        &
-        ( Sta .core_[1] .rename_.num_entries = 0 )
-        &
-        ( Sta .core_[1] .rob_.num_entries = 0 )
-        &
-        ( Sta .core_[1] .SB_.num_entries = 0 )
-      )
+      (£empty_core_exprs)
       ->
       (£cond_to_check)
     )
