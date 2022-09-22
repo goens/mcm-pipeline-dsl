@@ -3775,11 +3775,11 @@ lst_stmts_decls
             --# (2) loop to tail searching for:
             --# if plus 1 is outside this range, this should be caught
             --# by difference check
-            difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - entry_idx ) % £dest_num_entries_const_name;
+            difference := ( ( (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name) - 1 ) - entry_idx ) % £dest_num_entries_const_name;
             offset := 0;
             --#if (difference != 0) then
             while ( (offset <= difference) & (loop_break = false)
-                    & (difference > 0)
+                    & (difference >= 0)
                   ) do
               --# do the search
               curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
@@ -3853,12 +3853,15 @@ lst_stmts_decls
                                                   -- in ROB
                                                   -- + 1
                             ) % (CORE_INST_NUM + 1);
-                squash_diff := (rob.rob_tail + (CORE_INST_NUM + 1) - rob_idx) % ( CORE_INST_NUM + 1);
+                            -- minus 1 to get the actual tail. rob_tail is an insertion point
+                squash_diff := ((rob.rob_tail + (CORE_INST_NUM + 1) - 1) - rob_idx) % ( CORE_INST_NUM + 1);
                 squash_offset := 0;
                 while (
                     (squash_offset <= squash_diff)
                     &
-                    (squash_diff > 0)
+                    -- also if equal to 0, so it also resets the last elem as well..
+                    -- remember to have stores handle squash signals as well..
+                    (squash_diff >= 0)
                   ) do
                   --# squash
                   squash_idx := (rob_idx + squash_offset) % (CORE_INST_NUM + 1);
@@ -4015,12 +4018,13 @@ lst_stmts_decls
                 loop_break := true;
               endif;
 
-              if (offset != £dest_num_entries_const_name) then
+              -- if (offset != ( £dest_num_entries_const_name )) then
+              if (offset != difference) then
                 offset := offset + 1;
-                if (( entry_idx + offset ) % £dest_num_entries_const_name) = next_state .core_[j] .£dest_ctrler_name_ .tail then
-                  --#
-                  loop_break := true;
-                endif;
+                -- if (( entry_idx + offset ) % £dest_num_entries_const_name) = next_state .core_[j] .£dest_ctrler_name_ .tail then
+                --   --#
+                --   loop_break := true;
+                -- endif;
               else
                 loop_break := true;
               endif;
