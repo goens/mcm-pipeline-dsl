@@ -52,7 +52,7 @@ syntax internal_func_decl : declaration
 syntax "controller_entry" ident statement : structure_declaration
 syntax "controller" ident statement : structure_declaration
 syntax "state_queue" ident statement : structure_declaration
-syntax "transition" ident statement : structure_declaration
+syntax "state" ident statement : structure_declaration
 syntax "controller_control_flow" ident statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" statement : internal_func_decl
@@ -63,6 +63,7 @@ syntax dsl_transition ";"? : statement
 syntax variable_declaration ";"? : statement
 syntax assignment ";"? : statement
 syntax conditional ";"? : statement
+syntax "stall" "(" expr ")" : statement
 syntax block ";"? : statement
 syntax await_block ";"? : statement
 syntax listen_handle ";"? : statement
@@ -82,6 +83,7 @@ syntax "listen"  statement  catch_block+ : listen_handle
 syntax "handle"  qualified_name  "(" ident,* ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
 syntax "transition"  ident : dsl_transition
+syntax "reset"  ident : dsl_transition
 
 syntax unuaryop : expr
 syntax binop : expr
@@ -97,6 +99,9 @@ syntax qualified_name : dsl_term
 syntax constval : dsl_term
 syntax ident : dsl_term
 syntax qualified_name  "("  expr_list  ")" : call
+syntax "prev<" expr_list ">" : dsl_term
+syntax "next<" expr_list ">" : dsl_term
+
 -- TODO: add kwargs
 
 syntax "!" dsl_term : unuaryop
@@ -208,6 +213,8 @@ partial def mkTerm : Syntax → Except String Term
   | `(dsl_term|  $i:ident ) => return Term.var i.getId.toString
   | `(dsl_term|  $n:qualified_name ) => Except.map (λ x => Term.qualified_var x) (mkQualifiedName n)
   | `(dsl_term|  $c:call ) => mkCall c
+  | `(dsl_term|  prev< $exprs > ) => Term.relative_entry .Previous <$> mkExprList exprs
+  | `(dsl_term|  next< $exprs > ) => Term.relative_entry .Next <$> mkExprList exprs
   | `(dsl_term|  ($e:expr) ) => return Term.expr (← mkExpr e)
   | other => throw s!"error parsing term {other}"
 
@@ -328,8 +335,8 @@ partial def mkStructureDeclaration : Syntax → Except String Description
     Except.map (Description.entry id.getId.toString) (mkStatement s)
   | `(structure_declaration| controller_control_flow $id:ident $s ) =>
     Except.map (Description.control_flow id.getId.toString) (mkStatement s)
-  | `(structure_declaration| transition $id:ident $s:statement) =>
-    Except.map (Description.transition id.getId.toString) (mkStatement s)
+  | `(structure_declaration| state $id:ident $s:statement) =>
+    Except.map (Description.state id.getId.toString) (mkStatement s)
   | m => dbg_trace m; throw "error parsing structure declaration"
 
 partial def mkInternalFuncDecl : Syntax → Except String Description

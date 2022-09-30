@@ -6,6 +6,10 @@ def TIden := Identifier deriving Inhabited, ToString, BEq
 
 namespace Pipeline
 
+inductive Direction
+ | Previous
+ | Next
+
 mutual
 
 --@[deriving BEq]
@@ -20,7 +24,7 @@ inductive Description
 | controller : Identifier → Statement → Description
 | entry : Identifier → Statement → Description
 | control_flow : Identifier → Statement → Description
-| transition : Identifier → Statement → Description
+| state : Identifier → Statement → Description
 -- Function definition
 | function_definition :
   TypedIdentifier /- ( -/ → List TypedIdentifier /- ) { -/ → Statement /- } -/ →
@@ -49,6 +53,7 @@ inductive Term
 | const : Const → Term -- constant is a lean keyword...
 | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
 | expr : Expr → Term
+| relative_entry : Direction → List Expr → Term
 
 inductive Const
 | num_lit : Nat → Const
@@ -90,9 +95,11 @@ inductive Statement
 | await : Option Term → List Statement → Statement -- here the AST is "imprecise" (when could be a different inductive type)
 | when :  QualifiedName → List Identifier → Statement → Statement
 | transition : Identifier → Statement
+| reset : Identifier → Statement
 | stray_expr : Expr → Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
+| stall : Expr → Statement
 -- what about function call?
 
 end  -- mutual
@@ -112,7 +119,7 @@ private partial def descriptionToString : Description → String
 | .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
 | .entry name desc => "controller_entry " ++ (toString name) ++ " " ++ (statementToString desc)
 | .control_flow name desc => "controller_control_flow " ++ (toString name) ++ " " ++ (statementToString desc)
-| .transition name body => "transition " ++ (toString name) ++ (statementToString body)
+| .state name body => "transition " ++ (toString name) ++ (statementToString body)
 -- Function definition
 | .function_definition ret args body =>
   (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
@@ -138,6 +145,8 @@ private partial def termToString : Term → String
   | .qualified_var n => qualifiedNameToString n
   | .const c => constToString c
   | .expr e => exprToString e
+  | .relative_entry .Previous es => "prev<" ++ String.intercalate ", " (es.map exprToString) ++ ">"
+  | .relative_entry .Next es => "next<" ++ String.intercalate ", " (es.map exprToString) ++ ">"
   | .function_call n es => (qualifiedNameToString n) ++ "(" ++ String.intercalate ", " (es.map exprToString)  ++ ")"
 
 private partial def constToString : Const → String
@@ -186,7 +195,9 @@ private partial def statementToString : Statement → String
     let msg := QualifiedName.mk src_and_msg.toList.tail!
    "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
+  | .reset lbl => "reset " ++ (toString lbl)
   | .stray_expr e => exprToString e
+  | .stall e => "stall ( " ++ exprToString e ++ " )"
   | .block stmts => " {\n" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s))  ++ "\n}\n"
   | .return_stmt e => "return " ++ exprToString e
 
