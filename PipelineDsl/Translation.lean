@@ -521,6 +521,8 @@ def ast0032_get_entry_vars ( entry : Description ) :=
 def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info :=
   {name := ctrl.name, controller_descript := ctrl.controller_descript, entry_descript := ctrl.entry_descript, init_trans := ctrl.init_trans, state_vars := ast0032_get_entry_vars ctrl.entry_descript, transition_list := ctrl.transition_list}
 
+-- NOTE: Also get the resets!
+-- But may want to write a different function for this...
 partial def get_stmts_with_transitions
 (stmt : Statement)
 :=
@@ -530,6 +532,7 @@ partial def get_stmts_with_transitions
 
   match stmt with
   | Statement.transition ident => [ident]
+  | Statement.reset ident => [ident]
   | Statement.listen_handle stmt lst =>
     List.join
     (
@@ -615,6 +618,7 @@ partial def ast0038_trans_ident_to_trans_list
           λ stmt1 => match stmt1 with
           | Statement.conditional_stmt cond => true
           | Statement.transition iden1 => true
+          | Statement.reset iden1 => true
           | Statement.block lst_stmts1 => true
           | Statement.await _ await_lst =>
           -- dbg_trace "==BEGIN await ==\n"
@@ -634,6 +638,7 @@ partial def ast0038_trans_ident_to_trans_list
       | Statement.await _ await_lst => await_lst
       | Statement.when qname ident_list stmt => [stmt]
       | Statement.transition iden2 => [stmt]
+      | Statement.reset iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
       | Statement.listen_handle stmt1 lst => [stmt]
       | _ => []
@@ -1511,6 +1516,8 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_state_var :=
     ident_matches_ident_list state_var_idents one_ident 
 
+    let ident_matches_state_var := or ident_matches_state_var (one_ident == "curr_state")
+    let one_ident := if (one_ident == "curr_state") then "state" else one_ident
 
     -- dbg_trace "!!! BEGIN IDENT !!!"
     -- dbg_trace one_ident
@@ -1595,6 +1602,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
   | h::t =>
     let ident_matches_ident_list :=
     ident_matches_ident_list state_var_idents h
+
+    let ident_matches_ident_list := or ident_matches_ident_list (h == "curr_state")
+    let h := if (h == "curr_state") then "state" else h
 
     -- This is for the second check,
     -- if "entry" is a term identifier,
