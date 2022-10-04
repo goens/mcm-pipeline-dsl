@@ -352,7 +352,8 @@ partial def mkReturnStmt : Syntax → Except String Statement
 
 partial def mkTransition : Syntax → Except String Statement
   | `(dsl_transition| transition $i ) => return Statement.transition i.getId.toString
-  | _ => throw "error parsing transition statement"
+  | `(dsl_transition| reset $i ) => return Statement.reset i.getId.toString
+  | s => throw s!"error parsing transition statement: {s}"
 
 partial def mkList : Syntax → Except String Expr
   | `(list| [$e:expr_list] ) => Except.map Expr.list (mkExprList e)
