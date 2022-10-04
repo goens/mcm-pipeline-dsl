@@ -101,27 +101,43 @@ syntax ident : dsl_term
 syntax qualified_name  "("  expr_list  ")" : call
 syntax "prev<" expr_list ">" : dsl_term
 syntax "next<" expr_list ">" : dsl_term
+syntax unuaryop : dsl_term
 
 -- TODO: add kwargs
 
 syntax "!" dsl_term : unuaryop
 syntax "~" dsl_term : unuaryop
 syntax "-" dsl_term : unuaryop
-syntax dsl_term "+" dsl_term : binop
-syntax dsl_term "-" dsl_term : binop
-syntax dsl_term "*" dsl_term : binop
-syntax dsl_term "/" dsl_term : binop
-syntax dsl_term "&" dsl_term : binop
-syntax dsl_term "|" dsl_term : binop
-syntax dsl_term "^" dsl_term : binop
-syntax dsl_term "<" dsl_term : binop
-syntax dsl_term ">" dsl_term : binop
+syntax dsl_term "+"  dsl_term : binop
+syntax dsl_term "-"  dsl_term : binop
+syntax dsl_term "*"  dsl_term : binop
+syntax dsl_term "/"  dsl_term : binop
+syntax dsl_term "&"  dsl_term : binop
+syntax dsl_term "|"  dsl_term : binop
+syntax dsl_term "^"  dsl_term : binop
+syntax dsl_term "<"  dsl_term : binop
+syntax dsl_term ">"  dsl_term : binop
 syntax dsl_term "<=" dsl_term : binop
 syntax dsl_term ">=" dsl_term : binop
 syntax dsl_term "<<" dsl_term : binop
 syntax dsl_term ">>" dsl_term : binop
 syntax dsl_term "==" dsl_term : binop
 syntax dsl_term "!=" dsl_term : binop
+syntax dsl_term "+"  binop : binop
+syntax dsl_term "-"  binop : binop
+syntax dsl_term "*"  binop : binop
+syntax dsl_term "/"  binop : binop
+syntax dsl_term "&"  binop : binop
+syntax dsl_term "|"  binop : binop
+syntax dsl_term "^"  binop : binop
+syntax dsl_term "<"  binop : binop
+syntax dsl_term ">"  binop : binop
+syntax dsl_term "<=" binop : binop
+syntax dsl_term ">=" binop : binop
+syntax dsl_term "<<" binop : binop
+syntax dsl_term ">>" binop : binop
+syntax dsl_term "==" binop : binop
+syntax dsl_term "!=" binop : binop
 
 syntax expr,* : expr_list
 syntax "("  expr ")" : parexpr
@@ -200,6 +216,22 @@ partial def mkBinop : Syntax → Except String Expr
   | `(binop| $x:dsl_term >= $y:dsl_term ) => Expr.geq <$> (mkTerm x) <*> (mkTerm y)
   | `(binop| $x:dsl_term == $y:dsl_term ) => Expr.equal <$> (mkTerm x) <*> (mkTerm y)
   | `(binop| $x:dsl_term != $y:dsl_term ) => Expr.not_equal <$> (mkTerm x) <*> (mkTerm y)
+  | `(binop| $x:dsl_term + $y:binop ) =>  Expr.add <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term - $y:binop ) => Expr.sub <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term * $y:binop ) => Expr.mul <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term / $y:binop ) => Expr.div <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term & $y:binop ) => Expr.binand <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term | $y:binop ) => Expr.binor <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term ^ $y:binop ) => Expr.binxor <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term << $y:binop ) => Expr.leftshift <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term >> $y:binop ) => Expr.rightshift <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term < $y:binop ) => Expr.less_than <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term > $y:binop ) => Expr.greater_than <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term <= $y:binop ) => Expr.leq <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term >= $y:binop ) => Expr.geq <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term == $y:binop ) => Expr.equal <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+  | `(binop| $x:dsl_term != $y:binop ) => Expr.not_equal <$> (mkTerm x) <*> (Term.expr <$> mkBinop y)
+
   | _ => throw "error parsing binary operator"
 
 
@@ -393,163 +425,6 @@ syntax "[internal_func_decl|" internal_func_decl "]" : term
 syntax "[arg_list|" arg_list "]" : term
 syntax "[constval|" constval "]" : term
 syntax "[dsl_transition|" dsl_transition "]" : term
-
-
-
--- CUSTOM DERIVING
-/-
-private abbrev IndexSet := Std.RBTree Nat compare
-private abbrev LocalInst2Index := FVarIdMap Nat
-
-private def implicitBinderF := Parser.Term.implicitBinder
-private def instBinderF     := Parser.Term.instBinder
-
-private def mkInhabitedInstanceUsing (inductiveTypeName : Name) (ctorName : Name) (addHypotheses : Bool) : CommandElabM Bool := do
-  match (← liftTermElabM none mkInstanceCmd?) with
-  | some cmd =>
-    elabCommand cmd
-    return true
-  | none =>
-    return false
-where
-  addLocalInstancesForParamsAux {α} (k : LocalInst2Index → TermElabM α) : List Expr → Nat → LocalInst2Index → TermElabM α
-    | [], i, map    => k map
-    | x::xs, i, map =>
-      try
-        let instType ← mkAppM `Inhabited #[x]
-        if (← isTypeCorrect instType) then
-          withLocalDeclD (← mkFreshUserName `inst) instType fun inst => do
-            trace[Elab.Deriving.inhabited] "adding local instance {instType}"
-            addLocalInstancesForParamsAux k xs (i+1) (map.insert inst.fvarId! i)
-        else
-          addLocalInstancesForParamsAux k xs (i+1) map
-      catch _ =>
-        addLocalInstancesForParamsAux k xs (i+1) map
-
-  addLocalInstancesForParams {α} (xs : Array Expr) (k : LocalInst2Index → TermElabM α) : TermElabM α := do
-    if addHypotheses then
-      addLocalInstancesForParamsAux k xs.toList 0 {}
-    else
-      k {}
-
-  collectUsedLocalsInsts (usedInstIdxs : IndexSet) (localInst2Index : LocalInst2Index) (e : Expr) : IndexSet :=
-    if localInst2Index.isEmpty then
-      usedInstIdxs
-    else
-      let visit {ω} : StateRefT IndexSet (ST ω) Unit :=
-        e.forEach fun
-          | Expr.fvar fvarId _ =>
-            match localInst2Index.find? fvarId with
-            | some idx => modify (·.insert idx)
-            | none => pure ()
-          | _ => pure ()
-      runST (fun _ => visit |>.run usedInstIdxs) |>.2
-
-  /- Create an `instance` command using the constructor `ctorName` with a hypothesis `Inhabited α` when `α` is one of the inductive type parameters
-     at position `i` and `i ∈ assumingParamIdxs`. -/
-  mkInstanceCmdWith (assumingParamIdxs : IndexSet) : TermElabM Syntax := do
-    let indVal ← getConstInfoInduct inductiveTypeName
-    let ctorVal ← getConstInfoCtor ctorName
-    let mut indArgs := #[]
-    let mut binders := #[]
-    for i in [:indVal.numParams + indVal.numIndices] do
-      let arg := mkIdent (← mkFreshUserName `a)
-      indArgs := indArgs.push arg
-      let binder ← `(implicitBinderF| { $arg:ident })
-      binders := binders.push binder
-      if assumingParamIdxs.contains i then
-        let binder ← `(instBinderF| [ Inhabited $arg:ident ])
-        binders := binders.push binder
-    let type ← `(Inhabited (@$(mkIdent inductiveTypeName):ident $indArgs:ident*))
-    let mut ctorArgs := #[]
-    for i in [:ctorVal.numParams] do
-      ctorArgs := ctorArgs.push (← `(_))
-    for i in [:ctorVal.numFields] do
-      ctorArgs := ctorArgs.push (← ``(Inhabited.default))
-    let val ← `(⟨@$(mkIdent ctorName):ident $ctorArgs:ident*⟩)
-    `(instance $binders:explicitBinder* : $type := $val)
-
-  mkInstanceCmd? : TermElabM (Option Syntax) := do
-    let ctorVal ← getConstInfoCtor ctorName
-    forallTelescopeReducing ctorVal.type fun xs _ =>
-      addLocalInstancesForParams xs[:ctorVal.numParams] fun localInst2Index => do
-        let mut usedInstIdxs := {}
-        let mut ok := true
-        for i in [ctorVal.numParams:xs.size] do
-          let x := xs[i]
-          let instType ← mkAppM `Inhabited #[(← inferType x)]
-          trace[Elab.Deriving.inhabited] "checking {instType} for '{ctorName}'"
-          match (← trySynthInstance instType) with
-          | LOption.some e =>
-            usedInstIdxs := collectUsedLocalsInsts usedInstIdxs localInst2Index e
-          | _ =>
-            trace[Elab.Deriving.inhabited] "failed to generate instance using '{ctorName}' {if addHypotheses then "(assuming parameters are inhabited)" else ""} because of field with type{indentExpr (← inferType x)}"
-            ok := false
-            break
-        if !ok then
-          return none
-        else
-          trace[Elab.Deriving.inhabited] "inhabited instance using '{ctorName}' {if addHypotheses then "(assuming parameters are inhabited)" else ""} {usedInstIdxs.toList}"
-          let cmd ← mkInstanceCmdWith usedInstIdxs
-          trace[Elab.Deriving.inhabited] "\n{cmd}"
-          return some cmd
-
-private def mkInhabitedInstance (declName : Name) : CommandElabM Unit := do
-  let indVal ← getConstInfoInduct declName
-  let doIt (addHypotheses : Bool) : CommandElabM Bool := do
-    for ctorName in indVal.ctors do
-      if (← mkInhabitedInstanceUsing declName ctorName addHypotheses) then
-        return true
-    return false
-  unless (← doIt false <||> doIt true) do
-    throwError "failed to generate 'Inhabited' instance for '{declName}'"
-
-def mkInhabitedInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
-  if (← declNames.allM isInductive) then
-    declNames.forM mkInhabitedInstance
-    return true
-  else
-    return false
-
-builtin_initialize
-  registerBuiltinDerivingHandler `Inhabited mkInhabitedInstanceHandler
-  registerTraceClass `Elab.Deriving.inhabited
-
--/
--- ^ END CUSTOM DERIVING
-
-/-
-macro_rules
-  | [file| $x:file ] => 
-  | [statement| $x:statement ] => 
-  | [expr| $x:expr ] => 
-  | [typed_identifier| $x:typed_identifier ] => 
-  | [qualified_name| $x:qualified_name ] => 
-  | [declaration| $x:declaration ] => 
-  | [variable_declaration| $x:variable_declaration ] => 
-  | [labeled_statement| $x:labeled_statement ] => 
-  | [label| $x:label ] => 
-  | [assignment| $x:assignment ] => 
-  | [conditional| $x:conditional ] => 
-  | [block| $x:block ] => 
-  | [await_block| $x:await_block ] => 
-  | [when_block| $x:when_block ] => 
-  | [listen_handle| $x:listen_handle ] => 
-  | [catch_block| $x:catch_block ] => 
-  | [return_stmt| $x:return_stmt ] => 
-  | [dsl_term| $x:dsl_term ] => 
-  | [call| $x:call ] => 
-  | [unuaryop| $x:unuaryop ] => 
-  | [binop| $x:binop ] => 
-  | [expr_list| $x:expr_list ] => 
-  | [parexpr| $x:parexpr ] => 
-  | [list| $x:list ] => 
-  | [structure_declaration| $x:structure_declaration ] => 
-  | [internal_func_decl| $x:internal_func_decl ] => 
-  | [arg_list| $x:arg_list ] => 
-  | [constval| $x:constval ] => 
-  | [dsl_transition| $x:dsl_transition ] => 
--/
 
 -- parse functions
 def parseConstval := mkNonTerminalParser `constval mkConstval

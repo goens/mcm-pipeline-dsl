@@ -798,7 +798,7 @@ def ast0041_list_ctrl_find_trans
 
 -- -- Info/State for the ast0046_transition_to_bb func
 -- structure splitting_info where
---   -- (Actually should be Description.transition)
+--   -- (Actually should be Description.state)
 --   lst_transitions : List Description
 --   -- lst_stmts : List Statement
 --   nested_stmts : List Statement
