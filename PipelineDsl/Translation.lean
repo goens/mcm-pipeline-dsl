@@ -28,7 +28,7 @@ def ast0001_descript (descript : Pipeline.Description) : Identifier :=
   match descript with
   | Description.control_flow a _ => a
   | Description.entry a _ => a
-  | Description.transition a _ => a
+  | Description.state a _ => a
   | Description.controller a _ => a
   | Description.function_definition (TypedIdentifier.mk _ a) _ _ => a
 
@@ -115,7 +115,7 @@ inductive how_many_found
 structure dsl_trans_info where
 ctrler_name: Identifier
 ctrler_lst : List controller_info
-trans : Description -- Description.transition
+trans : Description -- Description.state
 
 inductive tail_or_entry
 | tail : tail_or_entry
@@ -592,7 +592,7 @@ partial def ast0038_trans_ident_to_trans_list
   (
   list.filter (
     λ descript => match descript with
-    | Description.transition iden stmt =>
+    | Description.state iden stmt =>
       iden == trans_name
     | _ => false
   )
@@ -602,7 +602,7 @@ partial def ast0038_trans_ident_to_trans_list
   -- the "child nodes"
   (
     λ transit => match transit with
-    | Description.transition iden stmt =>
+    | Description.state iden stmt =>
           
         -- dbg_trace "==BEGIN &&&&&&&&==\n"
         -- dbg_trace trans_name
@@ -660,7 +660,7 @@ def ast0039_trans_ident_to_list
       (
         λ descript =>
           match descript with
-          | Description.transition iden1 stmt =>
+          | Description.state iden1 stmt =>
             if (iden1 == iden)
               then true
               else false
@@ -677,7 +677,7 @@ def ast0040_get_trans
     lst.filter
     (
       λ descript => match descript with
-        | Description.transition iden stmt => true
+        | Description.state iden stmt => true
         | _ => false
     )
 
@@ -763,7 +763,7 @@ def ast0041_list_ctrl_find_trans
 --   -- here (no splitting or whatever, it's already a fork in the BB)
 --   -- else there are no awaits, just return the transition
 --   match descript with
---   | Description.transition iden stmt =>
+--   | Description.state iden stmt =>
 --     match stmt with
 --     | Statement.block lst_stmts =>
 --       (lst_stmts.take 1).map
@@ -831,11 +831,11 @@ def create_transition_from_lst_stmts
 ( lst_stmts : List Statement )
 -- the name of the transition...
 ( identifier : Identifier )
--- return the Description.transition
+-- return the Description.state
 : (Description)
 :=
-  -- Create a Description.transition
-  Description.transition
+  -- Create a Description.state
+  Description.state
   identifier
   (Statement.block lst_stmts)
 
@@ -1136,7 +1136,7 @@ def create_transition_from_lst_stmts
 -- (descript : Description)
 -- :=
 --   match descript with
---   | Description.transition iden stmt =>
+--   | Description.state iden stmt =>
 --     match stmt with
 --     | Statement.block lst_stmt' =>
 --       ast0046_examine_statements [stmt]
@@ -1208,7 +1208,7 @@ def ast0019_controller_info (ast : AST) :=
   -- (2) Records (from state vars of the structures)
   -- a buffer of some number of entries
   -- An instance of these records will also be added to the "core"
-  -- (3) Transitions (from the Description.transition objects)
+  -- (3) Transitions (from the Description.state objects)
   -- This requires a more involved translation algo
   -- (a) init transition: an amalgamation of all controller's init trans
   -- (b) other transitions: This is where we do things like split
@@ -1242,26 +1242,26 @@ open Murϕ
 
 --=========== Helper Funcs for DSL to Murphi Translation =============
 def get_transition_name
-(trans : Description) -- Description.transition
+(trans : Description) -- Description.state
 :=
   match trans with
-  | Description.transition ident stmt =>
+  | Description.state ident stmt =>
     ident
   | _ => dbg_trace "Didn't pass in a transition?"
     default
 
 def get_transition_stmt
-(trans : Description) -- Description.transition
+(trans : Description) -- Description.state
 :=
   match trans with
-  | Description.transition ident stmt =>
+  | Description.state ident stmt =>
     stmt
   | _ => dbg_trace "Didn't pass in a transition?"
     default
 
 -- Go copy in relevant code from the DFS
 def get_dest_transition_names
-(trans : Description) -- Description.transition
+(trans : Description) -- Description.state
 :=
   let trans_stmt := get_transition_stmt trans
   let lst_of_trans_dest_idents :=
@@ -1310,7 +1310,7 @@ partial def check_if_transition_stmt_blk_has_an_await
 
 -- probably can reuse some code to do this check
 def does_transition_have_await
-(trans : Description) -- Description.transition
+(trans : Description) -- Description.state
 :=
   let trans_stmt_blk := get_transition_stmt trans
   let list_bool :=
@@ -2149,6 +2149,12 @@ partial def ast_term_to_murphi_expr
     let pipeline_expr := ast_expr_to_murphi_expr expr_trans_info
     pipeline_expr
   -- panic! "unimplemented case (nested terms/expressions)"
+  | Term.relative_entry Direction.Next _ =>
+    dbg_trace "Future Stuff (next<>). Should throw an error here as wel...."
+    default
+  | Term.relative_entry Direction.Previous _ =>
+    dbg_trace "Future Stuff (prev<>). Should throw an error here as wel...."
+    default
 
 
 --===== Helper func, DSL Expr to Murphi Expr. =====
@@ -2377,7 +2383,7 @@ partial def find_when_from_transition
       -- get the transition stmts, find stmts
       -- which 
       match trans with
-      | Description.transition ident stmt =>
+      | Description.state ident stmt =>
         match stmt with
         | Statement.block lst_stmts =>
           let when_blk :=
@@ -2477,7 +2483,7 @@ List (Murϕ.Expr × lst_stmts_decls)
 -- that's in the handle block... (if there is any)
 
   let stmt_blk := match trans with
-  | Pipeline.Description.transition ident stmt =>
+  | Pipeline.Description.state ident stmt =>
   stmt
   | _ => dbg_trace "TODO: throw an error here!"
     default
@@ -2655,7 +2661,7 @@ List (Murϕ.Expr × lst_stmts_decls)
 
       let trans_name : Identifier :=
       match trans with
-      | Description.transition ident stmt => ident
+      | Description.state ident stmt => ident
       | _ => dbg_trace "Shouldn't be another Description"
         default
       -- TODO NOTE: Finish this;
@@ -5580,6 +5586,138 @@ lst_stmts_decls
   -- | _ => dbg_trace "shouldn't get another stmt type"
   --   -- []
   --   empty_stmt_decl_lsts
+  | Statement.stall _ =>
+    dbg_trace "Unimplemented (stall (expr)). Just using an Await statement with tail_search for now."
+    default
+  | Statement.reset ident =>
+    -- NOTE: Copied from Statement.transition
+    let murphi_stmt :=
+    match await_or_not with
+    | await_or_not_state.await => 
+      -- return nothing
+      empty_stmt_decl_lsts
+    | await_or_not_state.not_await => 
+      -- translate ident into updating
+      -- this structure's entry state
+      -- ident
+      let this_ctrler : controller_info :=
+    -- dbg_trace "===== dsl transition to murphi translation ====="
+        get_ctrler_matching_name ctrler_name ctrlers_lst
+
+      let ctrler_ordering :=
+        get_ctrler_elem_ordering this_ctrler
+
+      let is_indexable : Bool :=
+        IndexableCtrlerTypesStrings.contains ctrler_ordering
+
+      if is_indexable
+      then
+      -- we access the specific entry i for the rule
+
+      let ruleset_core_elem_idx := "j"
+      let core_idx_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk ruleset_core_elem_idx []
+      )
+
+      -- let ctrler_id := this_ctrler.name
+
+      let entries := "entries"
+
+      let tail_entry :=
+        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        dbg_trace "CUSTOM ENTRY"
+        tail_or_entry.custom_entry
+        else
+        dbg_trace "BASIC ENTRY"
+        tail_or_entry.entry
+      -- AZ TODO: Use the specific entry thing
+      -- let ruleset_entry_elem_idx := "i"
+      let queue_idx :=
+        match tail_entry with
+        | tail_or_entry.entry => "i"
+        | tail_or_entry.custom_entry =>
+          if stmt_trans_info.use_specific_dest_in_transition then
+            ""
+          else
+            "i"
+        | tail_or_entry.tail => "tail"
+
+      let entry_idx_designator :=
+      -- Murϕ.Expr.designator (
+      --   Designator.mk ruleset_entry_elem_idx []
+      -- )
+      match tail_entry with
+        | tail_or_entry.tail =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk "next_state" [
+        -- entries
+        -- Assume the buffer entries are
+        -- referred to as 'i'
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl (ctrler_name.append "_"),
+        Sum.inl queue_idx
+        ])
+        | tail_or_entry.entry =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk queue_idx [])
+        | tail_or_entry.custom_entry =>
+        dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
+        dbg_trace stmt_trans_info.specific_murphi_dest_expr
+
+        if stmt_trans_info.use_specific_dest_in_transition then
+          stmt_trans_info.specific_murphi_dest_expr.get!
+        else
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk queue_idx [])
+
+      let state := "state"
+
+      let current_structure_entry_state :=
+        -- Murϕ.Expr.designator (
+          Designator.mk (
+            -- Example in comments
+            -- core_
+            "next_state"
+          )
+          [
+            -- Example in comments
+            Sum.inl "core_",
+            -- core_[i]
+            Sum.inr core_idx_designator,
+            -- core_[i].LQ
+            Sum.inl (ctrler_name.append "_"),
+            -- core_[i].LQ.entries
+            Sum.inl entries,
+            -- core_[i].LQ.entries[j]
+            Sum.inr entry_idx_designator,
+            -- core_[i].LQ.entries[j].state
+            Sum.inl state
+          ]
+        -- )
+
+      -- want to assign the state the ident
+
+      let murphi_state_assn : Murϕ.Statement :=
+        Murϕ.Statement.assignment
+        current_structure_entry_state
+        (Murϕ.Expr.designator (
+          Murϕ.Designator.mk ident []
+        ) )
+
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_state_assn],
+        decls := []
+      }
+      stmts_decls
+      else
+      -- AZ TODO NOTE: Consider the case of a unit
+        -- If this isn't a FIFO / buffer structure
+        -- Then do we just assign the unit's state?
+        -- []
+        empty_stmt_decl_lsts
+    murphi_stmt
 
 end -- END mutually recursive func region --
 
@@ -6377,7 +6515,7 @@ def dsl_trans_descript_to_murphi_rule
 (trans_info : dsl_trans_info)
 -- (ctrler_and_trans : (List controller_info) × Description)
 -- (ctrler : controller_info)
--- (trans : Description) -- Description.transition
+-- (trans : Description) -- Description.state
 
 -- all other controllers, if we need to gen
 -- something like "insert" code

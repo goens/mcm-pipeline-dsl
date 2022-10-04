@@ -183,7 +183,7 @@ def find_load_begin_perform_info
         ctrler.transition_list.filter (
           λ trans_descript =>
             match trans_descript with
-            | Description.transition ident stmt =>
+            | Description.state ident stmt =>
               -- want to find a stmt that contains
               -- a memory_interface access/request
               let bool_lst :=
@@ -721,7 +721,7 @@ def return_transition_with_stmt_before_mem_access
   let ident_and_blk : Identifier × Statement
   :=
     match trans with
-    | Description.transition ident stmt =>
+    | Description.state ident stmt =>
       (ident, stmt)
     | _ => dbg_trace "ERROR!"
       default
@@ -753,7 +753,7 @@ def return_transition_with_stmt_before_mem_access
     trans
   else
     -- start the replacement
-    Description.transition
+    Description.state
     (trans_ident)
     (
       Statement.block
@@ -767,7 +767,7 @@ def return_transition_with_stmt_before_mem_access
 --======= Helper =======
 def return_ctrler_with_updated_trans_list
 (ctrler : controller_info)
-(trans_lst : List Description) -- (Description.transition)
+(trans_lst : List Description) -- (Description.state)
 : controller_info
 := {
   name                := ctrler.name,

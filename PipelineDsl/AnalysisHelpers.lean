@@ -336,7 +336,7 @@ def ast0048_generate_controller_murphi_record
   -- ========== Entries States =============
   let list_of_transition_names : List String :=
     ctrl.transition_list.map λ trans => match trans with
-    | Pipeline.Description.transition ident _ => ident
+    | Pipeline.Description.state ident _ => ident
     | _ => dbg_trace "shouldn't reach here???!"
       panic! "TODO: Throw.."
   let ctrler_entry_state :=
