@@ -35,7 +35,7 @@ declare_syntax_cat binop
 declare_syntax_cat expr_list
 declare_syntax_cat parexpr
 declare_syntax_cat list
-declare_syntax_cat structure_declaration
+declare_syntax_cat structure_declaration (behavior := both)
 declare_syntax_cat internal_func_decl
 declare_syntax_cat arg_list
 declare_syntax_cat constval
@@ -52,7 +52,8 @@ syntax internal_func_decl : declaration
 syntax "controller_entry" ident statement : structure_declaration
 syntax "controller" ident statement : structure_declaration
 syntax "state_queue" ident statement : structure_declaration
-syntax "state" ident statement : structure_declaration
+
+syntax &"state" ident statement : structure_declaration
 syntax "controller_control_flow" ident statement : structure_declaration
 
 syntax typed_identifier "(" arg_list ")" statement : internal_func_decl
