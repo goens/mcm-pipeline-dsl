@@ -1827,10 +1827,16 @@ partial def ast_term_to_murphi_expr
         else
           true
 
+        -- TODO NOTE: Thu Oct 6 2022
+        -- This "and" condition also checks if is_rhs set
+        -- but an if-cond isn't rhs....
         dbg_trace "specific dest expr"
         dbg_trace term_trans_info.specific_murphi_dest_expr
         let tail_entry :=
-        if and term_trans_info.is_rhs specific_murphi_dest_expr_is_some then
+        if (or
+        (and term_trans_info.is_rhs specific_murphi_dest_expr_is_some)
+        ( ident == "curr_state" )
+        ) then
           dbg_trace "CUSTOM ENTRY"
           tail_or_entry.custom_entry
         else
