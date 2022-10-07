@@ -535,9 +535,71 @@ def update_state_transitions_matching_name_to_replacement_name
 
   -- []
   
-  -- def gen_stall_dsl_state
-  -- (state_name : String)
-  -- ()
-  -- : Description
-  -- :=
+  def gen_stall_dsl_state
+  (state_name : String)
+  (ctrler_name : String)
+  (stall_on_inst_type : InstType)
+  : Description
+  :=
+
+    let ctrler_search : QualifiedName :=
+      QualifiedName.mk [ctrler_name, "search"]
     
+    -- (entry.instruction.seq_num < instruction.seq_num)
+    let entry_is_earlier_than_this_one : Expr :=
+      Pipeline.Expr.less_than
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+    -- (entry.instruction.op == stall_on_inst_type)
+    let entry_is_of_desired_type : Expr :=
+      Pipeline.Expr.equal
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "op"]))
+      (Pipeline.Term.const (Const.str_lit (stall_on_inst_type.toString)))
+
+    let search_condition : Expr :=
+      Pipeline.Expr.binand
+      entry_is_earlier_than_this_one
+      entry_is_of_desired_type
+
+    Description.state "" (Statement.block [])
+    -- some expression condition...
+    -- Check the DSL code, something like
+    -- entry.instruction.seq_num < instruction.seq_num
+
+    -- let search_func_call : Term :=
+    --   Term.function_call ctrler_search search_condition
+      
+    -- What the await statement should look like:
+    -- await LQ.tail_search(entry.instruction.seq_num < instruction.seq_num) {
+    --   when search_success(curr_state) from LQ {
+    --     if (
+    --       (curr_state == await_creation) |
+    --       (curr_state == await_scheduled) |
+    --       (curr_state == await_translation) |
+    --       (curr_state == await_fwd_check) |
+    --       (curr_state == await_sb_fwd_check_response) |
+    --       (curr_state == stall_on_next_entry_state) |
+    --       (curr_state == build_packet_send_mem_request) |
+    --       (curr_state == await_mem_response) |
+    --       (curr_state == squashed_await_ld_mem_resp)
+    --     ) {
+    --       transition stall_on_next_entry_state;
+    --     } else {
+    --       transition build_packet_send_mem_request;
+    --     }
+    --   }
+    --   when search_fail() from LQ {
+    --     # Could also call it something like "when not speculative"
+    --     transition build_packet_send_mem_request;
+    --   }
+    -- }
+
+    -- TODO: Call the func to make the condition for the if.
+    -- TODO: Make the if stmt
+    -- TODO: Fill in both when cases.
+
+    -- let await stmt := 
+    --   Statement.await
+
+    -- let state_descrip :=
+    -- Description.state "" 
