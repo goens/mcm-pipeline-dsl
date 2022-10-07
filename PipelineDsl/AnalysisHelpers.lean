@@ -7,6 +7,23 @@ open Murϕ
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
 
+inductive InstType
+| load : InstType
+| store : InstType
+deriving Inhabited, BEq
+
+def InstType.toString : InstType → String
+| .load => "Load"
+| .store => "Store"  
+instance : ToString InstType where toString := InstType.toString
+
+def InstType.toMurphiString : InstType → String
+| .load => "ld"
+| .store => "st"  
+
+-- #eval InstType.toMurphiString (InstType.load)
+-- #eval (InstType.load).toMurphiString
+
 structure CtrlerType where
 name : String
 deriving Inhabited, BEq
