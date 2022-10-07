@@ -1603,8 +1603,8 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_ident_list :=
     ident_matches_ident_list state_var_idents h
 
-    let ident_matches_ident_list := or ident_matches_ident_list (h == "curr_state")
-    let h := if (h == "curr_state") then "state" else h
+    let ident_matches_ident_list := or ident_matches_ident_list (t.contains "curr_state")
+    let t := t.map ( fun ident_str => if (ident_str == "curr_state") then "state" else ident_str)
 
     -- This is for the second check,
     -- if "entry" is a term identifier,
