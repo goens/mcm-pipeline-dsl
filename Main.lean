@@ -3,6 +3,7 @@ import Lean
 -- import PipelineDsl.Preprocess
 import PipelineDsl.AnalysisHelpers
 import PipelineDsl.LitmusTests
+import PipelineDsl.InOrderTransformation
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
@@ -81,6 +82,10 @@ def main (args : List String): IO Unit := do
     | _ => ast0021_empty_controller
 
   println! s!"=== stall-inserted ctrler ==="
+  let in_order_load := get_ctrler_state_with_mem_load_req should_be_one_ctrler
+
+  let just_one_state : String := in_order_load[0]!
+
   -- let tsfmed_ctrler :=
   --   handle_load_perform_controller should_be_one_ctrler
   -- println! s!"ctrlers with both loads and mem access:\n{tsfmed_ctrler}"
