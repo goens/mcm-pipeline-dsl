@@ -1,19 +1,11 @@
 
 import PipelineDsl.Murphi
+import PipelineDsl.AnalysisHelpers
 
 open Murϕ in
 structure MurphiFile where
 filename : String
 program : Murϕ.Program
-
--- Inst in Litmus Test
-inductive InstType
-| read : InstType
-| write : InstType
-deriving Inhabited
-
-def load : InstType := InstType.read
-def store : InstType := InstType.write
 
 structure Inst where
 inst_type : InstType
@@ -109,8 +101,8 @@ def core_insts_to_emit_murphi_alias
     fun inst =>
       let queue_idx : String := toString inst.queue_idx
       let op : String := match inst.inst.inst_type with
-      | .read => "ld"
-      | .write => "st"
+      | .load => "ld"
+      | .store => "st"
       let seq_num : String := toString inst.seq_num
       let dest_reg : String := toString inst.inst.dest_reg
       let addr : String := toString inst.inst.addr
@@ -443,11 +435,32 @@ def n5 : LitmusTest := {
 --     mkev 2 (mkiiid 0 2) (Access R 0 0)
 --   ].
 
+def Dekker : LitmusTest := {
+  test_name := "Dekker",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := ForbiddenOrRequired.forbidden},
+  orderings := [MCMOrdering.store_to_load]
+}
 
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
 amd1,
 n2,
 n4,
-n5
+n5,
+Dekker
 ]

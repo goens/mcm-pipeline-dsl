@@ -7,10 +7,18 @@ open Murϕ
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
 
+-- Inst in Litmus Test
 inductive InstType
 | load : InstType
 | store : InstType
 deriving Inhabited, BEq
+-- inductive InstType
+-- | load : InstType
+-- | store : InstType
+-- deriving Inhabited, BEq
+
+def load : InstType := InstType.load
+def store : InstType := InstType.store
 
 def InstType.toString : InstType → String
 | .load => "Load"

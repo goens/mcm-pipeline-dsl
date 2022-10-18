@@ -546,15 +546,19 @@ def update_state_transitions_matching_name_to_replacement_name
       QualifiedName.mk [ctrler_name, "search"]
     
     -- (entry.instruction.seq_num < instruction.seq_num)
-    let entry_is_earlier_than_this_one : Expr :=
+    let entry_is_earlier_than_this_one : Term :=
+      Pipeline.Term.expr (
       Pipeline.Expr.less_than
       (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
       (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+      )
     -- (entry.instruction.op == stall_on_inst_type)
-    let entry_is_of_desired_type : Expr :=
+    let entry_is_of_desired_type : Term :=
+      Pipeline.Term.expr (
       Pipeline.Expr.equal
       (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "op"]))
       (Pipeline.Term.const (Const.str_lit (stall_on_inst_type.toString)))
+      )
 
     let search_condition : Expr :=
       Pipeline.Expr.binand
