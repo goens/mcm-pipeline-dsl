@@ -226,6 +226,42 @@ def get_ctrler_state_with_mem_load_req
   -- TODO: do this friday morning...
   lst_trans_with_mem_access
   
+def get_ctrler_state_awaiting_mem_load_resp
+( ctrler : controller_info ) -- really is Description.state
+: ( List String ) -- The name of the transition with the mem load req
+:=
+  -- search and find the transition
+  let lst_trans_with_mem_access : List String := List.join (
+    ctrler.transition_list.map (
+      λ trans_descript =>
+        match trans_descript with
+        | Description.state ident stmt =>
+          -- want to find a stmt that contains
+          -- a memory_interface access/request
+          let bool_lst :=
+          true_if_stmts_awaits_ld_mem_response stmt
+
+          let found_mem_interface_access :=
+          match bool_lst with
+          | [] => []
+          | [true] => [ident]
+          | _::_ =>
+            if bool_lst.all (λ bool' => bool' == true)
+             then [ident]
+             else []
+
+          found_mem_interface_access
+        | _ => []
+    )
+  )
+  
+  -- NOTE: lst_trans_with_mem_access has the states
+  -- with mem-int load access
+  -- Just need to figure out if we want to return a list
+  -- of strings (all states) or just 1...
+  -- TODO: do this friday morning...
+  lst_trans_with_mem_access
+
 -- Should try to prove termination at some point...
 partial def recursively_find_stmt_with_transition_to_arg
 ( state_stmt : String × Statement )
@@ -538,6 +574,7 @@ def update_state_transitions_matching_name_to_replacement_name
   def gen_stall_dsl_state
   (state_name : String)
   (ctrler_name : String)
+  (state_check_or_tree : Pipeline.Expr)
   (stall_on_inst_type : InstType)
   : Description
   :=
@@ -565,16 +602,69 @@ def update_state_transitions_matching_name_to_replacement_name
       entry_is_earlier_than_this_one
       entry_is_of_desired_type
 
-    Description.state "" (Statement.block [])
+    --  min(instruction.seq_num - entry.instruction.seq_num)
+    let search_min : Expr :=
+      Pipeline.Expr.some_term (
+        Pipeline.Term.function_call 
+        (QualifiedName.mk ["min"])
+        [(Pipeline.Expr.sub
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"])))]
+      )
+
+    let ctrler_search_call : Term :=
+      Pipeline.Term.function_call
+      (QualifiedName.mk [ctrler_name, "search"])
+      [search_condition, search_min]
+
+    -- TODO: Fill in the when stmts, and the condition in it
+    let await_stmt : Pipeline.Statement :=
+      Statement.await ctrler_search_call []
+    -- TODO: find the function I use to generate the if statement
+
+    let stall_state_name := ctrler_name ++ "stall" ++ state_name
+    let when_success_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block [
+        Pipeline.Statement.conditional_stmt (
+        Pipeline.Conditional.if_else_statement
+        state_check_or_tree
+        (Pipeline.Statement.reset stall_state_name)
+        (Pipeline.Statement.transition state_name)
+        )
+      ]
+    let when_success : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_success"])
+      (["curr_state"])
+      when_success_stmt_blk
+
+    let when_fail_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block [
+        (Pipeline.Statement.transition state_name)
+      ]
+    let when_fail : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_fail"])
+      ([])
+      when_fail_stmt_blk
+
+    Description.state stall_state_name (
+      Statement.block [when_success, when_fail])
     -- some expression condition...
     -- Check the DSL code, something like
     -- entry.instruction.seq_num < instruction.seq_num
 
     -- let search_func_call : Term :=
     --   Term.function_call ctrler_search search_condition
-      
-    -- What the await statement should look like:
-    -- await LQ.tail_search(entry.instruction.seq_num < instruction.seq_num) {
+
+    -- TODO: Call the func to make the condition for the if.
+    -- TODO: Make the if stmt
+    -- TODO: Fill in both when cases.
+
+    -- await LQ.search(
+    --  (entry.instruction.seq_num < instruction.seq_num) &
+    --  (entry.instruction.op == stall_on_inst_type Load, Store, Fence..),
+    --  min(instruction.seq_num - entry.instruction.seq_num) ) {
     --   when search_success(curr_state) from LQ {
     --     if (
     --       (curr_state == await_creation) |
@@ -587,7 +677,7 @@ def update_state_transitions_matching_name_to_replacement_name
     --       (curr_state == await_mem_response) |
     --       (curr_state == squashed_await_ld_mem_resp)
     --     ) {
-    --       transition stall_on_next_entry_state;
+    --       reset stall_on_next_entry_state;
     --     } else {
     --       transition build_packet_send_mem_request;
     --     }
@@ -598,12 +688,79 @@ def update_state_transitions_matching_name_to_replacement_name
     --   }
     -- }
 
-    -- TODO: Call the func to make the condition for the if.
-    -- TODO: Make the if stmt
-    -- TODO: Fill in both when cases.
 
-    -- let await stmt := 
-    --   Statement.await
 
-    -- let state_descrip :=
-    -- Description.state "" 
+-- Use/Compose these functions:
+-- (1) get_ctrler_state_with_mem_load_req: Get ctrler state name w/ mem load req
+-- (2) get_states_leading_to_given_state: Get list of states for if stmt
+-- (3) gen_stall_dsl_state: Generate stall state in DSL
+-- (4) Update state transitions, add this new stall state, ret a new ctrler
+-- TODO:
+-- (5) Write a function to compose together all of these funcs
+-- make this new func take a list of the states in the ctrler
+
+-- (5) this is the func to compose these actions together
+-- This will primarily be for enforcing in-order exec for
+-- insts that were inserted into structures all at the same time
+def naive_update_add_stall_to_global_perform
+( ctrler : controller_info )
+: Except String ( controller_info )
+:= do
+  -- (1) Get ctrler state awaiting mem resp
+  let states_awaiting_mem_ld_resp : List String :=
+    get_ctrler_state_awaiting_mem_load_resp ctrler
+
+  let state_awaiting_mem_ld_resp : String ←
+    match states_awaiting_mem_ld_resp with
+    | [state_name] => pure state_name
+    | _ => -- "empty list or multiple states that send a load req?"
+      dbg_trace "empty list or multiple states that send a load req?"
+      let error_msg : String :=
+        "FAIL: Naive in-order load tsfm found multiple states" ++
+        s!"that send load requests!\nCtrler: {ctrler.name}"
+      throw error_msg
+
+  -- (2) Get the states that transition to this state
+  -- to build the OR tree of states to check...
+  let states_to_stall_on : List String := (
+    get_states_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list))
+    ++ [state_awaiting_mem_ld_resp]
+
+  -- Build the tree of (curr_state == <state>) |
+  -- Use convert_state_names_to_dsl_or_tree_state_check
+  let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
+    convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
+
+  -- (3) Gen the Stall state
+  -- use the gen_stall_dsl_state function to make a new stall state
+  let new_stall_state_name : String := String.join [ctrler.name, "_stall_", state_awaiting_mem_ld_resp]
+  let new_stall_state : Description :=
+    gen_stall_dsl_state state_awaiting_mem_ld_resp ctrler.name 
+    not_yet_gotten_mem_resp_state_check load
+
+  -- (4) Update the stall state with these Helper Funcs
+  -- Update states which transitioned to the original state:
+  -- a) get_states_directly_leading_to_given_state
+  -- b) update_state_transitions_matching_name_to_replacement_name
+  -- c) add the new state to the list of states of the ctrler,
+  --    will need to return a new ctrler
+  let states_that_transition_to_original_await_mem_resp_state : List String :=
+    get_states_directly_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list)
+
+  let updated_state_list_transition_to_stall_state : List Description :=
+    update_state_transitions_matching_name_to_replacement_name
+    state_awaiting_mem_ld_resp new_stall_state_name states_that_transition_to_original_await_mem_resp_state ctrler.transition_list
+
+  let new_state_machine_with_stall_state : List Description :=
+    updated_state_list_transition_to_stall_state ++ [new_stall_state]
+  
+  let new_ctrler : controller_info := {
+    name := ctrler.name,
+    controller_descript := ctrler.controller_descript,
+    entry_descript := ctrler.entry_descript,
+    init_trans := ctrler.init_trans,
+    state_vars := ctrler.state_vars,
+    transition_list := new_state_machine_with_stall_state
+  }
+
+  return new_ctrler
