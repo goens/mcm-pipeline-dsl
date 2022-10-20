@@ -86,25 +86,19 @@ def main (args : List String): IO Unit := do
 
   let just_one_state : String := in_order_load[0]!
 
-  -- let tsfmed_ctrler :=
-  --   handle_load_perform_controller should_be_one_ctrler
-  -- println! s!"ctrlers with both loads and mem access:\n{tsfmed_ctrler}"
+  -- AZ NOTE: Testing in-order-transform
+  let ctrlers := ctrlers.map (
+    λ ctrl => 
+      let output := naive_update_add_stall_to_global_perform_ld ctrl
+      match output with
+      | .ok ctrler_info => ctrler_info
+      | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"
+        ast0021_empty_controller
+  )
+  println! s!"------ begin in-order transformation ------\n"
+  println! s!"{ctrlers}"
+  println! s!"------ end in-order transformation ------\n"
 
-  -- let num_transitions := tsfmed_ctrler.transition_list.length
-  -- -- let num_transitions := ctrlers.length
-  -- let ctrler_list := List.replicate num_transitions ctrlers
-  -- let ctrler_list := List.replicate num_transitions ctrlers
-
-  -- let joined_transition_and_ctrlers := ctrler_list.zip tsfmed_ctrler.transition_list
-
-  -- let joined_transition_and_ctrlers : List dsl_trans_info :=
-  -- should_be_one_ctrler.transition_list.map
-  --   λ trans =>
-  --   {
-  --     ctrler_name := should_be_one_ctrler.name,
-  --     ctrler_lst := ctrlers,
-  --     trans := trans
-  --   }
   let all_joined_ctrlers : List (List dsl_trans_info) :=
   ctrlers.map (
     λ ctrler =>

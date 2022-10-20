@@ -2157,7 +2157,7 @@ partial def ast_term_to_murphi_expr
       -- TODO For Later:
       -- Detect this case somehow ahead of time and ignore
       -- this....
-      Murϕ.Expr.integerConst 0
+      Murϕ.Expr.designator (Murϕ.Designator.mk str [])
       -- TODO: handle this case. Should be more or less (if it was done with a monad :D)
    --| Term.expr exp => -- ast_expr_to_murphi_expr exp
   | Term.expr expr =>
