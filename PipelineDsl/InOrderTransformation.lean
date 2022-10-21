@@ -488,6 +488,9 @@ partial def recursively_find_stmt_and_update_transitions
   let bool_list :=
   match stmt with
   | Statement.transition ident =>
+    dbg_trace s!"--== BEGIN OLD TRANS NAME: {stmt}"
+    dbg_trace s!"--== THE OLD TRANS NAME: {old_name}"
+    dbg_trace s!"--== END REPLACEMENT TRANS NAME: {new_name}"
     if ident == old_name then Statement.transition new_name
     else stmt
   -- TODO NOTE: Should count both "reset" & "transition"
@@ -722,6 +725,17 @@ def update_state_transitions_matching_name_to_replacement_name
     --   }
     -- }
 
+-- Algo to find states that don't lead to the complete state
+-- NOTE: probably easier if we use "complete" to mark the
+-- point where the state machine completes
+-- Draw each unique path
+-- 1. This will be some kind of recurisve map
+-- 2. Keep list of traversed states as an arg
+-- 3. If we reach "complete" state we return []
+-- 4. If we reach a dead end, then we just return the list
+-- 5. just combine unique elems
+-- 6. we need a function to get all of the transition
+-- statements, and complete statements
 
 
 -- Use/Compose these functions:
@@ -755,17 +769,6 @@ def naive_update_add_stall_to_global_perform_ld
         s!" that receive ld responses!\nCtrler: {ctrler.name}\nStates: {states_awaiting_mem_ld_resp}"
       throw error_msg
 
-  -- (2) Get the states that transition to this state
-  -- to build the OR tree of states to check...
-  let states_to_stall_on : List String := (
-    get_states_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list))
-    ++ [state_awaiting_mem_ld_resp]
-
-  -- Build the tree of (curr_state == <state>) |
-  -- Use convert_state_names_to_dsl_or_tree_state_check
-  let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
-    convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
-
   -- (3) Gen the Stall state
   -- use the gen_stall_dsl_state function to make a new stall state
 
@@ -785,9 +788,21 @@ def naive_update_add_stall_to_global_perform_ld
       throw error_msg
 
   let new_stall_state_name : String := String.join [ctrler.name, "_stall_", state_globally_performing_mem_ld]
+
+  -- (2) Get the states that transition to this state
+  -- to build the OR tree of states to check...
+  let states_to_stall_on : List String := (
+    get_states_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list))
+    ++ [state_awaiting_mem_ld_resp, new_stall_state_name]
+
+  -- Build the tree of (curr_state == <state>) |
+  -- Use convert_state_names_to_dsl_or_tree_state_check
+  let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
+    convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
+
   let new_stall_state : Description :=
-    gen_stall_dsl_state new_stall_state_name state_awaiting_mem_ld_resp 
-     ctrler.name not_yet_gotten_mem_resp_state_check load
+    gen_stall_dsl_state new_stall_state_name state_globally_performing_mem_ld
+    ctrler.name not_yet_gotten_mem_resp_state_check load
 
   -- (4) Update the stall state with these Helper Funcs
   -- Update states which transitioned to the original state:
@@ -797,10 +812,13 @@ def naive_update_add_stall_to_global_perform_ld
   --    will need to return a new ctrler
   let states_that_transition_to_original_global_perform_ld : List String :=
     get_states_directly_leading_to_given_state (state_globally_performing_mem_ld, ctrler.transition_list)
+  dbg_trace s!"======= STATES directly leading to state {state_globally_performing_mem_ld}"
+  dbg_trace states_that_transition_to_original_global_perform_ld
+  dbg_trace s!"======= END States that directly lead to state {state_globally_performing_mem_ld}"
 
   let updated_state_list_transition_to_stall_state : List Description :=
     update_state_transitions_matching_name_to_replacement_name
-    state_awaiting_mem_ld_resp new_stall_state_name states_that_transition_to_original_global_perform_ld ctrler.transition_list
+    state_globally_performing_mem_ld new_stall_state_name states_that_transition_to_original_global_perform_ld ctrler.transition_list
 
   let new_state_machine_with_stall_state : List Description :=
     updated_state_list_transition_to_stall_state ++ [new_stall_state]
@@ -815,67 +833,3 @@ def naive_update_add_stall_to_global_perform_ld
   }
 
   return new_ctrler
-
--- def naive_update_add_stall_to_global_perform_st
--- ( ctrler : controller_info )
--- : Except String ( controller_info )
--- := do
---   -- (1) Get ctrler state awaiting mem resp
---   -- CHECKPOINT!
---   let states_awaiting_mem_st_resp : List String :=
---     get_ctrler_state_awaiting_mem_load_resp ctrler
-
---   let state_awaiting_mem_ld_resp : String ←
---     match states_awaiting_mem_ld_resp with
---     | [state_name] => pure state_name
---     | _ => -- "empty list or multiple states that send a load req?"
---       dbg_trace "empty list or multiple states that send a load req?"
---       let error_msg : String :=
---         "FAIL: Naive in-order load tsfm found multiple states" ++
---         s!"that send load requests!\nCtrler: {ctrler.name}"
---       throw error_msg
-
---   -- (2) Get the states that transition to this state
---   -- to build the OR tree of states to check...
---   let states_to_stall_on : List String := (
---     get_states_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list))
---     ++ [state_awaiting_mem_ld_resp]
-
---   -- Build the tree of (curr_state == <state>) |
---   -- Use convert_state_names_to_dsl_or_tree_state_check
---   let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
---     convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
-
---   -- (3) Gen the Stall state
---   -- use the gen_stall_dsl_state function to make a new stall state
---   let new_stall_state_name : String := String.join [ctrler.name, "_stall_", state_awaiting_mem_ld_resp]
---   let new_stall_state : Description :=
---     gen_stall_dsl_state state_awaiting_mem_ld_resp ctrler.name 
---     not_yet_gotten_mem_resp_state_check load
-
---   -- (4) Update the stall state with these Helper Funcs
---   -- Update states which transitioned to the original state:
---   -- a) get_states_directly_leading_to_given_state
---   -- b) update_state_transitions_matching_name_to_replacement_name
---   -- c) add the new state to the list of states of the ctrler,
---   --    will need to return a new ctrler
---   let states_that_transition_to_original_await_mem_resp_state : List String :=
---     get_states_directly_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list)
-
---   let updated_state_list_transition_to_stall_state : List Description :=
---     update_state_transitions_matching_name_to_replacement_name
---     state_awaiting_mem_ld_resp new_stall_state_name states_that_transition_to_original_await_mem_resp_state ctrler.transition_list
-
---   let new_state_machine_with_stall_state : List Description :=
---     updated_state_list_transition_to_stall_state ++ [new_stall_state]
-  
---   let new_ctrler : controller_info := {
---     name := ctrler.name,
---     controller_descript := ctrler.controller_descript,
---     entry_descript := ctrler.entry_descript,
---     init_trans := ctrler.init_trans,
---     state_vars := ctrler.state_vars,
---     transition_list := new_state_machine_with_stall_state
---   }
-
---   return new_ctrler
