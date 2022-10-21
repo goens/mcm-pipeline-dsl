@@ -85,6 +85,7 @@ syntax "handle"  qualified_name  "(" ident,* ")"  statement* : catch_block
 syntax "return"  expr : return_stmt
 syntax "transition"  ident : dsl_transition
 syntax "reset"  ident : dsl_transition
+syntax "complete"  ident : dsl_transition
 
 syntax unuaryop : expr
 syntax binop : expr
@@ -354,6 +355,7 @@ partial def mkReturnStmt : Syntax → Except String Statement
 partial def mkTransition : Syntax → Except String Statement
   | `(dsl_transition| transition $i ) => return Statement.transition i.getId.toString
   | `(dsl_transition| reset $i ) => return Statement.reset i.getId.toString
+  | `(dsl_transition| complete $i ) => return Statement.complete i.getId.toString
   | s => throw s!"error parsing transition statement: {s}"
 
 partial def mkList : Syntax → Except String Expr

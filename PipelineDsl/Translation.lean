@@ -533,6 +533,7 @@ partial def get_stmts_with_transitions
   match stmt with
   | Statement.transition ident => [ident]
   | Statement.reset ident => [ident]
+  | Statement.complete ident => [ident]
   | Statement.listen_handle stmt lst =>
     List.join
     (
@@ -619,6 +620,7 @@ partial def ast0038_trans_ident_to_trans_list
           | Statement.conditional_stmt cond => true
           | Statement.transition iden1 => true
           | Statement.reset iden1 => true
+          | Statement.complete iden1 => true
           | Statement.block lst_stmts1 => true
           | Statement.await _ await_lst =>
           -- dbg_trace "==BEGIN await ==\n"
@@ -639,6 +641,7 @@ partial def ast0038_trans_ident_to_trans_list
       | Statement.when qname ident_list stmt => [stmt]
       | Statement.transition iden2 => [stmt]
       | Statement.reset iden2 => [stmt]
+      | Statement.complete iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
       | Statement.listen_handle stmt1 lst => [stmt]
       | _ => []
@@ -5606,6 +5609,135 @@ lst_stmts_decls
     dbg_trace "Unimplemented (stall (expr)). Just using an Await statement with tail_search for now."
     default
   | Statement.reset ident =>
+    -- NOTE: Copied from Statement.transition
+    let murphi_stmt :=
+    match await_or_not with
+    | await_or_not_state.await => 
+      -- return nothing
+      empty_stmt_decl_lsts
+    | await_or_not_state.not_await => 
+      -- translate ident into updating
+      -- this structure's entry state
+      -- ident
+      let this_ctrler : controller_info :=
+    -- dbg_trace "===== dsl transition to murphi translation ====="
+        get_ctrler_matching_name ctrler_name ctrlers_lst
+
+      let ctrler_ordering :=
+        get_ctrler_elem_ordering this_ctrler
+
+      let is_indexable : Bool :=
+        IndexableCtrlerTypesStrings.contains ctrler_ordering
+
+      if is_indexable
+      then
+      -- we access the specific entry i for the rule
+
+      let ruleset_core_elem_idx := "j"
+      let core_idx_designator :=
+      Murϕ.Expr.designator (
+        Designator.mk ruleset_core_elem_idx []
+      )
+
+      -- let ctrler_id := this_ctrler.name
+
+      let entries := "entries"
+
+      let tail_entry :=
+        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        dbg_trace "CUSTOM ENTRY"
+        tail_or_entry.custom_entry
+        else
+        dbg_trace "BASIC ENTRY"
+        tail_or_entry.entry
+      -- AZ TODO: Use the specific entry thing
+      -- let ruleset_entry_elem_idx := "i"
+      let queue_idx :=
+        match tail_entry with
+        | tail_or_entry.entry => "i"
+        | tail_or_entry.custom_entry =>
+          if stmt_trans_info.use_specific_dest_in_transition then
+            ""
+          else
+            "i"
+        | tail_or_entry.tail => "tail"
+
+      let entry_idx_designator :=
+      -- Murϕ.Expr.designator (
+      --   Designator.mk ruleset_entry_elem_idx []
+      -- )
+      match tail_entry with
+        | tail_or_entry.tail =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk "next_state" [
+        -- entries
+        -- Assume the buffer entries are
+        -- referred to as 'i'
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl (ctrler_name.append "_"),
+        Sum.inl queue_idx
+        ])
+        | tail_or_entry.entry =>
+        Murϕ.Expr.designator (
+        Murϕ.Designator.mk queue_idx [])
+        | tail_or_entry.custom_entry =>
+        dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
+        dbg_trace stmt_trans_info.specific_murphi_dest_expr
+
+        if stmt_trans_info.use_specific_dest_in_transition then
+          stmt_trans_info.specific_murphi_dest_expr.get!
+        else
+          Murϕ.Expr.designator (
+          Murϕ.Designator.mk queue_idx [])
+
+      let state := "state"
+
+      let current_structure_entry_state :=
+        -- Murϕ.Expr.designator (
+          Designator.mk (
+            -- Example in comments
+            -- core_
+            "next_state"
+          )
+          [
+            -- Example in comments
+            Sum.inl "core_",
+            -- core_[i]
+            Sum.inr core_idx_designator,
+            -- core_[i].LQ
+            Sum.inl (ctrler_name.append "_"),
+            -- core_[i].LQ.entries
+            Sum.inl entries,
+            -- core_[i].LQ.entries[j]
+            Sum.inr entry_idx_designator,
+            -- core_[i].LQ.entries[j].state
+            Sum.inl state
+          ]
+        -- )
+
+      -- want to assign the state the ident
+
+      let murphi_state_assn : Murϕ.Statement :=
+        Murϕ.Statement.assignment
+        current_structure_entry_state
+        (Murϕ.Expr.designator (
+          Murϕ.Designator.mk ident []
+        ) )
+
+      let stmts_decls : lst_stmts_decls := {
+        stmts := [murphi_state_assn],
+        decls := []
+      }
+      stmts_decls
+      else
+      -- AZ TODO NOTE: Consider the case of a unit
+        -- If this isn't a FIFO / buffer structure
+        -- Then do we just assign the unit's state?
+        -- []
+        empty_stmt_decl_lsts
+    murphi_stmt
+  | Statement.complete ident =>
     -- NOTE: Copied from Statement.transition
     let murphi_stmt :=
     match await_or_not with

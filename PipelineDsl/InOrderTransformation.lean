@@ -315,6 +315,7 @@ partial def recursively_find_stmt_with_transition_to_arg
   -- TODO NOTE: Should count both "reset" & "transition"
   -- but ignore "completion...?"
   | Statement.reset _ => []
+  | Statement.complete _ => []
   | Statement.stall _ => []
   | Statement.return_stmt _ => []
   | Statement.block list_statment =>
@@ -496,6 +497,7 @@ partial def recursively_find_stmt_and_update_transitions
   -- TODO NOTE: Should count both "reset" & "transition"
   -- but ignore "completion...?"
   | Statement.reset _ => stmt
+  | Statement.complete _ => stmt
   | Statement.stall _ => stmt
   | Statement.return_stmt _ => stmt
   | Statement.block list_statment =>
@@ -730,11 +732,13 @@ def update_state_transitions_matching_name_to_replacement_name
 -- point where the state machine completes
 -- Draw each unique path
 -- 1. This will be some kind of recurisve map
--- 2. Keep list of traversed states as an arg
--- 3. If we reach "complete" state we return []
--- 4. If we reach a dead end, then we just return the list
--- 5. just combine unique elems
--- 6. we need a function to get all of the transition
+-- - Keep list of traversed states as an arg
+
+-- 2. If we reach "complete" state we return []
+-- 3. If we reach a dead end, then we just return the list
+
+-- 4. just combine unique elems
+-- - we need a function to get all of the transition
 -- statements, and complete statements
 
 

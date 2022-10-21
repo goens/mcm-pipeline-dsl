@@ -96,6 +96,7 @@ inductive Statement
 | when :  QualifiedName → List Identifier → Statement → Statement
 | transition : Identifier → Statement
 | reset : Identifier → Statement
+| complete : Identifier → Statement
 | stray_expr : Expr → Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
@@ -196,6 +197,7 @@ private partial def statementToString : Statement → String
    "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .reset lbl => "reset " ++ (toString lbl)
+  | .complete lbl => "complete " ++ (toString lbl)
   | .stray_expr e => exprToString e
   | .stall e => "stall ( " ++ exprToString e ++ " )"
   | .block stmts => " {\n" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s))  ++ "\n}\n"
