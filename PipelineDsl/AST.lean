@@ -120,7 +120,7 @@ private partial def descriptionToString : Description → String
 | .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
 | .entry name desc => "controller_entry " ++ (toString name) ++ " " ++ (statementToString desc)
 | .control_flow name desc => "controller_control_flow " ++ (toString name) ++ " " ++ (statementToString desc)
-| .state name body => "transition " ++ (toString name) ++ (statementToString body)
+| .state name body => "state " ++ (toString name) ++ (statementToString body)
 -- Function definition
 | .function_definition ret args body =>
   (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
