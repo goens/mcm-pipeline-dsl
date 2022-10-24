@@ -741,6 +741,93 @@ def update_state_transitions_matching_name_to_replacement_name
 -- - we need a function to get all of the transition
 -- statements, and complete statements
 
+structure state_graph_traversal_info where
+visited_states : List String
+visiting : String
+completion_states : List String
+all_states : List Description
+
+-- abbrev M := StateT decl_and_init_list Id
+-- input: state to start from...
+partial def find_states_that_don't_lead_to_completion
+(traversal_info : state_graph_traversal_info)
+: Except String (List (List String))
+:= do
+  let visited_states : List String := traversal_info.visited_states
+  let visiting : String := traversal_info.visiting
+  let completion : List String := traversal_info.completion_states
+
+  -- Check if visiting state is a complete state...
+  -- if it is, return empty list
+  -- if not, Check if there are any reachable states that we haven't visited yet
+  -- if there are none, then we return the list of states
+  -- if there are some, then we add this visiting state to the list of visited states,
+    -- and take the list of possible reachable states by /transition/ and recursively call
+  
+  let all_states : List Description := traversal_info.all_states
+  let list_visiting_state's_code : List Pipeline.Statement := List.join (
+    all_states.map
+    λ state_descript =>
+      match state_descript with
+      | Pipeline.Description.state ident stmt => 
+        if ident == visiting then
+          [stmt]
+        else
+          []
+      | _ => []
+  )
+  dbg_trace s!"VISITING STATE: {visiting}"
+  let visiting_state's_code : Pipeline.Statement ← match list_visiting_state's_code with
+  | [] =>
+    let msg : String := s!"ERROR: while traversing states, found " ++
+      "no states matching a traversed state name!\n" ++
+      s!"State to Find: {visiting}\n" ++
+      s!"All States: {all_states}"
+    throw msg
+  | [one_stmt] => pure one_stmt
+  | _::_ =>
+    let msg : String := s!"ERROR: while traversing states, found multiple states with " ++
+      "the same name matching a traversed state name!\n" ++
+      "no states matching a traversed state name!\n" ++
+      s!"State to Find: {visiting}\n" ++
+      s!"All States: {all_states}"
+    throw msg
+  dbg_trace s!"VISITING STATE CODE: {visiting_state's_code}"
+  let states_transitioned_to : List String := get_only_transitions_recursively visiting_state's_code
+  dbg_trace s!"states_transitioned_to: {states_transitioned_to}"
+
+  dbg_trace s!"Completion List: {completion}"
+  dbg_trace s!"Visited States: {visited_states}"
+  if completion.contains visiting then
+    return []
+    -- NOTE: The case below shouldn't happen if "reset" is used properly...
+  else if visited_states.contains visiting then
+    let msg : String := "Detected cycle with transition keyword during transition analysis!\n" ++
+    s!"Revisited State: {visiting}, Visited State List: {visited_states}\n" ++
+    s!"Please use reset keyword instead of transition when transitioning back!"
+    throw msg
+    -- return [visited_states]
+  else if states_transitioned_to.isEmpty then
+    return [visited_states.concat visiting]
+  else
+    -- traverse further for each transition
+    let next_transitions : List state_graph_traversal_info :=
+      states_transitioned_to.map λ state : String =>
+      let next_traversal_info : state_graph_traversal_info := {
+        visited_states := visited_states.concat visiting,
+        visiting := state,
+        completion_states := traversal_info.completion_states,
+        all_states := traversal_info.all_states
+      }
+      next_traversal_info
+
+    -- NOTE: Couldn't use List.join all on the same line...
+    let list_list_of_traversals : List ( List ( List String )) ← (next_transitions.mapM find_states_that_don't_lead_to_completion)
+    let list_of_traversals : ( List ( List String )) := List.join list_list_of_traversals
+    dbg_trace s!"list_of_traversals: {list_of_traversals}"
+
+    return list_of_traversals
+
 
 -- Use/Compose these functions:
 -- (1) get_ctrler_state_with_mem_load_req: Get ctrler state name w/ mem load req
@@ -755,9 +842,10 @@ def update_state_transitions_matching_name_to_replacement_name
 -- This will primarily be for enforcing in-order exec for
 -- insts that were inserted into structures all at the same time
 def naive_update_add_stall_to_global_perform_ld
-( ctrler : controller_info )
+( ctrler_and_all_state_descriptions : controller_info × (List Description) )
 : Except String ( controller_info )
 := do
+  let ctrler : controller_info := ctrler_and_all_state_descriptions.1
   -- (1) Get ctrler state awaiting mem resp
   let states_awaiting_mem_ld_resp : List String :=
     get_ctrler_state_awaiting_mem_load_resp ctrler
@@ -795,9 +883,57 @@ def naive_update_add_stall_to_global_perform_ld
 
   -- (2) Get the states that transition to this state
   -- to build the OR tree of states to check...
-  let states_to_stall_on : List String := (
+  let states_predecessor_to_await_mem_resp_state : List String := (
     get_states_leading_to_given_state (state_awaiting_mem_ld_resp, ctrler.transition_list))
-    ++ [state_awaiting_mem_ld_resp, new_stall_state_name]
+    ++ [state_awaiting_mem_ld_resp] --, new_stall_state_name]
+
+  let all_state_descriptions : List Description := ctrler_and_all_state_descriptions.2
+  let list_completion_states : List String :=
+  List.join (
+    all_state_descriptions.map λ state : Description =>
+    match state with
+    | Description.state ident stmt =>
+      -- CHECKPOINT TODO: if ident has complete, then return ident
+      let list_complete_transitions : List String := get_complete_transition stmt
+      dbg_trace s!"Transitions that use 'complete' keyword: {list_complete_transitions}"
+      -- if there were entries, then get the 'complete' transition's ident
+      match list_complete_transitions with
+      | [] => []
+      | _ => [ident]
+    | _ => []
+    )
+
+  dbg_trace s!"LIST OF COMPLETION STATES: {list_completion_states}"
+
+  let states_reachable_from_predecessors_not_to_completion_state : List (List ( List String )) ←
+    states_predecessor_to_await_mem_resp_state.mapM (
+      λ state : String => 
+      let prep_traversal_info : state_graph_traversal_info := {
+        visited_states := [],
+        visiting := state,
+        completion_states := list_completion_states,
+        all_states := all_state_descriptions
+      }
+      -- find_states_that_don't_lead_to_completion prep_traversal_info
+      match find_states_that_don't_lead_to_completion prep_traversal_info with
+      | .error msg => throw s!"ERROR: Searching for reachable states from await_ld_mem_resp: {msg}"
+      | .ok list_of_traversal_paths => pure list_of_traversal_paths
+      )
+
+  dbg_trace s!"REACHABLE PATHS: {states_reachable_from_predecessors_not_to_completion_state}"
+
+  let non_completion_path_states := List.join (List.join states_reachable_from_predecessors_not_to_completion_state)
+  let unique_non_completion_path_states := List.foldl (
+    λ (unique_states : List String) ( state : String ) =>
+      if unique_states.contains state then
+        unique_states
+      else
+        unique_states.concat state
+    ) [] non_completion_path_states
+  
+  dbg_trace s!"UNIQUE STATES: {unique_non_completion_path_states}"
+
+  let states_to_stall_on : List String := unique_non_completion_path_states.concat new_stall_state_name
 
   -- Build the tree of (curr_state == <state>) |
   -- Use convert_state_names_to_dsl_or_tree_state_check

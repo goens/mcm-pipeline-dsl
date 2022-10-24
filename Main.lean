@@ -71,25 +71,25 @@ def main (args : List String): IO Unit := do
   let murphi_records := ctrlers.map ast0048_generate_controller_murphi_record
   println! s!"ctrler records: \n{murphi_records}"
 
-  println! s!"=== ctrlers with both loads & memory access ==="
-  let ctrlers_that_do_load_and_mem_access :=
-    find_load_begin_perform_info ctrlers
-  println! s!"ctrlers with both loads and mem access:\n{ctrlers_that_do_load_and_mem_access}"
+  -- println! s!"=== ctrlers with both loads & memory access ==="
+  -- let ctrlers_that_do_load_and_mem_access :=
+  --   find_load_begin_perform_info ctrlers
+  -- println! s!"ctrlers with both loads and mem access:\n{ctrlers_that_do_load_and_mem_access}"
 
-  let should_be_one_ctrler :=
-    match ctrlers_that_do_load_and_mem_access with
-    | [one_ctrler] => one_ctrler
-    | _ => ast0021_empty_controller
+  -- let should_be_one_ctrler :=
+  --   match ctrlers_that_do_load_and_mem_access with
+  --   | [one_ctrler] => one_ctrler
+  --   | _ => ast0021_empty_controller
 
-  println! s!"=== stall-inserted ctrler ==="
-  let in_order_load := get_ctrler_state_with_mem_load_req should_be_one_ctrler
+  -- println! s!"=== stall-inserted ctrler ==="
+  -- let in_order_load := get_ctrler_state_with_mem_load_req should_be_one_ctrler
 
-  let just_one_state : String := in_order_load[0]!
+  -- let just_one_state : String := in_order_load[0]!
 
   -- AZ NOTE: Testing in-order-transform
   let ctrlers := ctrlers.map (
     λ ctrl => 
-      let output := naive_update_add_stall_to_global_perform_ld ctrl
+      let output := naive_update_add_stall_to_global_perform_ld (ctrl, ctrl.transition_list)
       match output with
       | .ok ctrler_info => ctrler_info
       | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"

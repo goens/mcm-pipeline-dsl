@@ -285,6 +285,7 @@ def ast0048_generate_controller_murphi_record
           | [one] => one
           -- Shouldn't have more than one, or an empty list?
           | _ => dbg_trace "FAIL! No entries number for controller"
+            dbg_trace s!"Controller: {ctrl}"
           default
         let num_entries' :=
           match num_entries_value_decl with
@@ -514,3 +515,76 @@ def find_speculative_st_ctrler
 --   return lq_new;
 -- end
 --   ]
+
+partial def get_only_transitions_recursively
+(stmt : Pipeline.Statement)
+:=
+          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          -- dbg_trace stmt
+          -- dbg_trace "==END GET-TRANSITIONS ==\n"
+
+  match stmt with
+  | Statement.transition ident => [ident]
+  | Statement.reset ident => []
+  | Statement.complete ident => []
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [get_only_transitions_recursively stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            get_only_transitions_recursively stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_only_transitions_recursively)
+    | Conditional.if_statement expr1 stmt1 => get_only_transitions_recursively stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_only_transitions_recursively)
+  | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_only_transitions_recursively)
+  | Statement.when qname list_idens stmt => get_only_transitions_recursively stmt
+  -- | Statement.listen_handle  => 
+  | _ => default
+
+partial def get_complete_transition
+(stmt : Pipeline.Statement)
+:=
+          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          -- dbg_trace stmt
+          -- dbg_trace "==END GET-TRANSITIONS ==\n"
+
+  match stmt with
+  | Statement.transition _ => []
+  | Statement.reset _ => []
+  | Statement.complete ident => [ident]
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [get_complete_transition stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            get_complete_transition stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_complete_transition)
+    | Conditional.if_statement expr1 stmt1 => get_complete_transition stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_complete_transition)
+  | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_complete_transition)
+  | Statement.when qname list_idens stmt => get_complete_transition stmt
+  -- | Statement.listen_handle  => 
+  | _ => default
+    
