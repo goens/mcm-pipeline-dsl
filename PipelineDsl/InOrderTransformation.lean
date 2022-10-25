@@ -973,3 +973,18 @@ def naive_update_add_stall_to_global_perform_ld
   }
 
   return new_ctrler
+
+def more_generic_in_order_stall_transform
+( ctrler : controller_info )
+( all_ctrlers : List controller_info )
+: Except String ( controller_info )
+:= do
+  -- What are the steps?
+  /- 
+  1. Find the state that is about to perform the load... to add the stall state
+  2. Find the controller that has a state that awaits the mem response, or
+  (the mem completion stuff???) 
+  3. Add the search to access the specific entry...
+  -/
+
+  return ctrler
