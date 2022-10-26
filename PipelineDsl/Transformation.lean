@@ -113,7 +113,7 @@ partial def true_if_stmts_have_load_mem_access
   | Statement.listen_handle stmt lst =>
     List.join
     (
-      [true_if_stmts_have_mem_access stmt]
+      [true_if_stmts_have_load_mem_access stmt]
       ++
       (
         lst.map
@@ -121,17 +121,63 @@ partial def true_if_stmts_have_load_mem_access
           λ handl =>
           match handl with
           | HandleBlock.mk qname iden_list stmt1 =>
-            true_if_stmts_have_mem_access stmt1
+            true_if_stmts_have_load_mem_access stmt1
         )
       )
     )
   | Statement.conditional_stmt cond =>
     match cond with
-    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_mem_access)
-    | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_mem_access stmt1
-  | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_have_mem_access)
-  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_mem_access)
-  | Statement.when qname list_idens stmt => true_if_stmts_have_mem_access stmt
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_load_mem_access)
+    | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_load_mem_access stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_have_load_mem_access)
+  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_load_mem_access)
+  | Statement.when qname list_idens stmt => true_if_stmts_have_load_mem_access stmt
+  -- | Statement.listen_handle  => 
+  | _ => []
+
+partial def true_if_stmts_have_store_mem_access
+(stmt : Statement)
+:=
+  -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+  -- dbg_trace stmt
+  -- dbg_trace "==END GET-TRANSITIONS ==\n"
+  match stmt with
+  | Statement.transition ident => []
+  | Statement.stray_expr expr' => 
+    match expr' with
+    | Expr.some_term term' =>
+      match term' with
+      | Term.function_call qual_name lst_expr =>
+        match qual_name with
+        | QualifiedName.mk lst_idents' =>
+          if ((lst_idents'.contains "memory_interface") &&
+            (lst_idents'.contains "send_store_request"))
+            then [true]
+            else []
+      | _ => []
+    | _ => []
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [true_if_stmts_have_store_mem_access stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            true_if_stmts_have_store_mem_access stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_store_mem_access)
+    | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_store_mem_access stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_have_store_mem_access)
+  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_store_mem_access)
+  | Statement.when qname list_idens stmt => true_if_stmts_have_store_mem_access stmt
   -- | Statement.listen_handle  => 
   | _ => []
 
@@ -174,6 +220,54 @@ partial def true_if_stmts_awaits_ld_mem_response
     if ((list_names[0]! == "memory_interface") &&
       (list_names[1]! == "access_completed") &&
       (list_idents[0]! == "value") ) then
+      dbg_trace "=== THE MEM AWAIT FOUND ==="
+      dbg_trace s!"{stmt}"
+      [true]
+    else
+      []
+    -- true_if_stmts_awaits_ld_mem_response stmt
+  -- | Statement.listen_handle  => 
+  | _ => []
+
+partial def true_if_stmts_awaits_st_mem_response
+(stmt : Statement)
+: List Bool
+:=
+  -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+  -- dbg_trace stmt
+  -- dbg_trace "==END GET-TRANSITIONS ==\n"
+  match stmt with
+  | Statement.transition _ => []
+  | Statement.stray_expr _ => []
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [true_if_stmts_awaits_st_mem_response stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk _ _ stmt1 =>
+            true_if_stmts_awaits_st_mem_response stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement _ stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_awaits_st_mem_response)
+    | Conditional.if_statement _ stmt1 => true_if_stmts_awaits_st_mem_response stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_awaits_st_mem_response)
+  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_awaits_st_mem_response)
+  | Statement.when qual_name list_idents _ =>
+    let list_names : List String :=
+    match qual_name with
+    | .mk strs => strs
+
+    if ((list_names[0]! == "memory_interface") &&
+      (list_names[1]! == "access_completed") &&
+      (list_idents.length == 0) ) then
       dbg_trace "=== THE MEM AWAIT FOUND ==="
       dbg_trace s!"{stmt}"
       [true]

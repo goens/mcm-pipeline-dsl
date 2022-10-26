@@ -87,15 +87,27 @@ def main (args : List String): IO Unit := do
   -- let just_one_state : String := in_order_load[0]!
 
   -- AZ NOTE: Testing in-order-transform
-  let ctrlers := ctrlers.map (
-    λ ctrl => 
-      let output := naive_update_add_stall_to_global_perform_ld (ctrl, ctrl.transition_list)
-      match output with
-      | .ok ctrler_info => ctrler_info
-      | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"
-        ast0021_empty_controller
-  )
   println! s!"------ begin in-order transformation ------\n"
+  -- NOTE: Naive initial implementation
+  -- let ctrlers := ctrlers.map (
+  --   λ ctrl => 
+  --     let output := naive_update_add_stall_to_global_perform_ld (ctrl, ctrl.transition_list)
+  --     match output with
+  --     | .ok ctrler_info => ctrler_info
+  --     | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"
+  --       ast0021_empty_controller
+  -- )
+  let in_order_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform ctrlers load load
+  let ctrlers : List controller_info := match in_order_ctrlers with
+  | .ok ctrl_list => ctrl_list
+  | .error msg =>
+    let msg' : String :=
+      "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on load -> load\n" ++
+      s!"thrown message: ({msg})" ++
+      "\nReturn original ctrler list for now.."
+    dbg_trace msg'
+    ctrlers
+      
   println! s!"{ctrlers}"
   println! s!"------ end in-order transformation ------\n"
 
