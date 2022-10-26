@@ -265,6 +265,10 @@ partial def true_if_stmts_awaits_st_mem_response
     match qual_name with
     | .mk strs => strs
 
+    dbg_trace "=== BEGIN FOUND WHEN STMT ==="
+    dbg_trace list_names
+    dbg_trace list_idents
+    dbg_trace "=== END FOUND WHEN STMT ==="
     if ((list_names[0]! == "memory_interface") &&
       (list_names[1]! == "access_completed") &&
       (list_idents.length == 0) ) then

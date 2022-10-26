@@ -97,12 +97,23 @@ def main (args : List String): IO Unit := do
   --     | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"
   --       ast0021_empty_controller
   -- )
-  let in_order_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform ctrlers load load
-  let ctrlers : List controller_info := match in_order_ctrlers with
+  let in_order_ld_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform ctrlers load load
+  let in_order_ld_ctrlers : List controller_info := match in_order_ld_ctrlers with
   | .ok ctrl_list => ctrl_list
   | .error msg =>
     let msg' : String :=
       "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on load -> load\n" ++
+      s!"thrown message: ({msg})" ++
+      "\nReturn original ctrler list for now.."
+    dbg_trace msg'
+    ctrlers
+  println! s!"------ do store -> store in-order transformation ------\n"
+  let in_order_ld_and_st_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform in_order_ld_ctrlers store store
+  let ctrlers : List controller_info := match in_order_ld_and_st_ctrlers with
+  | .ok ctrl_list => ctrl_list
+  | .error msg =>
+    let msg' : String :=
+      "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on store -> store\n" ++
       s!"thrown message: ({msg})" ++
       "\nReturn original ctrler list for now.."
     dbg_trace msg'

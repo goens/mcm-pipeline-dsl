@@ -1019,7 +1019,7 @@ def get_ctrler_state_globally_performing_store
           -- want to find a stmt that contains
           -- a memory_interface access/request
           let bool_lst :=
-          true_if_stmts_have_load_mem_access stmt
+          true_if_stmts_have_store_mem_access stmt
 
           let found_mem_interface_access :=
           match bool_lst with
@@ -1095,6 +1095,8 @@ def more_generic_core_in_order_stall_transform
         s!"Found multiple ctrlers that await InstType:({second_inst.toString}) response\n" ++
         s!"Ctrlers & Found States: ({ctrlers_that_await_mem_completion})"
       throw msg
+  dbg_trace "***** await mem completion controller"
+  dbg_trace s!"({ctrler_that_await_mem_completion})"
     
   /-
   2. After finding the ctrler & state(s) that await the mem response,
@@ -1136,6 +1138,8 @@ def more_generic_core_in_order_stall_transform
         s!"Found multiple ctrlers that send InstType:({first_inst.toString}) request\n" ++
         s!"Ctrlers & Found States: ({ctrlers_that_send_mem_req})"
       throw msg
+  dbg_trace "***** send_mem_req controller"
+  dbg_trace s!"({ctrler_that_send_mem_req})"
 
   /-
   3. Gen the new stall state's name
