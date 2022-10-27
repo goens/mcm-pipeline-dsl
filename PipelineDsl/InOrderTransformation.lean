@@ -1257,7 +1257,9 @@ def more_generic_core_in_order_stall_transform
   /-
   i.e. states that are before the await_mem_response state
   -/
-  let non_completion_path_states := List.join (List.join states_reachable_from_predecessors_not_to_completion_state)
+  let non_completion_path_states :=
+   (List.join (List.join states_reachable_from_predecessors_not_to_completion_state)) ++
+   states_predecessor_to_await_mem_resp_state
   let unique_non_completion_path_states := List.foldl (
     λ (unique_states : List String) ( state : String ) =>
       if unique_states.contains state then
