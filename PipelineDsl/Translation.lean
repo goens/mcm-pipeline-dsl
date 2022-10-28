@@ -4067,7 +4067,7 @@ lst_stmts_decls
             stmts_decls
           else
           if (and (api_func_name == "set_executed")
-          (dest_ctrler_name == "rob"))
+          ((dest_ctrler_name == "rob") || (dest_ctrler_name == "ROB")))
           then
             -- TODO: Handle this case!!!
             -- In the final version which also
@@ -4110,7 +4110,7 @@ lst_stmts_decls
             stmts_decls
           else
           if (and (api_func_name == "set_unexecuted")
-          (dest_ctrler_name == "rob"))
+          ( (dest_ctrler_name == "rob") || (dest_ctrler_name == "ROB")  ))
           then
             dbg_trace "@@@@@ FOUND SET_UNEXECUTED"
             let ctrler_name_ : String := ctrler_name.append "_"
@@ -4146,25 +4146,9 @@ lst_stmts_decls
             }
             stmts_decls
           else
-            -- TODO: Remove this? Just throw an error?
-            -- Or try to match to ctrler?
-            -- The match to ctrler should be the default behaviour
-            -- Then it should also check if this is an API call..
-            -- If it can't find an API call.. then it should throw an error
-            -- as a last resort..
-            -- reg file write?
-            -- throw an error for unknown fns?
-            -- but just going to return a default
-            --
-            -- (a) Check the args of the call, to get
-            -- the reg number, and value to write...
-            -- (b) Then access the core_[i]'s index
-
-            -- let args := lst_expr
-            -- assume we've "prepared the exprs" in some
-            -- other previous stmts.. and we just use them..
-            -- Just confirm the order...
-            -- i.e. first arg is the reg idx, and 2nd is the write val
+          if (and (api_func_name == "write")
+          (dest_ctrler_name == "reg_file"))
+          then
 -- structure expr_translation_info where
 -- expr : Pipeline.Expr
 -- lst_ctrlers : List controller_info
@@ -4174,6 +4158,7 @@ lst_stmts_decls
 -- lst_src_args : Option (List Identifier)
 -- func : Option Identifier
 -- is_await : await_or_not_state
+            dbg_trace "THIS CASE IS REACHED.."
 
             -- dbg_trace "== Assuming there's a dest_reg and write_val expr =="
             let dest_reg_expr_trans_info : expr_translation_info :=
@@ -4195,6 +4180,33 @@ lst_stmts_decls
             -- []
             let stmts_decls : lst_stmts_decls := {
               stmts := [murphi_reg_file_assign],
+              decls := []
+            }
+            stmts_decls
+          else
+            -- TODO: Remove this? Just throw an error?
+            -- Or try to match to ctrler?
+            -- The match to ctrler should be the default behaviour
+            -- Then it should also check if this is an API call..
+            -- If it can't find an API call.. then it should throw an error
+            -- as a last resort..
+            -- reg file write?
+            -- throw an error for unknown fns?
+            -- but just going to return a default
+            --
+            -- (a) Check the args of the call, to get
+            -- the reg number, and value to write...
+            -- (b) Then access the core_[i]'s index
+
+            -- let args := lst_expr
+            -- assume we've "prepared the exprs" in some
+            -- other previous stmts.. and we just use them..
+            -- Just confirm the order...
+            -- i.e. first arg is the reg idx, and 2nd is the write val
+            dbg_trace "INSERT CODE To DO THE THING WHERE IT MATCHES"
+            dbg_trace "THE MESSAGE PASSING TO A DESTINATION STRUCTURE"
+            let stmts_decls : lst_stmts_decls := {
+              stmts := [],
               decls := []
             }
             stmts_decls
