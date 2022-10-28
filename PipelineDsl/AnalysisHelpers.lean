@@ -209,10 +209,12 @@ def dsl_type_to_murphi_type
   "inst_idx_t"
   else if dsl_type == "inst" then
   "INST"
+  else if dsl_type == "bool" then
+  "boolean"
   -- else if dsl_type == "boolean" then
   -- "boolean"
   else
-  panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+  panic! s!"ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE: ({dsl_type}) ====="
 
   let murphi_type_expr : Murϕ.TypeExpr :=
   Murϕ.TypeExpr.previouslyDefined murphi_type_name
