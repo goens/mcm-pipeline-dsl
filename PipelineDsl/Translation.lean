@@ -1453,6 +1453,8 @@ partial def ident_matches_ident_list
 partial def get_ctrler_matching_name
 (ctrler_name : Identifier)
 (lst_ctrlers : List controller_info)
+-- : Except String controller_info
+: controller_info
 := 
   let ctrler_lst_with_name :=
   lst_ctrlers.filter (
@@ -4181,6 +4183,135 @@ lst_stmts_decls
             let stmts_decls : lst_stmts_decls := {
               stmts := [murphi_reg_file_assign],
               decls := []
+            }
+            stmts_decls
+          else if ((api_func_name == "insert")) then
+            -- Use a "insert" template, and add the await when from the dest ctrler
+            -- in to the middle...
+
+            /-
+            1. Name of the "await insert" state
+            -/
+            let dest_ctrler : controller_info :=
+              get_ctrler_matching_name dest_ctrler_name ctrlers_lst
+            -- let init_state_stmt : Pipeline.Statement := 
+              -- get_transition_stmt dest_ctrler.init_trans
+            let initialization_state_list : List Description :=
+              dest_ctrler.transition_list.filter (λ state : Description =>
+                match state with
+                | Description.state name stmt => name == dest_ctrler.init_trans
+                | _ => false
+              )
+            let initialization_state : Description :=
+              match initialization_state_list with
+              | [init_state] => init_state
+              | [] =>
+                let msg : String := "Didn't find any initial state in the state list" ++
+                s!"\nIn init state: ({dest_ctrler.init_trans})\nState List: ({dest_ctrler.init_trans})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+              | _ :: _ => 
+                let msg : String := "Found multiple initial states in the state list" ++
+                s!"\nIn init state: ({dest_ctrler.init_trans})\nState List: ({dest_ctrler.init_trans})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+
+
+            let first_state_name_list : List String := 
+              get_stmts_with_transitions initialization_state
+            let first_state_name : String :=
+              match first_state_name_list with
+              | [first_state] => first_state
+              | [] =>
+                let msg : String := "Didn't find any initial state in the init state" ++
+                s!"\nIn init state: ({dest_ctrler.init_trans})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+              | _ :: _ => 
+                let msg : String := "Found multiple initial states in the init state" ++
+                s!"\nIn init state: ({dest_ctrler.init_trans})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+            let dest_ctrler_'await_insert'_state : String := first_state_name
+
+            /-
+            2. The matching when block in the other structure
+            -/
+            -- Get the state first...
+            let first_state_list : List Pipeline.Description :=
+              dest_ctrler.transition_list.filter ( λ state : Description =>
+                match state with
+                | Description.state name stmt => name == first_state_name
+                | _ => false
+                )
+            let first_state : Pipeline.Description := match first_state_list with
+            | [state] => state
+            | [] => 
+                let msg : String := "Didn't find the first state in the state list" ++
+                s!"\nFirst state: ({first_state_name})\nState List: ({dest_ctrler.transition_list})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+            | _ :: _ => 
+                let msg : String := "Found multiple first state in the state list" ++
+                s!"\nFirst state: ({first_state_name})\nState List: ({dest_ctrler.transition_list})"
+                -- throw msg
+                dbg_trace s!"({msg})"
+                default
+
+            -- Get the when-statements from the state's stmts...
+            let when_stmt : Pipeline.Statement :=
+              find_when_from_transition first_state_list "insert" ctrler_name
+            -- Convert to Murphi Stmt
+            let when_stmt_trans_info : stmt_translation_info := {
+              stmt := when_stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := stmt_trans_info.ctrler_name,
+              src_ctrler := stmt_trans_info.src_ctrler,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := false
+            }
+            -- TODO: Test the translation, I suspect I may need to set the
+            -- sepcific_murphi_dest_expr to this "i" index...
+            let murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts when_stmt_trans_info
+            let murphi_when_stmt : List Murϕ.Statement :=
+              murphi_when_stmts_decls.stmts
+
+            let dest_ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t";
+            let dest_ctrler_name_ : String := dest_ctrler_name ++ "_";
+            let stmts : List Murϕ.Statement := [murϕ| 
+              -- sb_new := sb;
+              -- ctrler := next_state .core[j] .£dest_ctrler_name_;
+              -- assert (sb.num_entries < SB_NUM_ENTRIES_CONST) "can't add more!";
+              next_state .core[j] .£dest_ctrler_name_ .num_entries := (next_state .core[j] .£dest_ctrler_name_ .num_entries + 1);
+              for i : £dest_ctrler_idx_t do
+                if (next_state .core[j] .£dest_ctrler_name_ .entries[ i ].state = £dest_ctrler_'await_insert'_state) then
+                  -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
+                  £murphi_when_stmt
+                  -- next_state := next_state;
+                end;
+              endfor;
+            ]
+            let decls : List Murϕ.Decl := 
+              -- [murϕ_decl| ctrler : £dest_ctrler_name]
+              -- (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
+              murphi_when_stmts_decls.decls
+
+            let stmts_decls : lst_stmts_decls := {
+              stmts := stmts,
+              decls := decls
             }
             stmts_decls
           else
