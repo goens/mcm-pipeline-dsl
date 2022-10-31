@@ -4217,10 +4217,18 @@ lst_stmts_decls
                 -- throw msg
                 dbg_trace s!"({msg})"
                 default
-
+            let initialization_state_stmt : Pipeline.Statement :=
+            match initialization_state with
+              | .state name stmt => stmt
+              | _ =>
+              let msg : String := "Somehow got a Pipeline.Description that isn't a state" ++
+              s!"\nIn state: ({initialization_state})\nState List: ({dest_ctrler.init_trans})"
+              -- throw msg
+              dbg_trace s!"({msg})"
+              default
 
             let first_state_name_list : List String := 
-              get_stmts_with_transitions initialization_state
+              get_stmts_with_transitions initialization_state_stmt
             let first_state_name : String :=
               match first_state_name_list with
               | [first_state] => first_state
