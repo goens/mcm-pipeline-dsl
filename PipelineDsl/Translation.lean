@@ -1511,7 +1511,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
   this_ctrler_state_vars.map (
     λ t_ident =>
       match t_ident with
-      | TypedIdentifier.mk tiden ident =>
+      | TypedIdentifier.mk _ ident =>
         ident
   )
 
@@ -1611,6 +1611,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_ident_list := or ident_matches_ident_list (t.contains "curr_state")
     let t := t.map ( fun ident_str => if (ident_str == "curr_state") then "state" else ident_str)
 
+    dbg_trace s!"State Var Identifier List: ({state_var_idents})"
+    dbg_trace s!"Head Identifier: ({h})"
+
     -- This is for the second check,
     -- if "entry" is a term identifier,
     -- translate this as <ctrler>.entries[curr_idx]
@@ -1633,6 +1636,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- AZ CHECKPOINT TODO:
       -- is there a case where I want to
       -- replace "i" with "<structure>.tail?"
+      dbg_trace s!"Is this structure indexable: ({ctrler_ordering}, ({IndexableCtrlerTypesStrings}), {is_indexable})"
 
       if is_indexable
       then
@@ -1685,6 +1689,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         Murϕ.Designator.mk "next_state" sum_list
         -- Murϕ.Designator.
 
+        dbg_trace s!"Generated Term Designator: ({murphi_designator})"
         murphi_designator
       else
         dbg_trace "WHAT CTRLER STRUCTURE ISN'T FIFO?"
@@ -2133,21 +2138,41 @@ partial def ast_term_to_murphi_expr
     -- So for now it's ok to continue, and assume
     -- this is not a direct msg passing call..
 
-    let murphi_func_id :=
-      match qualified_name with
-      | QualifiedName.mk lst_idents =>
-        String.join lst_idents
+    -- TODO: Implement specific API functions, like is_head()
+    let qual_name_list : List String := match qualified_name with
+    | QualifiedName.mk lst_names => lst_names
+    let is_len_one_name : Bool := qual_name_list.length == 1
+    let has_is_head_name : Bool := qual_name_list.contains "is_head"
+    let no_input_args : Bool := lst_expr.length == 0
 
-    let lst_expr_trans_info :=
-      lst_expr.map (
-        λ expr =>
-          assn_term_to_expr_translation_info term_trans_info expr
-      )
+    if is_len_one_name && has_is_head_name && no_input_args then
+      -- for when statements
 
-    let murphi_expr := Murϕ.Expr.call
-      murphi_func_id (lst_expr_trans_info.map ast_expr_to_murphi_expr)
-      -- murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
-    murphi_expr
+      let curr_ctrler_name_ : String := curr_ctrler_name.append "_"
+
+      -- name of func call is just "is_head"
+      -- then translate term as curr_ctrler.head == i
+      let murphi_expr : Murϕ.Expr := [murϕ|
+        next_state .core[j] .£curr_ctrler_name_ .head = i
+      ]
+      murphi_expr
+    else -- Default case, just translate directly to Murphi
+    -- ex. is_head() in DSL is is_head() in Murphi
+      let murphi_func_id :=
+        match qualified_name with
+        | QualifiedName.mk lst_idents =>
+          String.join lst_idents
+
+      let lst_expr_trans_info :=
+        lst_expr.map (
+          λ expr =>
+            assn_term_to_expr_translation_info term_trans_info expr
+        )
+
+      let murphi_expr := Murϕ.Expr.call
+        murphi_func_id (lst_expr_trans_info.map ast_expr_to_murphi_expr)
+        -- murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
+      murphi_expr
     
   | Term.const const' => -- const is a keyword..
     match const' with
@@ -4219,7 +4244,7 @@ lst_stmts_decls
                 default
             let initialization_state_stmt : Pipeline.Statement :=
             match initialization_state with
-              | .state name stmt => stmt
+              | .state _ stmt => stmt
               | _ =>
               let msg : String := "Somehow got a Pipeline.Description that isn't a state" ++
               s!"\nIn state: ({initialization_state})\nState List: ({dest_ctrler.init_trans})"
@@ -4322,6 +4347,8 @@ lst_stmts_decls
               decls := decls
             }
             stmts_decls
+            -- CHECKPOINT TODO:
+          -- else if ((api_func_name == "remove_head")) then
           else
             -- TODO: Remove this? Just throw an error?
             -- Or try to match to ctrler?
