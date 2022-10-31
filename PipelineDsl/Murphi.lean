@@ -363,7 +363,7 @@ private partial def ruleToString (inputRule : Rule) : String :=
   | .ruleset quants rules =>
     let quantsS := "; ".intercalate (quants.map quantifierToString)
     let rulesS := (String.join (( rules.map ruleToString ).map (fun str => String.join ["  ", str, ";\n"]) )) -- String.intercalate ";\n" $ rules.map ruleToString
-    s!"\nruleset {quantsS} do \n{rulesS}  end"
+    s!"\nruleset {quantsS} do \n{rulesS}end"
   | .aliasrule aliases rules =>
     let aliasesS := "; ".intercalate (aliases.map aliasToString)
     let rulesS := String.intercalate ";\n" $ rules.map ruleToString
