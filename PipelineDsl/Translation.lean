@@ -101,6 +101,15 @@ stmts : List Murϕ.Statement
 decls : List Murϕ.Decl
 deriving Inhabited
 
+instance : ToString lst_stmts_decls where
+  toString (stmts_decls : lst_stmts_decls) :=
+  let stmts_str : String := toString stmts_decls.stmts
+  let decls_str : String := toString stmts_decls.decls
+  let str : String := s!"lst_stmts_decls;"++
+  s!"\nstmts: ({stmts_str})"++
+  s!"\ndecls: ({decls_str})";
+  str
+
 def empty_stmt_decl_lsts : lst_stmts_decls := {
   stmts := [],
   decls := []
@@ -125,6 +134,10 @@ inductive tail_or_entry
 inductive await_or_not_state
 | await : await_or_not_state
 | not_await : await_or_not_state
+def await_or_not_state.toString : await_or_not_state → String
+| .await => "This state has a top level 'await' statement"
+| .not_await => "This state has no top level 'await' statements"  
+instance : ToString await_or_not_state where toString := await_or_not_state.toString
 
 structure term_translation_info where
 term : Pipeline.Term
@@ -144,6 +157,7 @@ is_rhs : Bool
 -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
 -- or just LQ.entries[ i ].state := state_
 use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
 
 structure expr_translation_info where
 expr : Pipeline.Expr
@@ -160,6 +174,7 @@ specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
 is_rhs : Bool
 use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
 
 structure stmt_translation_info where
 stmt : Pipeline.Statement
@@ -176,6 +191,40 @@ specific_murphi_dest_expr : Option Murϕ.Expr
 lst_decls : List Murϕ.Decl
 is_rhs : Bool
 use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
+
+instance : ToString stmt_translation_info where
+  toString (info : stmt_translation_info) :=
+  let stmt_str : String := toString info.stmt
+  let ls_c_str : String := toString info.lst_ctrlers
+  let c_na_str : String := toString info.ctrler_name
+  let sr_c_str : String := toString info.src_ctrler
+  let sr_a_str : String := toString info.lst_src_args
+  let func_str : String := toString info.func
+  let i_aw_str : String := toString info.is_await
+  let ek_d_str : String := toString info.entry_keyword_dest
+  let t_ob_str : String := toString info.trans_obj
+  let s_md_str : String := toString info.specific_murphi_dest_expr
+  let l_de_str : String := toString info.lst_decls
+  let i_rh_str : String := toString info.is_rhs
+  let sp_d_str : String := toString info.use_specific_dest_in_transition
+  let c_de_str : String := toString info.curr_ctrler_designator_idx
+  let str : String := s!"Stmt_translation_info:"++
+  s!"\nstmt_str: ({stmt_str})"++
+  s!"\nls_c_str: ({ls_c_str})"++
+  s!"\nc_na_str: ({c_na_str})"++
+  s!"\nsr_c_str: ({sr_c_str})"++
+  s!"\nsr_a_str: ({sr_a_str})"++
+  s!"\nfunc_str: ({func_str})"++
+  s!"\ni_aw_str: ({i_aw_str})"++
+  s!"\nek_d_str: ({ek_d_str})"++
+  s!"\nt_ob_str: ({t_ob_str})"++
+  s!"\ns_md_str: ({s_md_str})"++
+  s!"\nl_de_str: ({l_de_str})"++
+  s!"\ni_rh_str: ({i_rh_str})"++
+  s!"\nsp_d_str: ({sp_d_str})"++
+  s!"\nc_de_str: ({c_de_str})";
+  str
 
 structure trans_and_expected_func where
 expected_func : Identifier
@@ -189,6 +238,7 @@ dest_ctrler_name : Identifier
 -- ctrler which has entries
 specific_murphi_dest_expr : Murϕ.Expr
 -- lst_decls : List Murϕ.Decl
+curr_ctrler_designator_idx : Option Murϕ.Expr
 
 partial def assn_stmt_to_stmt_translation_info
 (translation_info : stmt_translation_info)
@@ -209,6 +259,7 @@ partial def assn_stmt_to_stmt_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 
 partial def assn_stmt_to_term_translation_info
@@ -230,6 +281,7 @@ partial def assn_stmt_to_term_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 
 partial def assn_stmt_to_expr_translation_info
@@ -251,6 +303,7 @@ partial def assn_stmt_to_expr_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 
 partial def assn_expr_to_term_translation_info
@@ -273,6 +326,7 @@ term_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 
 partial def assn_term_to_term_translation_info
@@ -295,6 +349,7 @@ term_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 
 partial def assn_term_to_expr_translation_info
@@ -317,6 +372,7 @@ expr_translation_info
   translation_info.lst_decls
   translation_info.is_rhs
   translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
 )
 --- =========== CUT FROM TRANSFORMATION ================
 
@@ -1843,8 +1899,9 @@ partial def ast_term_to_murphi_expr
         dbg_trace "specific dest expr"
         dbg_trace term_trans_info.specific_murphi_dest_expr
         let tail_entry :=
-        if (or
-        (and term_trans_info.is_rhs specific_murphi_dest_expr_is_some)
+        if (
+        -- ( specific_murphi_dest_expr_is_some ) ||
+        (term_trans_info.is_rhs && specific_murphi_dest_expr_is_some) ||
         ( ident == "curr_state" )
         ) then
           dbg_trace "CUSTOM ENTRY"
@@ -1878,6 +1935,8 @@ partial def ast_term_to_murphi_expr
         else
         true
         -- specify tail or entry here
+
+        dbg_trace s!"Specific Dest: ({term_trans_info.specific_murphi_dest_expr})"
         let tail_or_entry_or_custom :=
         if specific_murphi_dest_expr_is_some then
           dbg_trace " CUSTOM ENTRY "
@@ -1989,6 +2048,7 @@ partial def ast_term_to_murphi_expr
     else
     if !is_src_ctrler_none
     then
+      dbg_trace "Term Qualified Ident, !is_src_ctrler_none case"
       let root_ident_option := lst_ident[0]?
       let root_ident := if root_ident_option.isSome then
       root_ident_option.get!
@@ -2014,6 +2074,18 @@ partial def ast_term_to_murphi_expr
           panic! "calling func didn't provide the list of src ctrler args!"
       let ident_in_args : Bool :=
         lst_src_args_extracted.contains ident
+
+      let tail_or_entry_or_custom := -- tail_or_entry.entry
+        if (
+        ( specific_murphi_dest_expr_is_some ) ||
+        (term_trans_info.is_rhs && specific_murphi_dest_expr_is_some) ||
+        ( lst_ident[0]! == "curr_state" )
+        ) then
+          dbg_trace "CUSTOM ENTRY"
+          tail_or_entry.custom_entry
+        else
+          dbg_trace "BASIC ENTRY"
+          tail_or_entry.entry
       
       if ident_in_args
       then
@@ -2037,7 +2109,7 @@ partial def ast_term_to_murphi_expr
         let murphi_designator : Designator :=
         list_ident_to_murphi_designator_ctrler_var_check (
           lst_ident
-        ) (lst_ctrlers) src_ctrler_extracted (tail_or_entry.entry) term_trans_info.specific_murphi_dest_expr
+        ) (lst_ctrlers) src_ctrler_extracted tail_or_entry_or_custom/-(tail_or_entry.entry)-/ term_trans_info.specific_murphi_dest_expr
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2075,6 +2147,7 @@ partial def ast_term_to_murphi_expr
 
         murphi_expr_designator
     else
+      dbg_trace "Else case"
 
 
         let bool_thing : Bool :=
@@ -2089,7 +2162,20 @@ partial def ast_term_to_murphi_expr
       --   tail_or_entry.custom_entry
       -- else
       --   tail_or_entry.entry
+      let specific_murphi_dest_expr_is_some : Bool :=
+      term_trans_info.specific_murphi_dest_expr.isSome
+
       let tail_or_entry_or_custom := tail_or_entry.entry
+        -- if (
+        -- ( specific_murphi_dest_expr_is_some ) ||
+        -- (term_trans_info.is_rhs && specific_murphi_dest_expr_is_some) ||
+        -- ( lst_ident[0]! == "curr_state" )
+        -- ) then
+        --   dbg_trace "CUSTOM ENTRY"
+        --   tail_or_entry.custom_entry
+        -- else
+        --   dbg_trace "BASIC ENTRY"
+        --   tail_or_entry.entry
 
       let murphi_designator := (
         list_ident_to_murphi_designator_ctrler_var_check
@@ -2352,6 +2438,7 @@ partial def recursive_await_when_search
 (curr_ctrler_name : Identifier)
 : (List Pipeline.Statement)
 :=
+  dbg_trace s!"Recursive await-when search stmts: ({lst_stmts})"
   let lst_of_lst_stmts :=
   lst_stmts.map (
     λ stmt =>
@@ -2376,6 +2463,9 @@ partial def recursive_await_when_search
           let contains_ctrler := lst_ident.contains curr_ctrler_name
           let contains_func_from_ctrler :=
           and contains_func contains_ctrler
+          dbg_trace s!"When, list_ident: ({lst_ident})"++
+          s!"\ncontains_func: ({contains_func}), func_name: ({func_name})"++
+          s!"\ncontains_ctrler: ({contains_ctrler}), curr_ctrler_name: ({curr_ctrler_name})"
 
           if contains_func_from_ctrler
           then
@@ -2432,6 +2522,7 @@ partial def find_when_from_transition
       | Description.state ident stmt =>
         match stmt with
         | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
           let when_blk :=
           recursive_await_when_search lst_stmts func_name curr_ctrler_name
           when_blk
@@ -2690,6 +2781,7 @@ List (Murϕ.Expr × lst_stmts_decls)
         lst_decls := trans_and_func.stmt_trans_info.lst_decls,
         is_rhs := trans_and_func.stmt_trans_info.is_rhs,
         use_specific_dest_in_transition := trans_and_func.stmt_trans_info.use_specific_dest_in_transition
+        curr_ctrler_designator_idx := trans_and_func.curr_ctrler_designator_idx
       }
       dbg_trace "## BEGIN THE PASSED SPECIFIC ACCESSOR"
       dbg_trace trans_and_func.specific_murphi_dest_expr
@@ -2794,7 +2886,7 @@ lst_stmts_decls
     stmt := stmt_trans_info.stmt,
     lst_ctrlers := stmt_trans_info.lst_ctrlers,
     ctrler_name := ctrler_to_translate_handle_blks,
-    src_ctrler := stmt_trans_info.src_ctrler,
+    src_ctrler := expected_struct,
     lst_src_args := stmt_trans_info.lst_src_args,
     func := stmt_trans_info.func,
     is_await := stmt_trans_info.is_await,
@@ -2803,7 +2895,8 @@ lst_stmts_decls
     specific_murphi_dest_expr := ctrler_squash_idx -- stmt_trans_info.specific_murphi_dest_expr,
     lst_decls := stmt_trans_info.lst_decls,
     is_rhs := stmt_trans_info.is_rhs,
-    use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+    use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition,
+    curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
   }
   let handle_trans_info_lst : List trans_and_expected_func :=
   this_ctrler.transition_list.map (
@@ -2815,6 +2908,7 @@ lst_stmts_decls
     stmt_trans_info := stmt_trans_info',
     dest_ctrler_name := ctrler_to_translate_handle_blks --dest_ctrler_name,
     specific_murphi_dest_expr := ctrler_squash_idx
+    curr_ctrler_designator_idx := stmt_trans_info'.curr_ctrler_designator_idx
     -- lst_decls := stmt_trans_info.lst_decls
   }
   )
@@ -2910,6 +3004,99 @@ lst_stmts_decls
   
   trans_handle_squash_if_stmt
 
+partial def get_ctrler_first_state -- get that "await_creation" state
+(ctrler_name : String)
+(ctrlers : List controller_info)
+: String -- first state name
+:=
+  let dest_ctrler : controller_info :=
+    get_ctrler_matching_name ctrler_name ctrlers
+  -- let init_state_stmt : Pipeline.Statement := 
+    -- get_transition_stmt dest_ctrler.init_trans
+  let initialization_state_list : List Description :=
+    dest_ctrler.transition_list.filter (λ state : Description =>
+      match state with
+      | Description.state name stmt => name == dest_ctrler.init_trans
+      | _ => false
+    )
+  let initialization_state : Description :=
+    match initialization_state_list with
+    | [init_state] => init_state
+    | [] =>
+      let msg : String := "Didn't find any initial state in the state list" ++
+      s!"\nIn init state: ({dest_ctrler.init_trans})\nState List: ({dest_ctrler.init_trans})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+    | _ :: _ => 
+      let msg : String := "Found multiple initial states in the state list" ++
+      s!"\nIn init state: ({dest_ctrler.init_trans})\nState List: ({dest_ctrler.init_trans})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+  let initialization_state_stmt : Pipeline.Statement :=
+  match initialization_state with
+    | .state _ stmt => stmt
+    | _ =>
+    let msg : String := "Somehow got a Pipeline.Description that isn't a state" ++
+    s!"\nIn state: ({initialization_state})\nState List: ({dest_ctrler.init_trans})"
+    -- throw msg
+    dbg_trace s!"({msg})"
+    default
+
+  let first_state_name_list : List String := 
+    get_stmts_with_transitions initialization_state_stmt
+  let first_state_name : String :=
+    match first_state_name_list with
+    | [first_state] => first_state
+    | [] =>
+      let msg : String := "Didn't find any initial state in the init state" ++
+      s!"\nIn init state: ({dest_ctrler.init_trans})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+    | _ :: _ => 
+      let msg : String := "Found multiple initial states in the init state" ++
+      s!"\nIn init state: ({dest_ctrler.init_trans})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+  let dest_ctrler_'await_insert'_state : String := first_state_name
+
+  /-
+  2. The matching when block in the other structure
+  -/
+  -- Get the state first...
+  let first_state_list : List Pipeline.Description :=
+    dest_ctrler.transition_list.filter ( λ state : Description =>
+      match state with
+      | Description.state name stmt => name == first_state_name
+      | _ => false
+      )
+  let first_state : Pipeline.Description := match first_state_list with
+  | [state] => state
+  | [] => 
+      let msg : String := "Didn't find the first state in the state list" ++
+      s!"\nFirst state: ({first_state_name})\nState List: ({dest_ctrler.transition_list})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+  | _ :: _ => 
+      let msg : String := "Found multiple first state in the state list" ++
+      s!"\nFirst state: ({first_state_name})\nState List: ({dest_ctrler.transition_list})"
+      -- throw msg
+      dbg_trace s!"({msg})"
+      default
+  
+  match first_state with
+  | Description.state name _ => name
+  | _ =>
+    let msg : String := "Shouldn't have found a Description that isn't a state\n"++
+    s!"first_state: ({first_state})"
+    -- throw msg
+    dbg_trace s!"({msg})"
+    default
+
 partial def ast_stmt_stray_expr_to_murphi_expr
 (stmt_trans_info : stmt_translation_info)
 -- (expr : Pipeline.Expr)
@@ -2990,275 +3177,120 @@ lst_stmts_decls
           let dest_ctrler_name := qual_name_list[0]!
           let api_func_name := qual_name_list[1]!
 
-          -- AZ TODO: Also need to do the "stall" code
-          -- Now understand which function is this?
-          if api_func_name == "insert"
-          then
-            -- structure insert sth
-            -- Need some template/boilerplate code
-            -- Things we need for this template are:
-            /-
-            1. not the decls? since we're generating them
-            separately?
-            2. The check on the strucutre? (but this
-            has been done as a guard in earlier code)
-            (i think? check later)
-            3. The actual insert code.. could generate a
-            function, but this isn't necessary.
-            for now just generate the steps required..
 
-            i.e (for a FIFO)
-            (1) get the dest structure's tail,
-            (2)
-            and insert whatever element at it,
-            executing the destination block's "when"
-            stmt.
-            (3) update next_tail to
-            (tail + 1) % (<structure>_ENTRY_COUNT)
-            or whatever the constant was called.
-            And the num_entries to num_entries + 1.
+          -- if api_func_name == "insert"
+          -- then
 
-            AZ NOTE: This changes depending on the
-            buffer type. i.e. FIFO is fifo insert,
-            hash is.. hash.
-            -/
+          --   let dest_ctrler_tail_designator :=
+          --   -- Get a struct name
+          --   Murϕ.Designator.mk (dest_ctrler_name ++ "_") [Sum.inl "tail"]
 
-            /-
-            But the layout of this is:
-            (1) get <new_dest_struct>.tail
-            (2) do the "when" stmt code.
-            Check the stmts inside the when block.
-            ideally they'll have some stmts which
-            assign to their state vars
-            (example:)
-            var = sth // translate into
-            <new_dest_struct>.entries[tail].var = sth
+          --   let ctrler_lst_with_name :=
+          --   ctrlers_lst.filter (
+          --     λ ctrler =>
+          --       -- match if ctrler name
+          --       -- is the struct name
+          --       ctrler.name == dest_ctrler_name
+          --   )
 
-            But we'll need to match the assignment
-            statement's destination variables to the
-            entry's state vars list.
-            If they belong, then we use the
-            <new_dest_struct>.entries[tail].var
-            murphi designator in the assignment.
-            Otherwise normal translation..
+          --   let dest_ctrler :=
+          --   match ctrler_lst_with_name with
+          --   | [one_ctrler] => one_ctrler
+          --   | h::t =>
+          --     dbg_trace "Multiple ctrlers w/ the same name!?"
+          --     default
+          --   | [] => dbg_trace "dest ctrler not in ctrler list?"
+          --     dbg_trace "is it a default ctrler?"
+          --     dbg_trace "or a undefined ctrler?"
+          --     -- I should do a name check, like for:
+          --     -- memory_interface, or 
+          --     dbg_trace dest_ctrler_name
+          --     -- dbg_trace ctrlers_lst
+          --     default
+          --   let when_stmt :=
+          --   find_when_from_transition dest_ctrler.transition_list "insert" ctrler_name
 
-            If the user declares variables, then
-            we must omit the type here, and
-            generate the decl in the decl generation
-            step.
+          --   let when_stmt_murphi_stmts :=
 
-            Probably want a version of the translation
-            function to check all vars, even in the
-            exprs, if they belong to the state vars
-            
-            (3) I forgot what i was going to say.
+          --   match when_stmt with
+          --   | Pipeline.Statement.when qual_name lst_ident stmt =>
+          --     let qual_name_list :=
+          --     match qual_name with
+          --     | QualifiedName.mk lst_idents =>
+          --       lst_idents
+          --     let qual_name_len_2 := qual_name_list.length == 2
 
-            (4) Update the overall state, i.e. all
-            variables we've generated for state
-
-            How:
-            After updating any "state" variables,
-            or structure state vars, do
-            next_state.<designator>
-              := <new_dest_struc>.<designator>
-            -/
-
-            /- Starting with item (1) -/
-            -- match the struct name
-            -- put in helper func? to find the controller
-            -- use filter to identify it?
-
-            let dest_ctrler_tail_designator :=
-            -- Get a struct name
-            Murϕ.Designator.mk (dest_ctrler_name ++ "_") [Sum.inl "tail"]
-
-            /- For item (2) -/
-            -- Take a look at the other structure's
-            -- when stmt code,
-            -- (a) to generate code for the insert process
-
-            -- I should also know what the name of the current
-            -- structure is, so I can access this current
-            -- entry's vars as well
-            -- (b) to refer to this structure's vars
-
-            -- also, the structure's arguments for the function
-            -- call as well, since the func args will likely
-            -- be used within the Dest structure's await-when
-            -- block as well.
-            -- (b) use this structure's vars where needed
-
-            -- (c) we must still remember to generate the
-            -- dest structure's accessing designators for (a)
-
-
-            let ctrler_lst_with_name :=
-            ctrlers_lst.filter (
-              λ ctrler =>
-                -- match if ctrler name
-                -- is the struct name
-                ctrler.name == dest_ctrler_name
-            )
-
-            let dest_ctrler :=
-            match ctrler_lst_with_name with
-            | [one_ctrler] => one_ctrler
-            | h::t =>
-              dbg_trace "Multiple ctrlers w/ the same name!?"
-              default
-            | [] => dbg_trace "dest ctrler not in ctrler list?"
-              dbg_trace "is it a default ctrler?"
-              dbg_trace "or a undefined ctrler?"
-              -- I should do a name check, like for:
-              -- memory_interface, or 
-              dbg_trace dest_ctrler_name
-              -- dbg_trace ctrlers_lst
-              default
-
-            -- First search for the structure/ctrler
-            -- transitions.
-            -- find this await-when statement
-            -- waiting on this function
-            -- and translate those stmts
-            let when_stmt :=
-            find_when_from_transition dest_ctrler.transition_list "insert" ctrler_name
-
-            let when_stmt_murphi_stmts :=
-            -- Qual name is likely still
-            -- in list order <structure>.function
-
-            -- Use the lst_ident to as a part of
-            -- any vars of the "calling" structure
-            -- (src structure, instead of dest_structure)
-
-            -- this sounds like I should write a 
-            -- separate ast_stmt_to_murphi_stmt func
-            -- Or have this func take optional args
-            -- like src ctrler, dest ctrler,
-            -- and src ctrler local var ident list
-
-            -- Okay, so then the variables that need to be
-            -- properly translated are:
-            -- (a) the stmts in the when block
-            -- need to be done with the dest ctrler in mind
-            
-            -- (b) any vars in the lst_idents
-            -- are from the src ctrler
-            -- do we know if there's a defn
-            -- for these vars?
-
-            -- I think we just need to
-            -- translate these vars specifically
-            -- with the src_ctrler in mind
-
-            -- I can double check the qual_name structure
-            -- matches the src ctrler
-            match when_stmt with
-            | Pipeline.Statement.when qual_name lst_ident stmt =>
-              let qual_name_list :=
-              match qual_name with
-              | QualifiedName.mk lst_idents =>
-                lst_idents
-              let qual_name_len_2 := qual_name_list.length == 2
-
-              let sanity_check :=
-              if qual_name_len_2
-              then
-                dbg_trace "translating insert func!"
-                dbg_trace "PASS: qualified name, is len 2!"
-                true
-              else
-                dbg_trace "translating insert func!"
-                dbg_trace "FAIL: qualified name, is not len 2!"
-                false
+          --     let sanity_check :=
+          --     if qual_name_len_2
+          --     then
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "PASS: qualified name, is len 2!"
+          --       true
+          --     else
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "FAIL: qualified name, is not len 2!"
+          --       false
               
-              dbg_trace "== This was also len 2 checked! =="
-              let struct_name : Identifier := qual_name_list[0]!
-              let when_func_name : Identifier := qual_name_list[1]!
-              let struct_name_sanity := struct_name == ctrler_name
-              let when_func_name_sanity := when_func_name == func_name
+          --     dbg_trace "== This was also len 2 checked! =="
+          --     let struct_name : Identifier := qual_name_list[0]!
+          --     let when_func_name : Identifier := qual_name_list[1]!
+          --     let struct_name_sanity := struct_name == ctrler_name
+          --     let when_func_name_sanity := when_func_name == func_name
 
-              let struct_sanity_check :=
-              if struct_name_sanity
-              then
-                dbg_trace "translating insert func!"
-                dbg_trace "PASS: first identifier is the curr_ctrler_name"
-                true
-              else
-                dbg_trace "translating insert func!"
-                dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
-                false
+          --     let struct_sanity_check :=
+          --     if struct_name_sanity
+          --     then
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "PASS: first identifier is the curr_ctrler_name"
+          --       true
+          --     else
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
+          --       false
 
-              let func_sanity_check :=
-              if when_func_name_sanity
-              then
-                dbg_trace "translating insert func!"
-                dbg_trace "PASS: second identifier is the 'insert' func"
-                true
-              else
-                dbg_trace "translating insert func!"
-                dbg_trace "FAIL: second identifier is not the 'insert' func"
-                false
+          --     let func_sanity_check :=
+          --     if when_func_name_sanity
+          --     then
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "PASS: second identifier is the 'insert' func"
+          --       true
+          --     else
+          --       dbg_trace "translating insert func!"
+          --       dbg_trace "FAIL: second identifier is not the 'insert' func"
+          --       false
 
+          --     let trans_info : stmt_translation_info := (
+          --       -- info
+          --       stmt_translation_info.mk
+          --       stmt
+          --       ctrlers_lst
+          --       dest_ctrler_name
+          --       struct_name
+          --       lst_ident
+          --       (Option.some api_func_name)
+          --       (await_or_not_state.not_await)
+          --       none
+          --       stmt_trans_info.trans_obj
+          --       none
+          --       stmt_trans_info.lst_decls
+          --       stmt_trans_info.is_rhs
+          --       stmt_trans_info.use_specific_dest_in_transition
+          --       stmt_trans_info.curr_ctrler_designator_idx
+          --     )
 
-              -- After any sanity messages, try to map the stmts
-              -- Create the required info object:
-              let trans_info : stmt_translation_info := (
-                -- info
-                stmt_translation_info.mk
-                stmt
-                ctrlers_lst
-                dest_ctrler_name
-                struct_name
-                lst_ident
-                (Option.some api_func_name)
-                (await_or_not_state.not_await)
-                none
-                stmt_trans_info.trans_obj
-                none
-                stmt_trans_info.lst_decls
-                stmt_trans_info.is_rhs
-                stmt_trans_info.use_specific_dest_in_transition
-              )
+          --     -- let murphi_stmts : List Murϕ.Statement :=
+          --     let murphi_stmts : lst_stmts_decls :=
+          --     ast_stmt_to_murphi_stmts trans_info
 
-              -- let murphi_stmts : List Murϕ.Statement :=
-              let murphi_stmts : lst_stmts_decls :=
-              ast_stmt_to_murphi_stmts trans_info
+          --     murphi_stmts
 
-              murphi_stmts
-              -- map the stmt (stmt blk) to Murphi stmts,
-              -- but also consider that it's assigned vars
-              -- should be generated with the ctrler's designators
+          --   | _ => dbg_trace "shouldn't get another stmt type"
+          --     -- []
+          --     empty_stmt_decl_lsts
 
-              -- The Decl gen process shouldn't be affected, since
-              -- the desginators will start with the structure
-              -- as the decl to generate...
-              -- So i think this should be ok...
+          --   when_stmt_murphi_stmts
 
-              -- TODO: This should also be translated by a 
-              -- function which will explicitly take the
-              -- dest structure name as an input arg, so it
-              -- can translate it and reference it's entry tail
-              -- as needed
-
-            | _ => dbg_trace "shouldn't get another stmt type"
-              -- []
-              empty_stmt_decl_lsts
-
-            when_stmt_murphi_stmts
-            -- AZ CHECKPOINT TODO:
-            -- Take this when_stmt, and match it and get it's
-            -- lines of code as murphi code,
-            -- but translate them differently this time...
-            -- (i.e. considering the designators of the different
-            -- structures)
-            
-            -- assume for now we have the matching controller;
-
-            -- match the list of state vars to
-            -- any vars in the stmts
-
-          else
+          -- else
           if (and (api_func_name == "send_load_request")
           (dest_ctrler_name == "memory_interface"))
           then
@@ -3656,6 +3688,7 @@ lst_stmts_decls
             lst_decls := stmt_trans_info.lst_decls,
             is_rhs := stmt_trans_info.is_rhs,
             use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+            curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
             }
 
 -- (
@@ -3752,6 +3785,7 @@ lst_stmts_decls
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
               use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
             }
 
             let ld_trans_handle_squash_if_stmt : lst_stmts_decls := (
@@ -3933,79 +3967,13 @@ lst_stmts_decls
                     --# if ld, then copy above
                     -- TODO: Auto gen the search func per queue struct we generate...
                     squash_ld_id := £search_load_ctrler_func_call(next_state .core_[j] .£speculative_ld_unit_name_ , curr_rob_inst.seq_num);
-                    -- squash_dest_ctrler_entry := £speculative_ld_unit_name .entries[squash_ld_id];
 
                     £ld_trans_handle_squash_if_stmt.stmts
-                    -- if ( squash_dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
-                    --   if (sq.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                    --     sq.valid_access_msg := false;
-                    --   endif;
-                    -- elsif ( squash_dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
-                    --   if (sb.ld_seq_num = squash_dest_ctrler_entry.instruction.seq_num) then
-                    --     sb.valid_access_msg := false;
-                    --   endif;
-                    -- elsif ( squash_dest_ctrler_entry.ld_state = await_committed ) then
-                    --   --# If the executed msg was sent, and not yet accepted!
-                    --   if (
-                    --       (rob.valid_access_msg = true)
-                    --       &
-                    --       (rob.seq_num = squash_dest_ctrler_entry.instruction.seq_num)
-                    --      ) then
-                    --     rob.valid_access_msg := false;
-                    --   --# If the executed msg was sent, and processed!
-                    --   else
-                    --     rob.is_executed[search_rob_seq_num_idx(rob,squash_dest_ctrler_entry.instruction.seq_num)] := false;
-                    --   endif;
-                    -- endif;
-
-                    -- if ( squash_dest_ctrler_entry.ld_state = await_mem_response ) then
-                    --   squash_dest_ctrler_entry.ld_state := squashed_await_mem_response;
-                    -- else
-                    --   squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    -- endif;
-
-                    -- £dest_ctrler_name .ld_entries[squash_ld_id] := squash_dest_ctrler_entry;
-
                   elsif (curr_rob_inst.op = st) then
                     --#
                     squash_st_id := £search_store_ctrler_func_call(next_state .core_[j] .£speculative_st_unit_name_, curr_rob_inst.seq_num);
-                    -- squash_st_entry := £speculative_st_unit_name .entries[squash_st_id];
 
                     £st_trans_handle_squash_if_stmt.stmts
-                    -- --# Shouldn't need to check this case actually
-                    -- --# LQ must be busy with an older store's req
-                    -- if ( squash_sq_entry.st_state = st_await_lq_squash ) then
-                    --   if (£dest_ctrler_name .st_seq_num = squash_sq_entry.instruction.seq_num) then
-                    --     £dest_ctrler_name .valid_access_msg := false;
-                    --   endif;
-                    -- elsif ( squash_sq_entry.st_state = st_await_committed ) then
-                    --   --# If the executed msg was sent, and not yet accepted!
-                    --   if (
-                    --       (rob.valid_access_msg = true)
-                    --       &
-                    --       (rob.seq_num = squash_sq_entry.instruction.seq_num)
-                    --      ) then
-                    --     rob.valid_access_msg := false;
-                    --   --# If the executed msg was sent, and processed!
-                    --   else
-                    --     rob.is_executed[search_rob_seq_num_idx(rob,squash_sq_entry.instruction.seq_num)] := false;
-                    --   endif;
-                    -- endif;
-
-                    -- --# This case doesn't apply to this SQ
-                    -- --#if ( squash_sq_entry.st_state = await_mem_response ) then
-                    -- --#  squash_sq_entry.st_state := squashed_await_mem_response;
-                    -- --#else
-                    -- --#  squash_dest_ctrler_entry.ld_state := await_fwd_check;
-                    -- --#end;
-                    -- --# NOTE: The state to reset to depends on how
-                    -- --# accurately we model the values that are used.
-                    -- --# i.e. this reset is to stop any insts from using
-                    -- --# a value a load incorrectly read.
-                    -- --# 
-                    -- squash_sq_entry.st_state := st_await_translation;
-
-                    -- sq.sq_entries[squash_sq_id] := squash_sq_entry;
                   else
                     -- in the future, handle other inst types
                     error "inst should be either ld or st";
@@ -4014,46 +3982,7 @@ lst_stmts_decls
                   squash_offset := squash_offset + 1;
                 end;
 
-                -- if ( dest_ctrler_entry.ld_state = await_fwd_check_search_result ) then
-                --   if (sq.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
-                --     sq.valid_access_msg := false;
-                --     --# I should probably clear the other fields...
-                --   endif;
-                -- elsif ( dest_ctrler_entry.ld_state = await_sb_fwd_check_response ) then
-                --   if (sb.ld_seq_num = dest_ctrler_entry.instruction.seq_num) then
-                --     sb.valid_access_msg := false;
-                --     --# I should probably clear the other fields...
-                --   endif;
-                -- -- AZ TODO:
-                -- -- want something like this, but to get this we could
-                -- -- filter for transitions which have an await which
-                -- -- awaits on the committed signal from the ROB
-                -- elsif ( dest_ctrler_entry.ld_state = await_committed ) then
-                --   --# If the executed msg was sent, and not yet accepted!
-                --   if (
-                --       (rob.valid_access_msg = true)
-                --       &
-                --       (rob.seq_num = dest_ctrler_entry.instruction.seq_num)
-                --      ) then
-                --     rob.valid_access_msg := false;
-                --   --# If the executed msg was sent, and processed!
-                --   else
-                --     rob.is_executed[search_rob_seq_num_idx(rob,dest_ctrler_entry.instruction.seq_num)] := false;
-                --   endif;
-                -- endif;
 
-                -- --#put "=== BEGIN ===\n";
-                -- --#put dest_ctrler_entry.ld_state;
-                -- if ( dest_ctrler_entry.ld_state = await_mem_response ) then
-                --   --# set to squashed state
-                --   dest_ctrler_entry.ld_state := squashed_await_mem_response;
-                --   --#put "squashing\n";
-                -- else
-                --   dest_ctrler_entry.ld_state := await_fwd_check;
-                --   --#put "just reset\n";
-                -- endif;
-
-                --#put "==== END ====\n";
                 --# don't bother doing any sophisticated rollback
                 --# or squashing for now
                 --# UPDATE STATE
@@ -4155,7 +4084,7 @@ lst_stmts_decls
               --# process msg
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
-              assert (rob .is_executed[rob_id] = true) "why isn't it true?";
+              assert (rob .is_executed[rob_id] = true) "why isn't it false?";
               rob .is_executed[rob_id] := false;
 
               -- rob .valid_access_msg := false;
@@ -4299,13 +4228,27 @@ lst_stmts_decls
             -- Get the when-statements from the state's stmts...
             let when_stmt : Pipeline.Statement :=
               find_when_from_transition first_state_list "insert" ctrler_name
+            dbg_trace s!"first_state_list: ({first_state_list})"
+            dbg_trace s!"ctrler_name: ({ctrler_name})"
+            dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
             -- Convert to Murphi Stmt
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| k]
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
-              ctrler_name := stmt_trans_info.ctrler_name,
-              src_ctrler := stmt_trans_info.src_ctrler,
-              lst_src_args := stmt_trans_info.lst_src_args,
+              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+              --            want to set this to the SQ somehow...
+              src_ctrler := 
+              dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              stmt_trans_info.src_ctrler,
+              lst_src_args :=
+                if stmt_trans_info.lst_src_args.isSome then
+                  stmt_trans_info.lst_src_args
+                else
+                  -- THe list of args from the func call
+                  Option.none
+                ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
               entry_keyword_dest := Option.some dest_ctrler_name,
@@ -4313,7 +4256,8 @@ lst_stmts_decls
               specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
-              use_specific_dest_in_transition := false
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := murphi_dest_idx_expr
             }
             -- TODO: Test the translation, I suspect I may need to set the
             -- sepcific_murphi_dest_expr to this "i" index...
@@ -4321,6 +4265,7 @@ lst_stmts_decls
               ast_stmt_to_murphi_stmts when_stmt_trans_info
             let murphi_when_stmt : List Murϕ.Statement :=
               murphi_when_stmts_decls.stmts
+            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
 
             let dest_ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t";
             let dest_ctrler_name_ : String := dest_ctrler_name ++ "_";
@@ -4329,8 +4274,8 @@ lst_stmts_decls
               -- ctrler := next_state .core[j] .£dest_ctrler_name_;
               -- assert (sb.num_entries < SB_NUM_ENTRIES_CONST) "can't add more!";
               next_state .core[j] .£dest_ctrler_name_ .num_entries := (next_state .core[j] .£dest_ctrler_name_ .num_entries + 1);
-              for i : £dest_ctrler_idx_t do
-                if (next_state .core[j] .£dest_ctrler_name_ .entries[ i ].state = £dest_ctrler_'await_insert'_state) then
+              for k : £dest_ctrler_idx_t do
+                if (next_state .core[j] .£dest_ctrler_name_ .entries[ k ].state = £dest_ctrler_'await_insert'_state) then
                   -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
                   £murphi_when_stmt
                   -- next_state := next_state;
@@ -4346,9 +4291,77 @@ lst_stmts_decls
               stmts := stmts,
               decls := decls
             }
+            dbg_trace s!"SB when insert: ({murphi_when_stmts_decls})"
+            dbg_trace s!"insert API call translated: ({stmts_decls})"
             stmts_decls
             -- CHECKPOINT TODO:
-          -- else if ((api_func_name == "remove_head")) then
+          else if (api_func_name == "remove_head") then
+            -- remove the head entry of a controller
+            let first_state_name : String := get_ctrler_first_state dest_ctrler_name ctrlers_lst;
+
+            let dest_ctrler_ : String := dest_ctrler_name.append "_"
+            let dest_ctrler_entries_const : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
+
+            let dest_ctrler : controller_info :=
+              get_ctrler_matching_name dest_ctrler_name ctrlers_lst
+            let init_stmt_except : Except String Pipeline.Statement := get_init_state_stmts dest_ctrler.init_trans dest_ctrler.transition_list
+            let init_stmt : Pipeline.Statement := match init_stmt_except with
+            | .ok stmt => stmt
+            | .error msg =>
+              dbg_trace s!"Error when getting init state stmt: ({msg})"
+                -- TODO: throw!
+              default
+
+            let init_stmt_without_transition_except : Except String Pipeline.Statement :=
+              return_blk_without_transitions init_stmt
+            let init_stmt_without_transition : Pipeline.Statement :=
+            match init_stmt_without_transition_except with
+            | .ok stmt => stmt
+            | .error msg =>
+              dbg_trace s!"Error when removing transition stmts in init blk: ({msg})"
+                -- TODO: throw!
+              default
+
+            -- let init_stmt_trans_info := assn_stmt_to_stmt_translation_info stmt_trans_info init_stmt
+            let curr_head_ : String := "curr_head_"
+            let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| £curr_head_]
+            let init_stmt_trans_info := {
+              stmt := init_stmt_without_transition,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name,
+              -- NOTE TO SELF: src_ctrler is used to indicate use a specific designator index name..
+              src_ctrler := Option.some dest_ctrler_name,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := Option.some murphi_expr_curr_head_,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition,
+              curr_ctrler_designator_idx := Option.some murphi_expr_curr_head_
+            }
+            dbg_trace "About to init a queue's head entries!"
+            let murphi_init_stmts_decls : lst_stmts_decls := ast_stmt_to_murphi_stmts init_stmt_trans_info
+            dbg_trace s!"Init stmts: ({murphi_init_stmts_decls.stmts})"
+
+            let murphi_stmts : List Murϕ.Statement := [murϕ|
+              curr_head_ := Sta .core[j] .£dest_ctrler_ .head;
+              £murphi_init_stmts_decls.stmts;
+              next_state .core_[j] .£dest_ctrler_ .entries[ curr_head_ ].state := £first_state_name;
+              next_state .core_[j] .£dest_ctrler_ .head := ((curr_head_ + 1) % £dest_ctrler_entries_const);
+              next_state .core_[j] .£dest_ctrler_ .num_entries := (next_state .core[j] .£dest_ctrler_ .num_entries - 1);
+            ]
+
+            let murphi_decls : List Murϕ.Decl := [murϕ_var_decl| £curr_head_ : £dest_ctrler_name ] ++
+              murphi_init_stmts_decls.decls
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmts,
+              decls := murphi_decls
+            }
+            stmts_decls
+
           else
             -- TODO: Remove this? Just throw an error?
             -- Or try to match to ctrler?
@@ -4497,6 +4510,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
 
     -- (
@@ -4572,6 +4586,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
 
     let when_search_fail_trans_info : stmt_translation_info := {
@@ -4588,6 +4603,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
 
     dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
@@ -4596,10 +4612,12 @@ partial def api_term_func_to_murphi_func
     dbg_trace "(((***((( END TAIL SEARCH WHEN TRANSLATION ))))))"
 
     dbg_trace "&&&&& BEGIN Murϕ tail_search when_success &&&&&"
+    dbg_trace s!"tail_search when_success: ({when_search_success})"
     dbg_trace when_search_success_murphi_stmts.stmts
     dbg_trace when_search_success_murphi_stmts.decls
     dbg_trace "&&&&& END Murϕ tail_search when_success &&&&&"
     dbg_trace "&&&&& BEGIN Murϕ tail_search when_fail &&&&&"
+    dbg_trace s!"tail_search when_fail: ({when_search_fail})"
     dbg_trace when_search_fail_murphi_stmts.stmts
     dbg_trace when_search_fail_murphi_stmts.decls
     dbg_trace "&&&&& END Murϕ tail_search when_fail &&&&&"
@@ -4739,6 +4757,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
     let condition : Murϕ.Expr := ast_expr_to_murphi_expr match_cond_trans_info
 
@@ -4775,6 +4794,7 @@ partial def api_term_func_to_murphi_func
     lst_decls := term_trans_info.lst_decls,
     is_rhs := term_trans_info.is_rhs,
     use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+    curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
     let overall_condition : Murϕ.Expr := ast_expr_to_murphi_expr match_overall_cond_trans_info
 
@@ -4842,6 +4862,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
 
     let when_search_fail_trans_info : stmt_translation_info := {
@@ -4858,6 +4879,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
     }
 
     dbg_trace "(((***((( BEGIN TAIL SEARCH WHEN TRANSLATION ))))))"
@@ -4973,6 +4995,7 @@ partial def ast_stmt_to_murphi_stmts
 -- (List Murϕ.Statement)
 lst_stmts_decls
 :=
+  dbg_trace s!"stmt_to_translate: ({stmt_trans_info.stmt})"
   let stmt := stmt_trans_info.stmt
   let ctrlers_lst := stmt_trans_info.lst_ctrlers
   let ctrler_name := stmt_trans_info.ctrler_name
@@ -5046,6 +5069,7 @@ lst_stmts_decls
       lst_decls := stmt_trans_info.lst_decls
       is_rhs := true
       use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+      curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
     }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
@@ -5081,6 +5105,7 @@ lst_stmts_decls
         stmts := [murphi_assignment_stmt],
         decls := []
       }
+      dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts
     else
 
@@ -5091,6 +5116,7 @@ lst_stmts_decls
         stmts := [murphi_assignment_stmt],
         decls := []
       }
+      dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts
 
   | Statement.return_stmt expr =>
@@ -5394,7 +5420,16 @@ lst_stmts_decls
     let tail_entry : tail_or_entry :=
     if unwrapped_func_name == "insert"
     then tail_or_entry.tail
-    else tail_or_entry.entry
+    else if (
+        ( stmt_trans_info.specific_murphi_dest_expr.isSome ) --||
+        -- (term_trans_info.is_rhs && specific_murphi_dest_expr_is_some) ||
+        -- ( ident == "curr_state" )
+        ) then
+      dbg_trace "CUSTOM ENTRY"
+      tail_or_entry.custom_entry
+    else
+      dbg_trace "BASIC ENTRY"
+      tail_or_entry.entry
 
         let bool_thing : Bool :=
         if ctrler_name == "" then
@@ -5405,10 +5440,25 @@ lst_stmts_decls
     let lst_idents := match qual_name with
     | Pipeline.QualifiedName.mk lst_idents => lst_idents
 
+    let assigned_var_entry : tail_or_entry :=
+      if stmt_trans_info.curr_ctrler_designator_idx.isSome then
+        tail_or_entry.custom_entry
+      else
+        tail_or_entry.entry
+    let designator_idx : Option Murϕ.Expr :=
+      if stmt_trans_info.curr_ctrler_designator_idx.isSome then
+        stmt_trans_info.curr_ctrler_designator_idx
+      -- else if stmt_trans_info.specific_murphi_dest_expr.isSome then
+      --   stmt_trans_info.specific_murphi_dest_expr
+      else
+        dbg_trace "Assigning a var in a var assignment stmt w/ basic idx"
+        Option.none
     let murphi_var_name_designator :=
       match qual_name with
       | QualifiedName.mk lst_idents =>
-        list_ident_to_murphi_designator_ctrler_var_check lst_idents ctrlers_lst ctrler_name tail_entry stmt_trans_info.specific_murphi_dest_expr
+        list_ident_to_murphi_designator_ctrler_var_check
+        lst_idents ctrlers_lst ctrler_name assigned_var_entry --tail_entry
+        designator_idx --stmt_trans_info.specific_murphi_dest_expr
 
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
@@ -5429,6 +5479,7 @@ lst_stmts_decls
     lst_decls := stmt_trans_info.lst_decls
     is_rhs := true
     use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+    curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
     }
     let murphi_expr :=
       ast_expr_to_murphi_expr expr_trans_info
@@ -5484,6 +5535,7 @@ lst_stmts_decls
           stmts := [murphi_assn_stmt],
           decls := []
         }
+        dbg_trace s!"(Var len > 0) The Stmts gen'd from a AST var assignment: ({stmts_decls.stmts})"
         stmts_decls
       else
         let murphi_assn_stmt :=
@@ -5493,6 +5545,7 @@ lst_stmts_decls
           stmts := [murphi_assn_stmt],
           decls := []
         }
+        dbg_trace s!"(Var len <= 0) The Stmts gen'd from a AST var assignment: ({stmts_decls.stmts})"
         stmts_decls
     else
       let murphi_assn_stmt :=
@@ -5502,6 +5555,7 @@ lst_stmts_decls
         stmts := [murphi_assn_stmt],
         decls := []
       }
+      dbg_trace s!"The Stmts gen'd from a AST var assignment: ({stmts_decls.stmts})"
       stmts_decls
 
   -- 0
@@ -5749,7 +5803,11 @@ lst_stmts_decls
       lst_ctrlers := stmt_trans_info.lst_ctrlers,
       ctrler_name := stmt_trans_info.ctrler_name,
       src_ctrler := dest_ctrler_name,
-      lst_src_args := lst_ident,
+      lst_src_args :=
+      if stmt_trans_info.lst_src_args.isSome then
+        stmt_trans_info.lst_src_args
+      else
+        lst_ident,
       func := stmt_trans_info.func,
       is_await := stmt_trans_info.is_await,
       entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
@@ -5758,6 +5816,7 @@ lst_stmts_decls
       lst_decls := stmt_trans_info.lst_decls,
       is_rhs := stmt_trans_info.is_rhs
       use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+      curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
     }
 
     -- let murphi_stmts : List Murϕ.Statement :=
@@ -7136,6 +7195,7 @@ def dsl_trans_descript_to_murphi_rule
     lst_decls := []
     is_rhs := false
     use_specific_dest_in_transition := false
+    curr_ctrler_designator_idx := none
   }
 
   let murphi_stmts_decls : lst_stmts_decls :=
