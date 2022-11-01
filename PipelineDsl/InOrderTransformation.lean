@@ -1086,7 +1086,9 @@ def more_generic_core_in_order_stall_transform
     | [] =>
       let msg : String :=
         "ERROR: in 'more_generic_core_in_order_stall_transform\n" ++
-        s!"Found no ctrlers that await InstType:({second_inst.toString}) response"
+        s!"Found no ctrlers that await InstType:({second_inst.toString}) response"++
+        s!"\nCtrlrs_that_await_mem_completion: ({ctrlers_that_await_mem_completion})"++
+        s!"\nall_ctrlers: ({all_ctrlers})"
       throw msg
     | [one] => pure one
     | _ :: _ =>
@@ -1283,7 +1285,7 @@ def more_generic_core_in_order_stall_transform
 
   let new_stall_state : Description :=
     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
-    ctrler_that_send_mem_req.name not_yet_gotten_mem_resp_state_check first_inst
+    ctrler_that_await_mem_completion.name not_yet_gotten_mem_resp_state_check first_inst
     dbg_trace s!"New stall state: \n{new_stall_state}"
 
   /-
