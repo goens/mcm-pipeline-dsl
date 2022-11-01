@@ -185,6 +185,7 @@ partial def true_if_stmts_awaits_ld_mem_response
 (stmt : Statement)
 : List Bool
 :=
+  -- dbg_trace s!"Check stmt if awaits ld mem resp: ({stmt})"
   -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
   -- dbg_trace stmt
   -- dbg_trace "==END GET-TRANSITIONS ==\n"
@@ -211,8 +212,11 @@ partial def true_if_stmts_awaits_ld_mem_response
     | Conditional.if_else_statement _ stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_awaits_ld_mem_response)
     | Conditional.if_statement _ stmt1 => true_if_stmts_awaits_ld_mem_response stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_awaits_ld_mem_response)
-  | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_awaits_ld_mem_response)
+  | Statement.await none lst_stmt1 =>
+    dbg_trace s!"Check stmt if awaits ld mem resp (in await): ({stmt})"
+    List.join (lst_stmt1.map true_if_stmts_awaits_ld_mem_response)
   | Statement.when qual_name list_idents _ =>
+    dbg_trace s!"Check stmt if awaits ld mem resp (in when): ({stmt})"
     let list_names : List String :=
     match qual_name with
     | .mk strs => strs
