@@ -590,3 +590,53 @@ partial def get_complete_transition
   -- | Statement.listen_handle  => 
   | _ => default
     
+def get_init_state_stmts -- use this to get the init state, & translate to 
+(init_state : String)
+(state_list : List Pipeline.Description)
+: Except String Pipeline.Statement
+:= do
+  let init_state_list_stmts : List Pipeline.Statement :=
+  List.join (
+  state_list.map (λ state : Description =>
+    match state with
+    | .state name stmt =>
+      if name == init_state then
+        [stmt]
+      else
+        []
+    | _ => []
+  ));
+  match init_state_list_stmts with
+  | [] =>
+    let msg : String := "Trying to get init state stmts, found nothing?" ++
+    s!"init_state_list stmts found: ({init_state_list_stmts}), state_list: ({state_list})"
+    throw msg
+  | [one_stmt] => return one_stmt
+  | _ :: _ =>
+    let msg : String := "Trying to get init state stmts, found multiple states??" ++
+    s!"init_state_list stmts found: ({init_state_list_stmts}), state_list: ({state_list})"
+    throw msg
+
+def return_stmts_without_transitions
+(stmts : List Pipeline.Statement)
+: List Pipeline.Statement
+:=
+  List.join (
+  stmts.map (λ stmt : Pipeline.Statement =>
+    match stmt with
+    | .transition _ => []
+    | .reset _ => []
+    | .complete _ => []
+    | _ => [stmt]
+  ))
+
+def return_blk_without_transitions
+(stmt : Pipeline.Statement)
+: Except String Pipeline.Statement
+:= do
+  match stmt with
+  | .block lst_stmts =>
+    return Pipeline.Statement.block (return_stmts_without_transitions lst_stmts)
+  | _ =>
+    let msg : String := "This function takes a Pipeline.Statement.block, didn't get one as input!"
+    throw msg
