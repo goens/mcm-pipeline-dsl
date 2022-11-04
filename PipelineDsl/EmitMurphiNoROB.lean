@@ -106,7 +106,7 @@ def compose_murphi_file_components_but_no_ROB
   rename_ : RENAME;
   iq_ : IQ;
   rf_ : REG_FILE;
-  rob_ : ROB;
+  -- rob_ : ROB;
   mem_interface_ : MEM_INTERFACE;
   end;
 
@@ -275,17 +275,17 @@ type ---- Type declarations ----
 
   -- ROB_STATE : enum {commit_not_sent, commit_sig_sent};
 
-  ROB: record
-  rob_insts : array [inst_idx_t] of INST;
-  rob_head : inst_idx_t;
-  rob_tail : inst_idx_t;
-  -- do we also include is_executed state?
-  num_entries : inst_count_t;
+  -- ROB: record
+  -- rob_insts : array [inst_idx_t] of INST;
+  -- rob_head : inst_idx_t;
+  -- rob_tail : inst_idx_t;
+  -- -- do we also include is_executed state?
+  -- num_entries : inst_count_t;
 
-  is_executed : array [inst_idx_t] of boolean;
+  -- is_executed : array [inst_idx_t] of boolean;
 
-  -- state : array [inst_idx_t] of ROB_STATE;
-  end;
+  -- -- state : array [inst_idx_t] of ROB_STATE;
+  -- end;
 
   ---------------------- mem interface --------------
   -- Memory interface
@@ -423,7 +423,7 @@ type ---- Type declarations ----
     begin
     
     for i : inst_idx_t do
-      if (rob .rob_insts[i] .seq_num = seq_num) then
+      if (rob .entries[i] .instruction .seq_num = seq_num) then
         return i;
       end;
     end;
@@ -597,10 +597,10 @@ function rob_insert(
   begin
   --
   rob_new := rob;
-  rob_tail := rob .rob_tail;
+  rob_tail := rob .tail;
 
-  rob_new .rob_insts[rob .rob_tail] := inst;
-  rob_new .rob_tail := ( rob .rob_tail + 1 ) % (CORE_INST_NUM + 1);
+  rob_new .entries[rob .tail].instruction := inst;
+  rob_new .tail := ( rob .tail + 1 ) % (CORE_INST_NUM + 1);
   rob_new .num_entries := rob .num_entries + 1;
   --
   -- # assert not needed...
@@ -618,10 +618,10 @@ function rob_remove(
 begin
   --
   rob_new := rob;
-  rob_head := rob .rob_head;
+  rob_head := rob .head;
 
-  rob_new .rob_insts[rob .rob_head] .op := inval;
-  rob_new .rob_head := ( rob .rob_head + 1 ) % (CORE_INST_NUM + 1);
+  rob_new .entries[rob .head] .op := inval;
+  rob_new .head := ( rob .head + 1 ) % (CORE_INST_NUM + 1);
   rob_new .num_entries := rob .num_entries - 1;
   -- rob_new .state[rob .rob_head] := commit_not_sent;
   --
@@ -1424,13 +1424,14 @@ begin
     end;
     alias rob:init_state .core_[core] .rob_ do
       for i : 0 .. CORE_INST_NUM do
-        rob .rob_insts[i] .op := inval;
-        rob .rob_insts[i] .seq_num := 0;
+        rob .entries[i] .op := inval;
+        rob .entries[i] .seq_num := 0;
         -- rob .state[i] := commit_not_sent;
-        rob .is_executed[i] := false;
+        rob .entries[i] .is_executed := false;
+        rob .entries[i] .state := rob_await_creation;
       end;
-      rob .rob_head := 0;
-      rob .rob_tail := 0;
+      rob .head := 0;
+      rob .tail := 0;
       rob .num_entries := 0;
     end;
     alias sq:init_state .core_[core] .SQ_ do
