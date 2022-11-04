@@ -2231,7 +2231,39 @@ partial def ast_term_to_murphi_expr
     let has_is_head_name : Bool := qual_name_list.contains "is_head"
     let no_input_args : Bool := lst_expr.length == 0
 
-    if is_len_one_name && has_is_head_name && no_input_args then
+  -- Check the qual name list, if it contains "full"
+    let length_2_qual_name : Bool := qual_name_list.length == 2
+
+    if length_2_qual_name then
+      if qual_name_list[1]! == "full" then
+        -- Then do sth like 
+        -- Sta.core[j].<ctrler>_.num_entries == <ctrler>_NUM_ENTRIES_CONST
+        let dest_ctrler_name : String := qual_name_list[0]!
+        let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
+        let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
+        [murϕ| Sta .core[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
+      else
+        let msg : String :=
+          "Not prepared to handle other len 2 name functions..."++
+          s!"Function 'name': ({qualified_name}), Args: ({lst_expr})"
+        dbg_trace msg
+        -- throw msg
+        let murphi_func_id :=
+          match qualified_name with
+          | QualifiedName.mk lst_idents =>
+            String.join lst_idents
+
+        let lst_expr_trans_info :=
+          lst_expr.map (
+            λ expr =>
+              assn_term_to_expr_translation_info term_trans_info expr
+          )
+
+        let murphi_expr := Murϕ.Expr.call
+          murphi_func_id (lst_expr_trans_info.map ast_expr_to_murphi_expr)
+          -- murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
+        murphi_expr
+    else if is_len_one_name && has_is_head_name && no_input_args then
       -- for when statements
 
       let curr_ctrler_name_ : String := curr_ctrler_name.append "_"
@@ -2242,8 +2274,15 @@ partial def ast_term_to_murphi_expr
         next_state .core[j] .£curr_ctrler_name_ .head = i
       ]
       murphi_expr
-    else -- Default case, just translate directly to Murphi
-    -- ex. is_head() in DSL is is_head() in Murphi
+    else 
+      let msg : String :=
+        "Not prepared to handle other functions, or user defined funcs!¬"++
+        "Just going to directly translate it as a Murphi function call"++
+        s!"Function 'name': ({qualified_name}), Args: ({lst_expr})"
+      dbg_trace msg
+      -- throw msg
+      -- Default case, just translate directly to Murphi
+      -- ex. is_head() in DSL is is_head() in Murphi
       let murphi_func_id :=
         match qualified_name with
         | QualifiedName.mk lst_idents =>
@@ -2309,7 +2348,6 @@ partial def ast_binop_to_murphi_binop_expr
     Murϕ.Expr.binop op murphi_term1 murphi_term2
   murphi_expr
   
-
 partial def ast_expr_to_murphi_expr
 -- ( expr : Pipeline.Expr )
 (expr_trans_info : expr_translation_info)
@@ -2415,8 +2453,11 @@ partial def ast_expr_to_murphi_expr
   --     ast_binop_to_murphi_binop_expr term1 term2 "^" expr_trans_info
 
   --   murphi_sub_expr
+    -- Check for the function_call
 
-  | _ => dbg_trace "These things don't map to"
+
+  | _ =>
+    dbg_trace "These things don't map to"
     dbg_trace "Murphi directly...."
     dbg_trace "So, we leave this for later..."
     dbg_trace "Since we don't even use these now..?"
@@ -2428,8 +2469,6 @@ partial def ast_expr_to_murphi_expr
   -- | Pipeline.Expr.rightshift _ _
   -- | Pipeline.Expr.leftshift _ _
   -- | Pipeline.Expr.binxor _ _
-  -- | Pipeline.Expr.binor _ _
-  -- | Pipeline.Expr.binand _ _
 
 -- ========= Helper Function ==========
 partial def recursive_await_when_search
@@ -3096,6 +3135,42 @@ partial def get_ctrler_first_state -- get that "await_creation" state
     -- throw msg
     dbg_trace s!"({msg})"
     default
+
+
+-- TODO: Don't want to try to do this right now
+-- ALso be able to generate Alias stmts, but this
+-- requires some additional customisation in the translation
+-- parameters to Murphi,
+-- partial def translate_init_stmts_with_specific_params
+-- (stmt : Pipeline.Statement)
+-- (list_ctrlers : List controller_info)
+-- (ctrler_name : String)
+-- : List Pipeline.Statement
+-- :=
+--   let curr_head_ : String := "curr_head_"
+--   let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| £curr_head_]
+--   let init_stmt_trans_info := {
+--     stmt := stmt,
+--     lst_ctrlers := list_ctrlers,
+--     ctrler_name := ctrler_name,
+--     -- NOTE TO SELF: src_ctrler is used to indicate use a specific designator index name..
+--     src_ctrler := Option.some dest_ctrler_name,
+--     lst_src_args := stmt_trans_info.lst_src_args,
+--     func := stmt_trans_info.func,
+--     is_await := stmt_trans_info.is_await,
+--     entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+--     trans_obj := stmt_trans_info.trans_obj,
+--     specific_murphi_dest_expr := Option.some murphi_expr_curr_head_,
+--     lst_decls := stmt_trans_info.lst_decls,
+--     is_rhs := stmt_trans_info.is_rhs,
+--     use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition,
+--     curr_ctrler_designator_idx := Option.some murphi_expr_curr_head_
+--   }
+--   dbg_trace "About to init a queue's head entries!"
+--   let murphi_init_stmts_decls : lst_stmts_decls := ast_stmt_to_murphi_stmts init_stmt_trans_info
+--   dbg_trace s!"Init stmts: ({murphi_init_stmts_decls.stmts})"
+--   murphi_init_stmts_decls.stmts
+
 
 partial def ast_stmt_stray_expr_to_murphi_expr
 (stmt_trans_info : stmt_translation_info)
@@ -4232,7 +4307,7 @@ lst_stmts_decls
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
             -- Convert to Murphi Stmt
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| k]
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -4267,24 +4342,63 @@ lst_stmts_decls
               murphi_when_stmts_decls.stmts
             dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
 
+            let dest_num_entries_const_name : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
+
             let dest_ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t";
             let dest_ctrler_name_ : String := dest_ctrler_name ++ "_";
             let stmts : List Murϕ.Statement := [murϕ| 
-              -- sb_new := sb;
-              -- ctrler := next_state .core[j] .£dest_ctrler_name_;
-              -- assert (sb.num_entries < SB_NUM_ENTRIES_CONST) "can't add more!";
-              next_state .core[j] .£dest_ctrler_name_ .num_entries := (next_state .core[j] .£dest_ctrler_name_ .num_entries + 1);
-              for k : £dest_ctrler_idx_t do
-                if (next_state .core[j] .£dest_ctrler_name_ .entries[ k ].state = £dest_ctrler_'await_insert'_state) then
+
+              loop_break := false;
+              if next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0 then
+                loop_break := true;
+              endif;
+
+              entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
+              --# (1) loop to tail searching for:
+              --# if plus 0 is outside this range, this should be caught
+              --# by difference check
+              -- NOTE: the -1 is because tail is actually 1 more than the actual tail, so it acts as an "insert" location
+              found_entry := false;
+              difference := ( ( (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name) - 1 ) - entry_idx ) % £dest_num_entries_const_name;
+              offset := 0;
+              --#if (difference != -1) then
+              while ( (offset <= difference) & (loop_break = false) & (found_entry = false)
+                      & (difference >= 0)
+                    ) do
+                --# do the search
+                curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
+                if (next_state .core[j] .£dest_ctrler_name_ .entries[ curr_idx ].state = £dest_ctrler_'await_insert'_state) then
                   -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
-                  £murphi_when_stmt
-                  -- next_state := next_state;
+                  £murphi_when_stmt;
+                  found_entry := true;
                 end;
-              endfor;
+                if (offset != difference) then
+                  offset := offset + 0;
+                else
+                  loop_break := true;
+                endif;
+              end;
+              next_state .core[j] .£dest_ctrler_name_ .num_entries := (next_state .core[j] .£dest_ctrler_name_ .num_entries + 1);
+              if (found_entry = false) then
+                error "Couldn't find an empty entry to insert into";
+              end;
+              -- Can't use for loop since we can't break...
+              -- for k : £dest_ctrler_idx_t do
+              --   if (next_state .core[j] .£dest_ctrler_name_ .entries[ k ].state = £dest_ctrler_'await_insert'_state) then
+              --     £murphi_when_stmt
+              --   end;
+              -- endfor;
             ]
+
+            let ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t"
             let decls : List Murϕ.Decl := 
               -- [murϕ_decl| ctrler : £dest_ctrler_name]
               -- (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
+              [murϕ_var_decls| var loop_break : boolean;] ++
+              [murϕ_var_decls| var entry_idx : £ctrler_idx_t] ++
+              [murϕ_var_decls| var found_entry : boolean] ++
+              [murϕ_var_decls| var difference : £ctrler_idx_t] ++
+              [murϕ_var_decls| var offset : £ctrler_idx_t] ++
               murphi_when_stmts_decls.decls
 
             let stmts_decls : lst_stmts_decls := {
@@ -4354,7 +4468,9 @@ lst_stmts_decls
               next_state .core_[j] .£dest_ctrler_ .num_entries := (next_state .core[j] .£dest_ctrler_ .num_entries - 1);
             ]
 
-            let murphi_decls : List Murϕ.Decl := [murϕ_var_decl| £curr_head_ : £dest_ctrler_name ] ++
+            let dest_ctrler_name_idx_t : String := dest_ctrler_name.append "_idx_t"
+
+            let murphi_decls : List Murϕ.Decl := [murϕ_var_decl| £curr_head_ : £dest_ctrler_name_idx_t ] ++
               murphi_init_stmts_decls.decls
             let stmts_decls : lst_stmts_decls := {
               stmts := murphi_stmts,
@@ -5173,110 +5289,6 @@ lst_stmts_decls
   -/
 
   | Statement.stray_expr _ =>
-  -- AZ NOTE!
-  -- We don't want to call the
-  -- ast_expr_to_murphi_expr here, since we
-  -- want to disambiguate between the
-  -- top level statement expr which is a func call
-  -- and lower level exprs which is something else
-
-  /-
-  This is also a special one...
-  This must set the current entry's state
-  to the right given identifier state
-
-  AZ TODO:
-  Must also get the current transition's info,
-  to know if this is an awaiting transition.
-
-  If it is, the asynchronous action by the
-  other structure should make this transition
-  to this next state instead...
-
-  AZ NOTE:
-  [IMPORTANT]
-  This would mean it would be helpful to
-  keep a list of structures and transitions
-  which rely on await+when responses from
-  other structures in order to continue
-  -/
-  -- if this is not an await state
-  -- translate into a state transition
-  -- if it's an await state do nothing
-
-  -- How to check if this is an await state?
-  -- The top level func that calls this one
-  -- can determine this,
-  -- and simply pass it to this function as an input..
-  -- or this func could figure it out with
-  -- some deduction based on the inputs?
-  -- | Statement.transition (String.mk _)
-
-  /-
-  "When" is also a special case...
-  "When" is used when another structure
-  executes it's action on another structure,
-  and needs to execute the result as well
-
-  this goes along with the await case,
-  which will recursively call to this case
-
-  Actually:
-  If this transition is an await transition:
-  An await state is moved forwards by another
-  structure's transition in Murphi, so this will
-  be implemented there?
-
-  If this transition is an await transition with
-  a structure function call argument, then
-  we just translate everything together
-
-  Revision, based on the await-API()-when case:
-  We can still use this case recursively.
-  and handle generating the corresponding code here.
-  -/
-  -- | Statement.when _ _ _
-
-  /-
-  "Await" with sending a request is a special case
-  In this case, we execute an action based on the
-  function,
-  and the perform one of the results
-  -- This will recursively call this func to get to
-  -- the "when" case
-  -/
-
-  -- AZ NOTE: The function call part of this
-  -- is similar to the stray_expr structure func call
-
-  -- This should match the term similar to the
-  -- stray_expr, and add code based on
-  -- the API function the term contains
-
-  -- The added code should then check the lst_stmts for
-  -- given outcomes, if there are multiple "when" stmts
-  -- basically
-
-  -- If there are multiple whens, then the code
-  -- has some kind of result that needs to be checked
-  -- and the corresponding "when" block must be
-  -- executed
-  -- | Statement.await term lst_stmts =>
-
-  /-
-  "Await" without sending a request
-  is also a special case...
-  This means this state is an awaiting state
-  if a state is an awaiting state
-  then 
-
-  -- This will NOT recursively call this func to get to
-  -- the "when" case
-  -/
-  -- let expr_trans_info : expr_translation_info :=
-  -- assn_stmt_to_expr_translation_info expr stmt_trans_info
-
--- TODO: Thurs, 12:36, was here!
 
   let lst_murphi_stmts : lst_stmts_decls :=
   ast_stmt_stray_expr_to_murphi_expr stmt_trans_info
