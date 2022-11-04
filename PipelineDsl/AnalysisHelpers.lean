@@ -640,3 +640,28 @@ def return_blk_without_transitions
   | _ =>
     let msg : String := "This function takes a Pipeline.Statement.block, didn't get one as input!"
     throw msg
+
+def get_init_stmts_without_transition
+(ctrler : controller_info)
+: Except String Pipeline.Statement
+:= do
+  let init_stmt_except : Except String Pipeline.Statement := get_init_state_stmts ctrler.init_trans ctrler.transition_list
+  let init_stmt : Pipeline.Statement ← match init_stmt_except with
+  | .ok stmt => pure stmt
+  | .error msg =>
+    -- dbg_trace s!"Error when getting init state stmt: ({msg})"
+    throw msg
+    -- default
+
+  let init_stmt_without_transition_except : Except String Pipeline.Statement :=
+    return_blk_without_transitions init_stmt
+  let init_stmt_without_transition : Pipeline.Statement ← 
+  match init_stmt_without_transition_except with
+  | .ok stmt => pure stmt
+  | .error msg =>
+    -- dbg_trace s!"Error when removing transition stmts in init blk: ({msg})"
+    throw msg
+    -- default
+
+  return init_stmt_without_transition
+  -- TODO: Split the bottom code into a function in translation
