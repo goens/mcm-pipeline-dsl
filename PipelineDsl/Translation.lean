@@ -4123,7 +4123,7 @@ lst_stmts_decls
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
               assert (rob .is_executed[rob_id] = false) "why isn't it false?";
-              rob .is_executed[rob_id] := true;
+              rob .entries[ rob_id ] .is_executed := true;
 
               -- rob .valid_access_msg := false;
 
@@ -4159,8 +4159,9 @@ lst_stmts_decls
               --# process msg
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
-              assert (rob .is_executed[rob_id] = true) "why isn't it false?";
-              rob .is_executed[rob_id] := false;
+              assert (rob .is_executed[rob_id] = true) "why isn't it true?";
+              -- rob .is_executed[rob_id] := false;
+              rob .entries[rob_id] .is_executed := false;
 
               -- rob .valid_access_msg := false;
 
@@ -4477,29 +4478,130 @@ lst_stmts_decls
               decls := murphi_decls
             }
             stmts_decls
+          else if (api_func_name == "insert_tail") then
+            -- TODO: move murphi code here...
+            let dest_ctrler_ : String := dest_ctrler_name.append "_"
+            let dest_ctrler : controller_info :=
+              get_ctrler_matching_name dest_ctrler_name ctrlers_lst
 
-          else
-            -- TODO: Remove this? Just throw an error?
-            -- Or try to match to ctrler?
-            -- The match to ctrler should be the default behaviour
-            -- Then it should also check if this is an API call..
-            -- If it can't find an API call.. then it should throw an error
-            -- as a last resort..
-            -- reg file write?
-            -- throw an error for unknown fns?
-            -- but just going to return a default
-            --
-            -- (a) Check the args of the call, to get
-            -- the reg number, and value to write...
-            -- (b) Then access the core_[i]'s index
+            let when_stmt : Pipeline.Statement :=
+              find_when_from_transition dest_ctrler.transition_list "insert_tail" ctrler_name
+            dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
+            dbg_trace s!"ctrler_name: ({ctrler_name})"
+            dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
+            -- Convert to Murphi Stmt
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core[j] .£dest_ctrler_ .tail]
+            let when_stmt_trans_info : stmt_translation_info := {
+              stmt := when_stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+              --            want to set this to the SQ somehow...
+              src_ctrler := 
+              dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              stmt_trans_info.src_ctrler,
+              lst_src_args :=
+                if stmt_trans_info.lst_src_args.isSome then
+                  stmt_trans_info.lst_src_args
+                else
+                  -- THe list of args from the func call
+                  Option.none
+                ,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := murphi_dest_idx_expr
+            }
+            -- TODO: Test the translation, I suspect I may need to set the
+            -- sepcific_murphi_dest_expr to this "i" index...
+            let murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts when_stmt_trans_info
+            let murphi_when_stmt : List Murϕ.Statement :=
+              murphi_when_stmts_decls.stmts
+            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
 
-            -- let args := lst_expr
-            -- assume we've "prepared the exprs" in some
-            -- other previous stmts.. and we just use them..
-            -- Just confirm the order...
-            -- i.e. first arg is the reg idx, and 2nd is the write val
+            let dest_num_entries_const : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
+            let murphi_stmts : List Murϕ.Statement := [murϕ|
+              -- NOTE: assert is nice to have. maybe consider generating one later...
+              -- assert curr_tail_entry .state = await_creation "to insert, load should be awaiting creation";
+
+              -- update the state accordingly...
+              £murphi_when_stmts_decls.stmts;
+
+              --# NOTE: Auto generate the standard "insert" book keeping part
+              -- insert inst is not so 'standard'
+              -- curr_tail_entry .instruction := inst;
+              next_state .core[j] .£dest_ctrler_ .tail := ( Sta .core[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
+              next_state .core[j] .£dest_ctrler_ .num_entries := Sta .core[j] .£dest_ctrler_ .num_entries + 1;
+            ]
+            let murphi_decls : List Murϕ.Decl := [] ++ murphi_when_stmts_decls.decls
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmts,
+              decls := murphi_decls
+            }
+            stmts_decls
+          -- NOTE: probably don't need a <ctrler>.remove() api?
+          -- Since ctrler entries generally do remove() when they get removed..?
+          -- else if (api_func_name == "remove") then
+          else /- Default case: Simply find the matching when-stmt & translate it here... -/
             dbg_trace "INSERT CODE To DO THE THING WHERE IT MATCHES"
             dbg_trace "THE MESSAGE PASSING TO A DESTINATION STRUCTURE"
+
+            -- TODO: Replace "insert" with the api_func_name
+            -- TODO: Check if the translation options below for the when stmt are correct!
+            -- TODO: move murphi code here...
+            let dest_ctrler : controller_info :=
+              get_ctrler_matching_name dest_ctrler_name ctrlers_lst
+
+            let when_stmt : Pipeline.Statement :=
+              find_when_from_transition dest_ctrler.transition_list api_func_name ctrler_name
+            dbg_trace s!"dest_ctrler_name: ({dest_ctrler_name})"
+            dbg_trace s!"ctrler_name: ({ctrler_name})"
+            dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
+            -- Convert to Murphi Stmt
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
+            let when_stmt_trans_info : stmt_translation_info := {
+              stmt := when_stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+              --            want to set this to the SQ somehow...
+              src_ctrler := 
+              dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              stmt_trans_info.src_ctrler,
+              lst_src_args :=
+                if stmt_trans_info.lst_src_args.isSome then
+                  stmt_trans_info.lst_src_args
+                else
+                  -- THe list of args from the func call
+                  Option.none
+                ,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              -- By setting these fields, I assume we'll specifically mean to use this with 
+              -- controllers with multiple elements, and thus we need to use 'tail_search'
+              -- which indexes the dest with 'curr_idx'
+              use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := murphi_dest_idx_expr -- stmt_trans_info.curr_ctrler_designator_idx
+            }
+            -- TODO: Test the translation, I suspect I may need to set the
+            -- sepcific_murphi_dest_expr to this "i" index...
+            let murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts when_stmt_trans_info
+            let murphi_when_stmt : List Murϕ.Statement :=
+              murphi_when_stmts_decls.stmts
+            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+
             let stmts_decls : lst_stmts_decls := {
               stmts := [],
               decls := []
@@ -4508,47 +4610,79 @@ lst_stmts_decls
         else
         if len_1_qual_name
         then
-        dbg_trace "doesn't make sense.. replace this with Except throw"
-        empty_stmt_decl_lsts
+        -- dbg_trace "doesn't make sense.. replace this with Except throw"
+
+          if ( qual_name_list[0]! == "remove" ) then
+            let curr_ctrler_name_ : String := ctrler_name.append "_"
+
+            -- name of func call is just "is_head"
+            -- then translate term as curr_ctrler.head == i
+            let murphi_stmt : List Murϕ.Statement := [murϕ|
+              next_state .core[j] .£curr_ctrler_name_ .num_entries := (next_state .core[j] .£curr_ctrler_name_ .num_entries - 1);
+            ]
+            -- murphi_expr
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmt,
+              decls := []
+            }
+            stmts_decls
+          else
+            dbg_trace "Found a function stmt that doesn't match an API name"
+            dbg_trace "Also we don't match user-written functions yet."
+            dbg_trace s!"The stmt: ({stmt})"
+            dbg_trace s!"The expr: ({expr})"
+            dbg_trace s!"The term: ({term})"
+            dbg_trace s!"Function found: ({qual_name_list})"
+            empty_stmt_decl_lsts
+        -- empty_stmt_decl_lsts
         else
           -- len more than 2 qual name...
           -- we don't have that at the moment?
           -- should throw error
           -- just return default
-        dbg_trace "doesn't make sense.. replace this with Except throw"
-        empty_stmt_decl_lsts
+          dbg_trace "doesn't make sense.. replace this with Except throw"
+          dbg_trace "Got a function name with a long qual name, > 2 parts"
+          dbg_trace s!"The stmt: ({stmt})"
+          dbg_trace s!"The expr: ({expr})"
+          dbg_trace s!"DEBUG: Qual name functions: The function: ({term})"
+          empty_stmt_decl_lsts
          
 
       | _ =>
         -- just call the term translation normally?
         -- can't, this is returns some expr?
         dbg_trace "What was i just passed?? should be a stray expr?"
-        dbg_trace term
+        dbg_trace s!"The stmt: ({stmt})"
+        dbg_trace s!"The expr: ({expr})"
+        dbg_trace s!"DEBUG: Handling functions in the DSL: The Term: ({term})"
         empty_stmt_decl_lsts
       -- Murϕ.Expr.integerConst 0
     | _ =>
-    -- let expr_trans_info :=
-    -- assn_stmt_to_expr_translation_info stmt_trans_info expr
-    -- let ret_val :=
-    -- ast_expr_to_murphi_expr expr_trans_info
+      -- let expr_trans_info :=
+      -- assn_stmt_to_expr_translation_info stmt_trans_info expr
+      -- let ret_val :=
+      -- ast_expr_to_murphi_expr expr_trans_info
 
-    -- ret_val
+      -- ret_val
 
-    -- let expr_trans_info :=
-    --   assn_stmt_to_expr_translation_info stmt_trans_info expr
-    -- let murphi_expr :=
-    --   ast_expr_to_murphi_expr expr_trans_info
-    -- let murphi_stmt :=
-    --   Murϕ.
+      -- let expr_trans_info :=
+      --   assn_stmt_to_expr_translation_info stmt_trans_info expr
+      -- let murphi_expr :=
+      --   ast_expr_to_murphi_expr expr_trans_info
+      -- let murphi_stmt :=
+      --   Murϕ.
 
-    -- AZ NOTE: I don't think there is anything this
-    -- would map to?
+      -- AZ NOTE: I don't think there is anything this
+      -- would map to?
           
-    dbg_trace "What was i just passed?? should be a stray expr?"
-    empty_stmt_decl_lsts
+      dbg_trace "What was i just passed?? should be a stray expr?"
+      dbg_trace s!"The stmt: ({stmt})"
+      dbg_trace s!"DEBUG: Unexpected expr type: The expr: ({expr})"
+      empty_stmt_decl_lsts
   | _ =>
-  dbg_trace "passed in sth that's not a stray_expr"
-  empty_stmt_decl_lsts
+    dbg_trace "passed in sth that's not a stray_expr"
+    dbg_trace s!"DEBUG: Unexpected stmt type: The stmt: ({stmt})"
+    empty_stmt_decl_lsts
 
 partial def api_term_func_to_murphi_func
 -- ( term : Pipeline.Term )
