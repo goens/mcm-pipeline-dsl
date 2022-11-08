@@ -610,28 +610,6 @@ end
 ],
 [murϕ_proc_decl|
 
-function rob_remove(
-             rob : ROB;
-           ) : ROB;
-  var rob_new : ROB;
-  var rob_head : inst_idx_t;
-begin
-  --
-  rob_new := rob;
-  rob_head := rob .head;
-
-  rob_new .entries[rob .head] .op := inval;
-  rob_new .head := ( rob .head + 1 ) % (CORE_INST_NUM + 1);
-  rob_new .num_entries := rob .num_entries - 1;
-  -- rob_new .state[rob .rob_head] := commit_not_sent;
-  --
-  -- # assert not needed...
-  assert (rob .num_entries >= ( 0 )) "can't remove more!";
-  return rob_new;
-end
-],
-[murϕ_proc_decl|
-
 function lq_clear_head(
              lq : LQ;
              --#lq_entry : LQ_idx_t;
@@ -1422,7 +1400,7 @@ begin
         rf .rf[i] := 0;
       end;
     end;
-    alias rob:init_state .core_[core] .rob_ do
+    alias rob:init_state .core_[core] .ROB_ do
       for i : 0 .. CORE_INST_NUM do
         rob .entries[i] .op := inval;
         rob .entries[i] .seq_num := 0;
@@ -1765,7 +1743,7 @@ begin
   -- #sq_q := sta .SQ_;
   -- lsq_q := Sta .core_[j] .lSQ_;
   iq_q := Sta .core_[j] .iq_;
-  rob_q := Sta .core_[j] .rob_;
+  rob_q := Sta .core_[j] .ROB_;
 --
   -- #NOTE! less than or equal
   if (rob_q .num_entries <= CORE_INST_NUM)
@@ -1825,7 +1803,7 @@ begin
   -- # set IQ stuff
   nxt_state .core_[j] .iq_ := iq_q;
   -- # set ROB stuff
-  nxt_state .core_[j] .rob_ := rob_q;
+  nxt_state .core_[j] .ROB_ := rob_q;
 
   -- # update state
   Sta := nxt_state;
@@ -1916,130 +1894,6 @@ end;
 endruleset;
 endruleset
 ],
-[murϕ_rule|
-
--- # TODO: add simple transition rule to "remove"
--- # a load once it reaches some state like commit
--- # to avoid implementing it for now
--- # DONE, the ld remove rule.
--- # TODO, Replace with commit / ROB later
-
--- # TODO: Continue to model LQ, make request to Memory
--- # Also need to model memory
--- # Make simple memory requests
--- # So need a simple 2 or 3 addr memory
--- # and load/store requests happen immediately
-
--- # TODO then model commit stage to retire the load
--- # 
-ruleset j : cores_t do
-rule "rob_commit_head"
-  -- pre cond
-  -- have entries to commit
-  (Sta .core_[j] .rob_.num_entries > 0)
-  -- &
-  -- -- and haven't tried commit this inst yet
-  -- --# NOTE This is a trick, add state, to make sure
-  -- --# this only runs once
-  -- --# maybe different if we generate explicit
-  -- --# substates (what andres was going to do?)
-  -- (Sta .core_[j] .rob_.state[Sta .core_[j] .rob_.rob_head] = commit_not_sent)
-  
-  &
-  --# head inst has executed
-  (Sta .core_[j] .rob_ .is_executed[Sta .core_[j] .rob_ .rob_head] = true)
-==>
-  -- decls
-  var next_state : STATE;
-  var rob : ROB;
-  var head_inst : INST;
-  var lq_q : LQ;
-  var sq_q : SQ;
-  var sq_entry : SQ_entry_values;
-  var sb_q : SB;
-begin
-  next_state := Sta;
-  -- directly change state of lq or sq
-  rob := Sta .core_[j] .rob_;
-
-  --check head inst type
-  head_inst := rob .rob_insts[rob .rob_head];
-
-  lq_q := Sta .core_[j] .LQ_;
-
-  sb_q := Sta .core_[j] .SB_;
-  sq_q := Sta .core_[j] .SQ_;
-
-  if (head_inst .op = ld) then
-    -- #search for the load?
-    --#lq_q := lq_commit(lq_q, head_inst);
-
-    --# remove rob head if lq_entry was removed....
-    --# This makes it all done atomically...
-    if (lq_q .entries[lq_q .head] .state = await_committed)
-      then
-      rob .is_executed[Sta .core_[j] .rob_ .rob_head] := false;
-      rob := rob_remove(rob);
-    else
-      --# If inst wasn't directly committed
-      -- # set state to commit sig sent
-      error "ld entry should be in await_comitted state..";
-      -- rob .state[rob .rob_head] := commit_sig_sent;
-    endif;
-
-    -- # should be the head load...
-    --# commit if in await commit, otherwise set
-    --# saw commit sig flag to true
-    lq_q := lq_commit_head(lq_q);
-
-
-  elsif (head_inst .op = st) then
-    --# SB Must have free space!
-    if ( sb_q .num_entries < ( SB_NUM_ENTRIES_CONST ) )
-      then
-
-      --# Move inst into SB, remove from ROB
-      if (sq_q .entries[sq_q .head] .state = sq_await_committed)
-        then
-        rob .is_executed[Sta .core_[j] .rob_ .rob_head] := false;
-        rob := rob_remove(rob);
-
-        sq_entry := sq_q .entries[sq_q .head];
-        sb_q := sb_insert(sb_q, sq_entry);
-
-      else
-        --# If inst wasn't directly committed
-        -- # set state to commit sig sent
-        error "st entry should be in await_comitted state..";
-        -- rob .state[rob .rob_head] := commit_sig_sent;
-      endif;
-
-      -- # should be the head load...
-      -- # sq will insert head_inst into SB
-      -- # SB does store later
-
-      --# remove sq head if at await commit
-      --# otherwise, set saw commit sig flag to true
-      sq_q := sq_commit_head(sq_q);
-    endif;
-
-  elsif (head_inst .op = inval) then
-    error "shouldn't have an inval head inst??";
-  endif;
-
-  next_state .core_[j] .rob_ := rob;
-
-  if (head_inst .op = ld) then
-    next_state .core_[j] .LQ_ := lq_q;
-  elsif (head_inst .op = st) then
-    next_state .core_[j] .SQ_ := sq_q;
-    next_state .core_[j] .SB_ := sb_q;
-  endif;
-
-  Sta := next_state;
-end;
-endruleset
-],
 
 [murϕ_rule|
 
@@ -2122,7 +1976,7 @@ rule "reset"
   (
     ( Sta .core_[0] .rename_.num_entries = 0 )
     &
-    ( Sta .core_[0] .rob_.num_entries = 0 )
+    ( Sta .core_[0] .ROB_.num_entries = 0 )
     &
     ( Sta .core_[0] .SB_.num_entries = 0 )
     &
@@ -2134,7 +1988,7 @@ rule "reset"
     &
     ( Sta .core_[1] .rename_.num_entries = 0 )
     &
-    ( Sta .core_[1] .rob_.num_entries = 0 )
+    ( Sta .core_[1] .ROB_.num_entries = 0 )
     &
     ( Sta .core_[1] .SB_.num_entries = 0 )
     &
