@@ -605,6 +605,8 @@ function rob_insert(
   --
   -- # assert not needed...
   assert (rob .num_entries <= ( CORE_INST_NUM + 1)) "can't add more!";
+  assert (rob.entries[rob.tail].state = rob_await_creation) "Initial ROB entry state should have been in rob_await_creation";
+  rob_new.entries[ rob.tail ].state := rob_commit_if_head;
   return rob_new;
 end
 ],
@@ -1402,8 +1404,8 @@ begin
     end;
     alias rob:init_state .core_[core] .ROB_ do
       for i : 0 .. CORE_INST_NUM do
-        rob .entries[i] .op := inval;
-        rob .entries[i] .seq_num := 0;
+        rob .entries[i] .instruction .op := inval;
+        rob .entries[i] .instruction .seq_num := 0;
         -- rob .state[i] := commit_not_sent;
         rob .entries[i] .is_executed := false;
         rob .entries[i] .state := rob_await_creation;

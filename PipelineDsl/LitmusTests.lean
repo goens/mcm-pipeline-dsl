@@ -143,7 +143,7 @@ def litmus_test_core_empty_murphi_expr
     [murϕ_expr| 
       ( Sta .core_[£core_idx] .rename_.num_entries = 0 )
       &
-      ( Sta .core_[£core_idx] .rob_.num_entries = 0 )
+      ( Sta .core_[£core_idx] .ROB_.num_entries = 0 )
       &
       ( Sta .core_[£core_idx] .SB_.num_entries = 0 )
     ]

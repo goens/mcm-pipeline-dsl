@@ -2241,7 +2241,7 @@ partial def ast_term_to_murphi_expr
         let dest_ctrler_name : String := qual_name_list[0]!
         let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
         let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
-        [murϕ| Sta .core[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
+        [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
       else
         let msg : String :=
           "Not prepared to handle other len 2 name functions..."++
@@ -2271,7 +2271,7 @@ partial def ast_term_to_murphi_expr
       -- name of func call is just "is_head"
       -- then translate term as curr_ctrler.head == i
       let murphi_expr : Murϕ.Expr := [murϕ|
-        next_state .core[j] .£curr_ctrler_name_ .head = i
+        next_state .core_[j] .£curr_ctrler_name_ .head = i
       ]
       murphi_expr
     else 
@@ -3911,12 +3911,17 @@ lst_stmts_decls
               (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
               (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
               (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-              (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
-              (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
-              (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
-              (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
+              -- (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
+              (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "ROB_count_t")),
+              -- (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
+              -- (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
+              -- (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
+              (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "ROB_count_t")),
               (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB")),
-              (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              -- (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+              (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
               (Murϕ.Decl.var ["squash_ld_id"] (Murϕ.TypeExpr.previouslyDefined speculative_ld_unit_idx_type)),
               -- [murϕ_var_decls|
               --   var squash_st_id : £speculative_st_unit_idx_type
@@ -3926,7 +3931,7 @@ lst_stmts_decls
             ]
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
-            rob := Sta .core_[j] .rob_;
+            rob := Sta .core_[j] .ROB_;
             loop_break := false;
             if next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0 then
               loop_break := true;
@@ -4015,7 +4020,7 @@ lst_stmts_decls
                                                   -- + 1
                             ) % (CORE_INST_NUM + 1);
                             -- minus 1 to get the actual tail. rob_tail is an insertion point
-                squash_diff := ((rob.rob_tail + (CORE_INST_NUM + 1) - 1) - rob_idx) % ( CORE_INST_NUM + 1);
+                squash_diff := ((rob.tail + (CORE_INST_NUM + 1) - 1) - rob_idx) % ( CORE_INST_NUM + 1);
                 squash_offset := 0;
                 while (
                     (squash_offset <= squash_diff)
@@ -4027,7 +4032,7 @@ lst_stmts_decls
                   --# squash
                   squash_idx := (rob_idx + squash_offset) % (CORE_INST_NUM + 1);
                   --# Check if Ld or St
-                  curr_rob_inst := rob.rob_insts[squash_idx];
+                  curr_rob_inst := rob .entries[squash_idx] .instruction;
 
                   -- squash eitehr a ld or st
                   -- inst would have op field
@@ -4086,7 +4091,7 @@ lst_stmts_decls
               endif;
             end;
 
-            next_state .core_[j] .rob_ := rob;
+            next_state .core_[j] .ROB_ := rob;
             ]
             -- []
             let stmts_decls : lst_stmts_decls := {
@@ -4117,21 +4122,22 @@ lst_stmts_decls
               -- i.e. it overwrites any changes...
               -- rob := Sta.core_[j].rob_;
               -- rob := Sta.core_[j].rob_;
-              rob := next_state.core_[j].rob_;
+              rob := next_state.core_[j].ROB_;
 
               --# process msg
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
-              assert (rob .is_executed[rob_id] = false) "why isn't it false?";
+              assert (rob .entries[rob_id].is_executed = false) "why isn't it false?";
               rob .entries[ rob_id ] .is_executed := true;
 
               -- rob .valid_access_msg := false;
 
-              next_state .core_[j] .rob_ := rob;
+              next_state .core_[j] .ROB_ := rob;
             ]
             let set_exec_decls : List Murϕ.Decl := [
               (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
-              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+              -- (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t") )
             ]
 
             let stmts_decls : lst_stmts_decls := {
@@ -4154,22 +4160,23 @@ lst_stmts_decls
               -- with other API templates;
               -- i.e. it overwrites any changes...
               -- rob := Sta.core_[j].rob_;
-              rob := next_state.core_[j].rob_;
+              rob := next_state.core_[j].ROB_;
 
               --# process msg
               rob_id := search_rob_seq_num_idx(rob,
                         next_state .core_[j] .£ctrler_name_ .entries[i] .instruction .seq_num);
-              assert (rob .is_executed[rob_id] = true) "why isn't it true?";
+              assert (rob .entries[rob_id] .is_executed = true) "why isn't it true?";
               -- rob .is_executed[rob_id] := false;
               rob .entries[rob_id] .is_executed := false;
 
               -- rob .valid_access_msg := false;
 
-              next_state .core_[j] .rob_ := rob;
+              next_state .core_[j] .ROB_ := rob;
             ]
             let set_exec_decls : List Murϕ.Decl := [
               (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
-              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+              -- (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t") )
+              (Murϕ.Decl.var ["rob_id"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t") )
             ]
 
             let stmts_decls : lst_stmts_decls := {
@@ -4350,7 +4357,7 @@ lst_stmts_decls
             let stmts : List Murϕ.Statement := [murϕ| 
 
               loop_break := false;
-              if next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0 then
+              if next_state .core_[j] .£dest_ctrler_name_ .num_entries = £dest_num_entries_const_name then
                 loop_break := true;
               endif;
 
@@ -4368,18 +4375,18 @@ lst_stmts_decls
                     ) do
                 --# do the search
                 curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
-                if (next_state .core[j] .£dest_ctrler_name_ .entries[ curr_idx ].state = £dest_ctrler_'await_insert'_state) then
+                if (next_state .core_[j] .£dest_ctrler_name_ .entries[ curr_idx ].state = £dest_ctrler_'await_insert'_state) then
                   -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
                   £murphi_when_stmt;
                   found_entry := true;
                 end;
                 if (offset != difference) then
-                  offset := offset + 0;
+                  offset := offset + 1;
                 else
                   loop_break := true;
                 endif;
               end;
-              next_state .core[j] .£dest_ctrler_name_ .num_entries := (next_state .core[j] .£dest_ctrler_name_ .num_entries + 1);
+              next_state .core_[j] .£dest_ctrler_name_ .num_entries := (next_state .core_[j] .£dest_ctrler_name_ .num_entries + 1);
               if (found_entry = false) then
                 error "Couldn't find an empty entry to insert into";
               end;
@@ -4438,8 +4445,9 @@ lst_stmts_decls
               default
 
             -- let init_stmt_trans_info := assn_stmt_to_stmt_translation_info stmt_trans_info init_stmt
-            let curr_head_ : String := "curr_head_"
-            let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| £curr_head_]
+            -- let curr_head_ : String := "curr_head_"
+              dbg_trace s!"Translate remove_head() call for ctrler: ({dest_ctrler_name})"
+            let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .head]
             let init_stmt_trans_info := {
               stmt := init_stmt_without_transition,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -4462,16 +4470,17 @@ lst_stmts_decls
             dbg_trace s!"Init stmts: ({murphi_init_stmts_decls.stmts})"
 
             let murphi_stmts : List Murϕ.Statement := [murϕ|
-              curr_head_ := Sta .core[j] .£dest_ctrler_ .head;
+              -- curr_head_ := Sta .core_[j] .£dest_ctrler_ .head;
               £murphi_init_stmts_decls.stmts;
-              next_state .core_[j] .£dest_ctrler_ .entries[ curr_head_ ].state := £first_state_name;
-              next_state .core_[j] .£dest_ctrler_ .head := ((curr_head_ + 1) % £dest_ctrler_entries_const);
-              next_state .core_[j] .£dest_ctrler_ .num_entries := (next_state .core[j] .£dest_ctrler_ .num_entries - 1);
+              next_state .core_[j] .£dest_ctrler_ .entries[ £murphi_expr_curr_head_ ].state := £first_state_name;
+              next_state .core_[j] .£dest_ctrler_ .head := ((£murphi_expr_curr_head_ + 1) % £dest_ctrler_entries_const);
+              next_state .core_[j] .£dest_ctrler_ .num_entries := (next_state .core_[j] .£dest_ctrler_ .num_entries - 1);
             ]
 
             let dest_ctrler_name_idx_t : String := dest_ctrler_name.append "_idx_t"
 
-            let murphi_decls : List Murϕ.Decl := [murϕ_var_decl| £curr_head_ : £dest_ctrler_name_idx_t ] ++
+            let murphi_decls : List Murϕ.Decl :=
+              -- [murϕ_var_decl| £curr_head_ : £dest_ctrler_name_idx_t ] ++
               murphi_init_stmts_decls.decls
             let stmts_decls : lst_stmts_decls := {
               stmts := murphi_stmts,
@@ -4490,7 +4499,7 @@ lst_stmts_decls
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
             -- Convert to Murphi Stmt
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core[j] .£dest_ctrler_ .tail]
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .tail]
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -4536,8 +4545,8 @@ lst_stmts_decls
               --# NOTE: Auto generate the standard "insert" book keeping part
               -- insert inst is not so 'standard'
               -- curr_tail_entry .instruction := inst;
-              next_state .core[j] .£dest_ctrler_ .tail := ( Sta .core[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
-              next_state .core[j] .£dest_ctrler_ .num_entries := Sta .core[j] .£dest_ctrler_ .num_entries + 1;
+              next_state .core_[j] .£dest_ctrler_ .tail := ( Sta .core_[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
+              next_state .core_[j] .£dest_ctrler_ .num_entries := Sta .core_[j] .£dest_ctrler_ .num_entries + 1;
             ]
             let murphi_decls : List Murϕ.Decl := [] ++ murphi_when_stmts_decls.decls
             let stmts_decls : lst_stmts_decls := {
@@ -4618,7 +4627,7 @@ lst_stmts_decls
             -- name of func call is just "is_head"
             -- then translate term as curr_ctrler.head == i
             let murphi_stmt : List Murϕ.Statement := [murϕ|
-              next_state .core[j] .£curr_ctrler_name_ .num_entries := (next_state .core[j] .£curr_ctrler_name_ .num_entries - 1);
+              next_state .core_[j] .£curr_ctrler_name_ .num_entries := (next_state .core_[j] .£curr_ctrler_name_ .num_entries - 1);
             ]
             -- murphi_expr
             let stmts_decls : lst_stmts_decls := {
@@ -5219,8 +5228,13 @@ partial def dsl_type_to_murphi_type_string
     "val_t"
   else if dsl_type == "seq_num" then
     "inst_idx_t"
+  else if dsl_type == "inst" then
+    "INST"
   else
-    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="
+    let msg : String :=
+      "ERROR: ===== ENCOUNTERED UNEXPECTED DSL TYPE ====="++
+      s!"The type is: ({dsl_type})"
+    panic! msg
 
   murphi_type_name
 
@@ -5235,7 +5249,10 @@ partial def murphi_type_to_null
   else if murphi_type == "inst_idx_t" then
     Murϕ.Expr.integerConst 0
   else
-    panic! "ERROR: ===== ENCOUNTERED UNEXPECTED Murphi TYPE ====="
+    let msg : String :=
+      "ERROR: ===== ENCOUNTERED UNEXPECTED Murphi TYPE =====\n"++
+      s!"The type is: ({murphi_type})"
+    panic! msg
   
 
 -- AZ TODO: Implement these 2 functions!!!
@@ -6374,38 +6391,45 @@ def qualified_name_to_sta_murphi_expr
     let dest_ctrler := lst_idents[0]!
     let insert_func := lst_idents[1]!
 
-    let num_entries := "num_entries"
+    let dest_ctrler_ : String := dest_ctrler.append "_"
+    -- let num_entries := "num_entries"
 
-    -- now build up the conditional
-    let dest_structure_entry_count :=
-      Murϕ.Expr.designator (
-        Designator.mk (
-          -- Example in comments
-          -- core_
-          "Sta"
-        )
-        [
-          -- Example in comments
-          Sum.inl "core_",
-          -- core_[i]
-          Sum.inr core_idx_designator,
-          -- core_[i].LQ
-          Sum.inl dest_ctrler,
-          -- core_[i].LQ.num_entries
-          Sum.inl num_entries
-        ]
-      )
+    -- -- now build up the conditional
+    -- let dest_structure_entry_count :=
+    --   Murϕ.Expr.designator (
+    --     Designator.mk (
+    --       -- Example in comments
+    --       -- core_
+    --       "Sta"
+    --     )
+    --     [
+    --       -- Example in comments
+    --       Sum.inl "core_",
+    --       -- core_[i]
+    --       Sum.inr core_idx_designator,
+    --       -- core_[i].LQ
+    --       Sum.inl dest_ctrler,
+    --       -- core_[i].LQ.num_entries
+    --       Sum.inl num_entries
+    --     ]
+    --   )
 
-    let current_state_expr :=
-    Murϕ.Expr.designator (
-      Designator.mk
+    -- let current_state_expr :=
+    -- Murϕ.Expr.designator (
+    --   Designator.mk
+    --   (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
+    --   []
+    -- )
+    -- let num_entries_of_dest_not_full :=
+    -- Murϕ.Expr.binop (
+    --   "<"
+    -- ) dest_structure_entry_count current_state_expr
+
+    let dest_ctrler_num_entries_const : String :=
       (String.join [dest_ctrler,"_NUM_ENTRIES_CONST"])
-      []
-    )
-    let num_entries_of_dest_not_full :=
-    Murϕ.Expr.binop (
-      "<"
-    ) dest_structure_entry_count current_state_expr
+    let num_entries_of_dest_not_full : Murϕ.Expr := [murϕ|
+      Sta . core_[j] .£dest_ctrler_ .num_entries < £dest_ctrler_num_entries_const
+    ]
 
     return num_entries_of_dest_not_full
   else
