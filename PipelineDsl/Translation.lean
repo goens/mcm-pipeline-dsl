@@ -4361,13 +4361,14 @@ lst_stmts_decls
                 loop_break := true;
               endif;
 
-              entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
+              entry_idx := 0;
               --# (1) loop to tail searching for:
               --# if plus 0 is outside this range, this should be caught
               --# by difference check
               -- NOTE: the -1 is because tail is actually 1 more than the actual tail, so it acts as an "insert" location
               found_entry := false;
-              difference := ( ( (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name) - 1 ) - entry_idx ) % £dest_num_entries_const_name;
+              -- difference := ( ( (£dest_num_entries_const_name - 1 + £dest_num_entries_const_name) - 1 ) - entry_idx ) % £dest_num_entries_const_name;
+              difference := (£dest_num_entries_const_name - 1 );
               offset := 0;
               --#if (difference != -1) then
               while ( (offset <= difference) & (loop_break = false) & (found_entry = false)
@@ -6639,7 +6640,10 @@ partial def ast_decl_assn_decl_to_murphi_decl
     match matching_when with
     | Pipeline.Statement.when _ _ stmt => stmt
     | _ => dbg_trace "should be a when stmt!?"
-      panic! "Should have just found a when stmt! why did we get something else?"
+      let msg : String :=
+        "Should have just found a when stmt! why did we get something else?" ++
+        s!"Found: ({matching_when})"
+      panic! msg
 
     let ast_decl_translation ← ast_decl_assn_decl_to_murphi_decl when_stmts
 
