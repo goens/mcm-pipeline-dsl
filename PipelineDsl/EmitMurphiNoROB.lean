@@ -924,33 +924,33 @@ begin
   error "Couldn't find the SB entry to clear!!!";
 end
 ],
-[murϕ_proc_decl|
+-- [murϕ_proc_decl|
 
-function sb_clear_head(
-             sb : SB;
-             --#lq_entry : LQ_idx_t;
-           ) : SB;
-  var sb_new : SB;
-  var curr_head : SB_idx_t;
-  begin
+-- function sb_clear_head(
+--              sb : SB;
+--              --#lq_entry : LQ_idx_t;
+--            ) : SB;
+--   var sb_new : SB;
+--   var curr_head : SB_idx_t;
+--   begin
 
-  sb_new := sb;
-  curr_head := sb .head;
+--   sb_new := sb;
+--   curr_head := sb .head;
 
-  sb_new .entries[curr_head] .instruction .seq_num := 0;
-  sb_new .entries[curr_head] .instruction .op := inval;
-  sb_new .entries[curr_head] .instruction .dest_reg := 0;
-  sb_new .entries[curr_head] .instruction .imm := 0;
-  sb_new .entries[curr_head] .state := sb_await_creation;
-  sb_new .entries[curr_head] .write_value := 0;
-  sb_new .entries[curr_head] .virt_addr := 0;
-  sb_new .entries[curr_head] .phys_addr := 0;
-  sb_new .head := (curr_head + 1) % ( SB_NUM_ENTRIES_CONST);
-  sb_new .num_entries := (sb_new .num_entries - 1);
+--   sb_new .entries[curr_head] .instruction .seq_num := 0;
+--   sb_new .entries[curr_head] .instruction .op := inval;
+--   sb_new .entries[curr_head] .instruction .dest_reg := 0;
+--   sb_new .entries[curr_head] .instruction .imm := 0;
+--   sb_new .entries[curr_head] .state := sb_await_creation;
+--   sb_new .entries[curr_head] .write_value := 0;
+--   sb_new .entries[curr_head] .virt_addr := 0;
+--   sb_new .entries[curr_head] .phys_addr := 0;
+--   sb_new .head := (curr_head + 1) % ( SB_NUM_ENTRIES_CONST);
+--   sb_new .num_entries := (sb_new .num_entries - 1);
 
-  return sb_new;
-end
-],
+--   return sb_new;
+-- end
+-- ],
 [murϕ_proc_decl|
 
 function insert_ld_in_mem_interface(
@@ -1098,7 +1098,7 @@ function associative_ack_sb(
   begin
   --
   sb_new := sb;
-  sb_iter := sb .head;
+  sb_iter := 0;
   sb_count := sb .num_entries;
   seq_num := msg .seq_num;
 
@@ -1454,8 +1454,8 @@ begin
         -- # so.. move on to next state
         sb .entries[i] .state := sb_await_creation;
       end;
-      sb .head := 0;
-      sb .tail := 0;
+      -- sb .head := 0;
+      -- sb .tail := 0;
       sb .num_entries := 0;
 
       -- sb .search_busy := false;
@@ -1897,68 +1897,68 @@ endruleset;
 endruleset
 ],
 
-[murϕ_rule|
+-- [murϕ_rule|
 
---#NOTE: Marking this transition as the mem access one!
---#ruleset i : SB_idx_t do
-ruleset j : cores_t do
-rule "sb_await_send_mem_req_to_await_mem_resp"
-  --# when head SB entry is waiting to send out it's request
-  ( Sta .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] .state = sb_await_send_mem_req )
-  &
-  --# have sb entries
-  ( Sta .core_[j] .SB_.num_entries > 0)
-  --# this is a condition: mem's msg buffer is empty
-  --# i .e. mem is free
-  &
-  (
-    Sta .core_[j] .mem_interface_.out_busy = false
-  )
-==>
-  -- decls
-  var next_state : STATE;
-  var sb : SB;
-  var sb_entry : SB_entry_values;
+-- --#NOTE: Marking this transition as the mem access one!
+-- --#ruleset i : SB_idx_t do
+-- ruleset j : cores_t do
+-- rule "sb_await_send_mem_req_to_await_mem_resp"
+--   --# when head SB entry is waiting to send out it's request
+--   ( Sta .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] .state = sb_await_send_mem_req )
+--   &
+--   --# have sb entries
+--   ( Sta .core_[j] .SB_.num_entries > 0)
+--   --# this is a condition: mem's msg buffer is empty
+--   --# i .e. mem is free
+--   &
+--   (
+--     Sta .core_[j] .mem_interface_.out_busy = false
+--   )
+-- ==>
+--   -- decls
+--   var next_state : STATE;
+--   var sb : SB;
+--   var sb_entry : SB_entry_values;
 
-  --# var mem : MEM_ARRAY;
-  var phys_addr : addr_idx_t;
+--   --# var mem : MEM_ARRAY;
+--   var phys_addr : addr_idx_t;
 
-  var mem_inter : MEM_INTERFACE;
-begin
-  next_state := Sta;
-  sb := Sta .core_[j] .SB_;
-  sb_entry := sb .entries[sb .head];
-  --#mem := Sta .mem_;
-  mem_inter := Sta .core_[j] .mem_interface_;
+--   var mem_inter : MEM_INTERFACE;
+-- begin
+--   next_state := Sta;
+--   sb := Sta .core_[j] .SB_;
+--   sb_entry := sb .entries[sb .head];
+--   --#mem := Sta .mem_;
+--   mem_inter := Sta .core_[j] .mem_interface_;
 
-  -- Update state
-  sb_entry .state := sb_await_mem_response;
+--   -- Update state
+--   sb_entry .state := sb_await_mem_response;
 
-  -- Write to memory
-  -- # Issue, wasn't using Imm before
-  -- # could update it to write imm to virt/phys
-  phys_addr := sb_entry .phys_addr;
-  --#mem .arr[phys_addr] := sb_entry .write_value;
+--   -- Write to memory
+--   -- # Issue, wasn't using Imm before
+--   -- # could update it to write imm to virt/phys
+--   phys_addr := sb_entry .phys_addr;
+--   --#mem .arr[phys_addr] := sb_entry .write_value;
 
-  --# NOTE: send to the mem interface
-  mem_inter .out_msg := insert_st_in_mem_interface(
-                                                  sb_entry,
-                                                  j
-                                                 );
-  mem_inter .out_busy := true;
+--   --# NOTE: send to the mem interface
+--   mem_inter .out_msg := insert_st_in_mem_interface(
+--                                                   sb_entry,
+--                                                   j
+--                                                  );
+--   mem_inter .out_busy := true;
 
-  next_state .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] := sb_entry;
-  next_state .core_[j] .mem_interface_ := mem_inter;
+--   next_state .core_[j] .SB_.entries[Sta .core_[j] .SB_.head] := sb_entry;
+--   next_state .core_[j] .mem_interface_ := mem_inter;
 
-  --# AZ NOTE: This is a decent way to check if something went
-  --# wrong, if an illegal inst (seq_num = 0) tries to
-  --# perform any action while in any structure!!!
-  assert ( sb .entries[sb .head] .instruction .seq_num != 0 ) "invalid st";
+--   --# AZ NOTE: This is a decent way to check if something went
+--   --# wrong, if an illegal inst (seq_num = 0) tries to
+--   --# perform any action while in any structure!!!
+--   assert ( sb .entries[sb .head] .instruction .seq_num != 0 ) "invalid st";
 
-  Sta := next_state;
-end;
-endruleset
-],
+--   Sta := next_state;
+-- end;
+-- endruleset
+-- ],
 [murϕ_rule|
 
 
