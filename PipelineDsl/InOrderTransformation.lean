@@ -618,6 +618,7 @@ def update_state_transitions_matching_name_to_replacement_name
   (ctrler_name : String)
   (state_check_or_tree : Pipeline.Expr)
   (stall_on_inst_type : InstType)
+  (original_state's_handleblks : Option ( List HandleBlock ))
   : Description
   :=
 
@@ -635,11 +636,22 @@ def update_state_transitions_matching_name_to_replacement_name
       (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "op"]))
       (Pipeline.Term.const (Const.str_lit (stall_on_inst_type.toMurphiString)))
       )
+    -- let entry_is_valid : Term :=
+    --   Pipeline.Term.expr (
+    --   Pipeline.Expr.not_equal
+    --   (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+    --   (Pipeline.Term.const (Const.num_lit (0))) -- using 0 as an "invalid inst"
+    --   )
 
-    let search_condition : Expr :=
-      Pipeline.Expr.binand
-      entry_is_earlier_than_this_one
-      entry_is_of_desired_type
+    let search_condition : Expr := -- ERROR! TODO: Adjust to ignore invalid entries!
+      -- (Pipeline.Expr.binand
+        -- (Pipeline.Term.expr
+        (Pipeline.Expr.binand
+        entry_is_earlier_than_this_one
+        entry_is_of_desired_type)
+        -- )
+        -- entry_is_valid
+      -- )
 
     --  min(instruction.seq_num - entry.instruction.seq_num)
     let search_min : Expr :=
@@ -686,9 +698,15 @@ def update_state_transitions_matching_name_to_replacement_name
     -- TODO: Fill in the when stmts, and the condition in it
     let await_stmt : Pipeline.Statement :=
       Statement.await ctrler_search_call [when_success, when_fail]
+    
+    let stall_state_stmt : Pipeline.Statement :=
+      if original_state's_handleblks.isSome then
+        Statement.listen_handle (Statement.block [await_stmt]) original_state's_handleblks.get!
+      else
+        await_stmt
 
     Description.state new_stall_state_name (
-      Statement.block [await_stmt])
+      Statement.block [stall_state_stmt])
     -- some expression condition...
     -- Check the DSL code, something like
     -- entry.instruction.seq_num < instruction.seq_num
@@ -942,7 +960,7 @@ def naive_update_add_stall_to_global_perform_ld
 
   let new_stall_state : Description :=
     gen_stall_dsl_state new_stall_state_name state_globally_performing_mem_ld
-    ctrler.name not_yet_gotten_mem_resp_state_check load
+    ctrler.name not_yet_gotten_mem_resp_state_check load Option.none
 
   -- (4) Update the stall state with these Helper Funcs
   -- Update states which transitioned to the original state:
@@ -1041,6 +1059,58 @@ def get_ctrler_state_globally_performing_store
   -- of strings (all states) or just 1...
   -- TODO: do this friday morning...
   lst_trans_with_mem_access
+
+def get_ctrler_state_handle_blocks
+-- (ctrlers : List controller_info)
+(ctrler : controller_info)
+(state_name : String)
+: Except String (Option (List HandleBlock))
+:= do
+  let list_state_matching_name : List Description :=
+  ctrler.transition_list.filter (λ state : Description =>
+    match state with
+    | .state name stmt =>
+      if name == state_name then true
+      else false
+    | _ => false
+    )
+  let state_matching_name : Description ←
+    match list_state_matching_name with
+    | [matching_state] => pure matching_state
+    | _ =>
+      let msg : String :=
+        "While trying to match a state with a name:" ++
+        "Found either multiple or no states\n" ++
+        s!"List contents: ({list_state_matching_name})"
+      throw msg
+
+  -- TODO: Get the stmt block, get the stmts from the block
+  -- Call the get_listen_handle_blks_from_stmts function
+  -- Check if there was anything, if there is use Option.some...
+  let state_stmt_blk : Pipeline.Statement ←
+  match state_matching_name with
+  | .state _ stmt => pure stmt
+  | _ =>
+    let msg : String := "Shouldn't have something besides .state type ..."
+    throw msg
+  
+  let state_stmts : List Pipeline.Statement ←
+  match state_stmt_blk with
+  | .block stmts => pure stmts
+  | _ =>
+    let msg : String :=
+      "Error opening stmt from state: state should have had a block statement?\n" ++
+      s!"State stmt: ({state_stmt_blk})"
+    throw msg
+  
+  let handle_blks : List HandleBlock ←
+    get_listen_handle_blks_from_stmts state_stmts
+
+  if handle_blks.isEmpty then
+    return Option.none
+  else
+    return Option.some handle_blks
+
 -- Try to generalize to structures in a core
 -- Stall by adding a search-and-await
 -- Next step: For memory messages, probably need to await-response
@@ -1283,10 +1353,16 @@ def more_generic_core_in_order_stall_transform
   5. Generate the new stall state
   -/
 
+  /- Consider if original state has a listen-handle -/
+  -- Get the stmts
+  let handle_blks : Option (List HandleBlock) ←
+  get_ctrler_state_handle_blocks ctrler_that_send_mem_req global_perform_state_that_send_mem_req
+
   let new_stall_state : Description :=
     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
     ctrler_that_await_mem_completion.name not_yet_gotten_mem_resp_state_check first_inst
-    dbg_trace s!"New stall state: \n{new_stall_state}"
+    handle_blks
+  dbg_trace s!"New stall state: \n{new_stall_state}"
 
   /-
   6. Update states that point to the previous perform
