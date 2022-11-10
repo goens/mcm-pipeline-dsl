@@ -10,6 +10,10 @@ inductive Direction
  | Previous
  | Next
 
+def indent : Nat → String
+  | Nat.zero => ""
+  | Nat.succ n => "  " ++ indent n
+
 mutual
 
 --@[deriving BEq]
@@ -117,14 +121,14 @@ private partial def typedIdentifierToString : TypedIdentifier → String
   | .mk t id => (toString t) ++ " " ++ (toString id)
 
 private partial def descriptionToString : Description → String
-| .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString desc)
-| .entry name desc => "controller_entry " ++ (toString name) ++ " " ++ (statementToString desc)
-| .control_flow name desc => "controller_control_flow " ++ (toString name) ++ " " ++ (statementToString desc)
-| .state name body => "state " ++ (toString name) ++ (statementToString body)
+| .controller name desc => "controller " ++ (toString name) ++ " " ++ (statementToString 0 desc)
+| .entry name desc => "controller_entry " ++ (toString name) ++ " " ++ (statementToString 0 desc)
+| .control_flow name desc => "controller_control_flow " ++ (toString name) ++ " " ++ (statementToString 0 desc)
+| .state name body => "state " ++ (toString name) ++ (statementToString 0 body)
 -- Function definition
 | .function_definition ret args body =>
   (typedIdentifierToString ret) ++ "(" ++ (String.intercalate ", " (args.map typedIdentifierToString))
-  ++ (statementToString body)
+  ++ (statementToString 0 body)
 
 private partial def labelToString : Label → String
   | .result_write => "result_write "
@@ -132,11 +136,11 @@ private partial def labelToString : Label → String
 private partial def handleBlockToString : HandleBlock → String
 | .mk name args body => "handle " ++ (qualifiedNameToString name) ++
   "(" ++ (String.intercalate ", " (args.map toString)) ++
- ")\n" ++ (statementToString body)
+ ")\n" ++ (statementToString 0 body)
 
 private partial def conditionalToString : Conditional → String
-| .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString then_br) ++ "else\n" ++ (statementToString else_br)
-| .if_statement cond then_br => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString then_br)
+| .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString 0 then_br) ++ "else\n" ++ (statementToString 0 else_br)
+| .if_statement cond then_br => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString 0 then_br)
 
 private partial def termToString : Term → String
   | .negation t => "-" ++ (termToString t)
@@ -155,7 +159,7 @@ private partial def constToString : Const → String
 | .str_lit s => s
 
 private partial def qualifiedNameToString : QualifiedName → String
-  | .mk l => match l with
+  | .mk l => match l.reverse with
     | [] => ""
     | n::[] => toString n
     | n::ns => (qualifiedNameToString (QualifiedName.mk ns)) ++ "." ++ (toString n)
@@ -179,13 +183,17 @@ private partial def exprToString : Expr → String
   | .list xs => "[" ++ String.intercalate ", " (xs.map exprToString) ++ "]"
   | .some_term x => termToString x
 
-private partial def statementToString : Statement → String
-  | .labelled_statement label stmt => (labelToString label) ++ " " ++ (statementToString stmt)
+private partial def statementToString (indentationLevel := 0) (inputStatement : Statement) : /-Statement →-/ String :=
+  let indent_outter_nest : Nat := (indentationLevel - 1)
+  let same_nesting_statementToString := statementToString (indentationLevel := indentationLevel)
+  let indent_nested_statementToString := statementToString (indentationLevel := indentationLevel + 1)
+  match inputStatement with
+  | .labelled_statement label stmt => (labelToString label) ++ " " ++ (same_nesting_statementToString stmt)
   | .variable_declaration tid => (typedIdentifierToString tid)
   | .value_declaration tid val => (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
   | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
   | .conditional_stmt cond => conditionalToString cond
-  | .listen_handle listen_block catches => "listen " ++ (statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map handleBlockToString))
+  | .listen_handle listen_block catches => "listen " ++ (indent_nested_statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map handleBlockToString))
   | .await opcall whens =>
     let call := match opcall with
       | none => ""
@@ -194,13 +202,13 @@ private partial def statementToString : Statement → String
   | .when src_and_msg args body =>
     let src := src_and_msg.toList.head!
     let msg := QualifiedName.mk src_and_msg.toList.tail!
-   "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (statementToString body)
+   "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (same_nesting_statementToString body)
   | .transition lbl => "transition " ++ (toString lbl)
   | .reset lbl => "reset " ++ (toString lbl)
   | .complete lbl => "complete " ++ (toString lbl)
   | .stray_expr e => exprToString e
   | .stall e => "stall ( " ++ exprToString e ++ " )"
-  | .block stmts => " {\n" ++ (String.intercalate "\n" (stmts.map λ s => statementToString s))  ++ "\n}\n"
+  | .block stmts => " {\n" ++ String.join (stmts.map (λ stmt => String.join [(indent indentationLevel), indent_nested_statementToString stmt, ";\n"]))  ++ (indent indent_outter_nest) ++ "}\n"
   | .return_stmt e => "return " ++ exprToString e
 
 end -- mutual
