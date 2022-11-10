@@ -665,3 +665,30 @@ def get_init_stmts_without_transition
 
   return init_stmt_without_transition
   -- TODO: Split the bottom code into a function in translation
+
+def get_listen_handle_blks_from_stmts
+(stmts : List Pipeline.Statement)
+: Except String ( List HandleBlock )
+:= do
+  let just_top_level_listen_handle : List Pipeline.Statement :=
+  stmts.filter (λ stmt =>
+    match stmt with
+    | .listen_handle /- stmts -/_ _ => true
+    | _ => false
+  )
+
+  let just_one_listen_handle : Pipeline.Statement ←
+    match just_top_level_listen_handle with
+    | [] => return []
+    | [one_listen_handle] => pure one_listen_handle
+    | _ :: _ =>
+      let msg : String :=
+        "Not supporting multiple Listen Handle blocks in a state.. But found multiple."
+      throw msg
+
+  let list_handle_blks : (List HandleBlock) :=
+    match just_one_listen_handle with
+    | .listen_handle _ handle_blks => handle_blks
+    | _ => []
+
+  return list_handle_blks
