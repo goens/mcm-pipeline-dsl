@@ -4561,6 +4561,10 @@ lst_stmts_decls
           else /- Default case: Simply find the matching when-stmt & translate it here... -/
             dbg_trace "INSERT CODE To DO THE THING WHERE IT MATCHES"
             dbg_trace "THE MESSAGE PASSING TO A DESTINATION STRUCTURE"
+            dbg_trace "Arbitrary message passing translation"
+            dbg_trace s!"Term (func_call): ({term})"
+            dbg_trace s!"Arbitrary Message Name: ({api_func_name})"
+            dbg_trace s!"Dest ctrler Name: ({dest_ctrler_name})"
 
             -- TODO: Replace "insert" with the api_func_name
             -- TODO: Check if the translation options below for the when stmt are correct!
@@ -4613,8 +4617,8 @@ lst_stmts_decls
             dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
 
             let stmts_decls : lst_stmts_decls := {
-              stmts := [],
-              decls := []
+              stmts := murphi_when_stmts_decls.stmts,
+              decls := murphi_when_stmts_decls.decls
             }
             stmts_decls
         else
