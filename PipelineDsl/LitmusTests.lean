@@ -109,23 +109,23 @@ def core_insts_to_emit_murphi_alias
       let write_val : String := toString inst.inst.write_val
 
       [murϕ_statements|
-        £rename_alias_id .test_insts[ £queue_idx ] .op := £op;
-        £rename_alias_id .test_insts[ £queue_idx ] .seq_num := £seq_num;
-        £rename_alias_id .test_insts[ £queue_idx ] .dest_reg := £dest_reg;
-        £rename_alias_id .test_insts[ £queue_idx ] .imm := £addr; --# Addr
-        £rename_alias_id .test_insts[ £queue_idx ] .write_value := £write_val;
+        £rename_alias_id .entries[ £queue_idx ] .instruction .op := £op;
+        £rename_alias_id .entries[ £queue_idx ] .instruction .seq_num := £seq_num;
+        £rename_alias_id .entries[ £queue_idx ] .instruction .dest_reg := £dest_reg;
+        £rename_alias_id .entries[ £queue_idx ] .instruction .imm := £addr; --# Addr
+        £rename_alias_id .entries[ £queue_idx ] .instruction .write_value := £write_val;
       ]
   ))) ++ (
   [murϕ_statements|
-  £rename_alias_id .rename_head := 0;
-  £rename_alias_id .rename_tail := £tail_idx;
+  £rename_alias_id .head := 0;
+  £rename_alias_id .tail := £tail_idx;
   £rename_alias_id .num_entries := £num_entries;
   ]
   )
 
   let rename_alias : Murϕ.Statement :=
   [murϕ_statement|
-  alias £rename_alias_id : init_state .core_[ £core_expr ] .rename_ do
+  alias £rename_alias_id : init_state .core_[ £core_expr ] .RENAME_ do
     £list_inst_assignments
   end
   ]
@@ -141,7 +141,7 @@ def litmus_test_core_empty_murphi_expr
   let empty_core_buffer_exprs : List Murϕ.Expr := core_ids.map (λ core_id =>
     let core_idx : String := toString core_id
     [murϕ_expr| 
-      ( Sta .core_[£core_idx] .rename_.num_entries = 0 )
+      ( Sta .core_[£core_idx] .RENAME_.num_entries = 0 )
       &
       ( Sta .core_[£core_idx] .ROB_.num_entries = 0 )
       &

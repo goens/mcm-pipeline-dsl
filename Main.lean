@@ -5,7 +5,8 @@ import PipelineDsl.AnalysisHelpers
 import PipelineDsl.LitmusTests
 import PipelineDsl.InOrderTransformation
 -- import PipelineDsl.EmitMurphiNoROB
-import PipelineDsl.EmitMurphiNoIQNoROB
+-- import PipelineDsl.EmitMurphiNoIQNoROB
+import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
@@ -164,7 +165,7 @@ def main (args : List String): IO Unit := do
   -- IO.FS.writeFile output_file murphi_file.toString
 
   let murphi_files : List MurphiFile := --Murϕ.Program :=
-  gen_murphi_litmus_test_programs_no_IQ_no_ROB const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
+  gen_murphi_litmus_test_programs_no_RENAME_no_IQ_no_ROB const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
 
   let _ ← murphi_files.mapM (
     fun file =>

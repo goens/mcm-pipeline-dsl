@@ -130,6 +130,11 @@ inductive tail_or_entry
 | tail : tail_or_entry
 | entry : tail_or_entry
 | custom_entry : tail_or_entry
+def tail_or_entry.toString : tail_or_entry → String
+| .tail => "tail_or_entry.tail"
+| .entry => "tail_or_entry.entry"  
+| .custom_entry => "tail_or_entry.custom_entry"  
+instance : ToString tail_or_entry where toString := tail_or_entry.toString
 
 inductive await_or_not_state
 | await : await_or_not_state
@@ -1819,22 +1824,33 @@ partial def ast_term_to_murphi_expr
   let src_ctrler := term_trans_info.src_ctrler
   let lst_src_args := term_trans_info.lst_src_args
 
+  dbg_trace s!"Translate DSL Term: ({term})"
+
   match term with
   | Term.negation term' =>
     let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
     let translation :=
-    Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
+      Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
+
+    dbg_trace s!"DSL Negation ({term}) translated: ({translation})"
+
     translation
   | Term.logical_negation term' =>
     let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
     let translation :=
-    Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
-    -- ast_term_to_murphi_expr term'
+      Murϕ.Expr.negation (ast_term_to_murphi_expr term'_trans_info)
+      -- ast_term_to_murphi_expr term'
+    dbg_trace s!"DSL logical Negation ({term}) translated: ({translation})"
+
     translation
   | Term.binary_negation term' =>
     let term'_trans_info := assn_term_to_term_translation_info term_trans_info term'
     let ret_val :=
     ast_term_to_murphi_expr term'_trans_info
+
+    dbg_trace s!"DSL binary Negation ({term}) translated: ({ret_val})"
+    -- panic! ("Can't translate Binary Negation to Murphi, Murphi doesn't have binary negation" ++ "Instead we would need to do some more work" ++ s!"Binary Negation Term: ({term})")
+
     ret_val
   -- AZ NOTE:
   -- It seems the ident case of Var
@@ -2201,8 +2217,9 @@ partial def ast_term_to_murphi_expr
       -- NOTE: Not sure if the rest will
       -- also return Designators as well?
   | Term.function_call qualified_name lst_expr =>
-    dbg_trace "WARNING: we didn't really use DSL Funcs,
-    and I'm not bothering with a good translation"
+    dbg_trace s!"Translating Term func call: ({term})"
+    -- dbg_trace "WARNING: we didn't really use DSL Funcs,
+    -- and I'm not bothering with a good translation"
     
     -- AZ NOTE: a function call not from a stray expr
     -- means that this is not a structure calling
@@ -2359,6 +2376,8 @@ partial def ast_expr_to_murphi_expr
   let src_ctrler := expr_trans_info.src_ctrler
   let lst_src_args := expr_trans_info.lst_src_args
 
+  dbg_trace s!"Translating DSL Expr: ({expr})"
+
   -- match expr to some DSL expr
   match expr with
   | Pipeline.Expr.add term1 term2 =>
@@ -2376,7 +2395,9 @@ partial def ast_expr_to_murphi_expr
       assn_expr_to_term_translation_info expr_trans_info term
     let ret_val :=
     ast_term_to_murphi_expr term_trans_info
+    dbg_trace s!"DSL Expr -> Term: ({term})"
 
+    dbg_trace s!"DSL Expr -> Term Murphi: ({ret_val})"
     ret_val
 
   | Pipeline.Expr.not_equal term1 term2 =>
@@ -4324,7 +4345,9 @@ lst_stmts_decls
               src_ctrler := 
               dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
               dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
-              stmt_trans_info.src_ctrler,
+              --stmt_trans_info.src_ctrler,
+              dbg_trace s!"Translate with src ctrler: ({ctrler_name})"
+              ctrler_name,
               lst_src_args :=
                 if stmt_trans_info.lst_src_args.isSome then
                   stmt_trans_info.lst_src_args
@@ -4408,6 +4431,7 @@ lst_stmts_decls
               [murϕ_var_decls| var found_entry : boolean] ++
               [murϕ_var_decls| var difference : £ctrler_idx_t] ++
               [murϕ_var_decls| var offset : £ctrler_idx_t] ++
+              [murϕ_var_decls| var curr_idx : £ctrler_idx_t] ++
               murphi_when_stmts_decls.decls
 
             let stmts_decls : lst_stmts_decls := {
@@ -4559,8 +4583,6 @@ lst_stmts_decls
           -- Since ctrler entries generally do remove() when they get removed..?
           -- else if (api_func_name == "remove") then
           else /- Default case: Simply find the matching when-stmt & translate it here... -/
-            dbg_trace "INSERT CODE To DO THE THING WHERE IT MATCHES"
-            dbg_trace "THE MESSAGE PASSING TO A DESTINATION STRUCTURE"
             dbg_trace "Arbitrary message passing translation"
             dbg_trace s!"Term (func_call): ({term})"
             dbg_trace s!"Arbitrary Message Name: ({api_func_name})"
@@ -4894,17 +4916,26 @@ partial def api_term_func_to_murphi_func
     -- Or maybe earlier, but i'm not 100% sure
     -- what the "common code" segments are just yet...
 
+    -- TODO: Give them slightly more unique names, so they don't collide..
+    -- This affects the curr_idx designator that will need to be adjusted as well
+    let ctrler_while_break : String := /- dest_ctrler_name.append -/ "_while_break"
+    let ctrler_found_entry : String := /- dest_ctrler_name.append -/ "_found_entry"
+    let ctrler_entry_idx : String :=   /- dest_ctrler_name.append -/ "_entry_idx"
+    let ctrler_difference : String :=  /- dest_ctrler_name.append -/ "_difference"
+    let ctrler_offset : String :=      /- dest_ctrler_name.append -/ "_offset"
+    let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
+
     let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
     let decls : List Murϕ.Decl := [
-      (Murϕ.Decl.var ["while_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
-      (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      (Murϕ.Decl.var [ctrler_while_break] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      (Murϕ.Decl.var [ctrler_found_entry] (Murϕ.TypeExpr.previouslyDefined "boolean")),
       -- [murϕ_var_decls|
       --   var found_entry : boolean
       -- ],
-      (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
+      (Murϕ.Decl.var [ctrler_entry_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_curr_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
       -- [murϕ_var_decls|
       --   var curr_idx : £ctrler_idx_t
       -- ]
@@ -4918,10 +4949,10 @@ partial def api_term_func_to_murphi_func
       -- [murϕ| next_state := Sta]
       -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
       -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
-      [murϕ|  while_break := false],
-      [murϕ|  found_entry := false],
+      [murϕ|  £ctrler_while_break := false],
+      [murϕ|  £ctrler_found_entry := false],
       [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
-          while_break := true;
+          £ctrler_while_break := true;
         endif],
         -- AZ TODO:
         -- no, can just map the condition check
@@ -4932,11 +4963,11 @@ partial def api_term_func_to_murphi_func
       --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
       --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
       --   endif],
-      [murϕ|  entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-      [murϕ|  difference := ( entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
-      [murϕ|  offset := 0],
-      [murϕ|   while ( (offset <= difference) & (while_break = false) & ( found_entry = false ) ) do
-          curr_idx := ( entry_idx + £dest_num_entries_const_name - offset ) % £dest_num_entries_const_name;
+      [murϕ|  £ctrler_entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+      [murϕ|  £ctrler_difference := ( £ctrler_entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
+      [murϕ|  £ctrler_offset := 0],
+      [murϕ|   while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+          £ctrler_curr_idx := ( £ctrler_entry_idx + £dest_num_entries_const_name - £ctrler_offset ) % £dest_num_entries_const_name;
           if (
             -- AZ TODO:
             -- THIS IS WHERE TO TRANSLATE THE "API ARGS LIST"
@@ -4961,18 +4992,18 @@ partial def api_term_func_to_murphi_func
 
             -- value := £dest_ctrler_name_ .entries[curr_idx] .write_value;
     
-            found_entry := true;
+            £ctrler_found_entry := true;
           endif;
     
           -- This is not really necessary
-          if (offset != difference) then
-            offset := offset + 1;
+          if (£ctrler_offset != £ctrler_difference) then
+            £ctrler_offset := £ctrler_offset + 1;
           else
-            while_break := true;
+            £ctrler_while_break := true;
           endif;
         end],
       [murϕ|
-        if (found_entry = false) then
+        if (£ctrler_found_entry = false) then
           £when_search_fail_murphi_stmts.stmts
         endif]
     ]
@@ -5491,8 +5522,10 @@ lst_stmts_decls
   dbg_trace "!!!!! BEGIN Conditional !!!!!"
   dbg_trace stmt
   dbg_trace "!!!!! END Conditional !!!!!"
+    dbg_trace s!"Conditional Stmt: ({stmt})"
     match conditional with
     | Conditional.if_else_statement expr stmt1 stmt2 =>
+      dbg_trace s!"(if_else) Condition's Expr: ({expr})"
       -- map to Murphi
       -- This mapping is kind of simple
       -- Perhaps recursively checking the stmts
@@ -5514,9 +5547,9 @@ lst_stmts_decls
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt1.stmts [] murphi_stmt2.stmts
 
-  dbg_trace "!!!!! BEGIN generated if-else -> if stmt !!!!!"
-  dbg_trace murphi_if_stmt
-  dbg_trace "!!!!! END generated if-else -> if stmt !!!!!"
+      dbg_trace "!!!!! BEGIN generated if-else -> if stmt !!!!!"
+      dbg_trace murphi_if_stmt
+      dbg_trace "!!!!! END generated if-else -> if stmt !!!!!"
 
       let stmts_decls : lst_stmts_decls := {
         stmts := [murphi_if_stmt],
@@ -5524,9 +5557,11 @@ lst_stmts_decls
         }
       stmts_decls
     | Conditional.if_statement expr stmt =>
+      dbg_trace s!"(if) Condition's Expr: ({expr})"
       let expr_trans_info := 
         assn_stmt_to_expr_translation_info stmt_trans_info expr
       let murphi_expr := ast_expr_to_murphi_expr expr_trans_info
+      dbg_trace s!"translated to Murphi Expr: ({murphi_expr})"
 
       let stmt_trans_info' := 
         assn_stmt_to_stmt_translation_info stmt_trans_info stmt
@@ -5535,9 +5570,9 @@ lst_stmts_decls
 
       let murphi_if_stmt :=
       Murϕ.Statement.ifstmt murphi_expr murphi_stmt.stmts [] []
-  dbg_trace "!!!!! BEGIN generated if-stmt -> if stmt !!!!!"
-  dbg_trace murphi_if_stmt
-  dbg_trace "!!!!! END generated if-stmt -> if stmt !!!!!"
+      dbg_trace "!!!!! BEGIN generated if-stmt -> if stmt !!!!!"
+      dbg_trace murphi_if_stmt
+      dbg_trace "!!!!! END generated if-stmt -> if stmt !!!!!"
 
       let stmts_decls : lst_stmts_decls := {
         stmts := [murphi_if_stmt],
@@ -5769,7 +5804,8 @@ lst_stmts_decls
       let entries := "entries"
 
       let tail_entry :=
-        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        if stmt_trans_info.specific_murphi_dest_expr.isSome ||
+          stmt_trans_info.use_specific_dest_in_transition then
         dbg_trace "CUSTOM ENTRY"
         tail_or_entry.custom_entry
         else
@@ -5786,6 +5822,11 @@ lst_stmts_decls
           else
             "i"
         | tail_or_entry.tail => "tail"
+
+      dbg_trace s!"Tail Entry to use: ({tail_entry})"
+      dbg_trace s!"use_specific_dest_in_transition: ({stmt_trans_info.use_specific_dest_in_transition})"
+      dbg_trace s!"Specific designator dest: ({stmt_trans_info.curr_ctrler_designator_idx})"
+      -- dbg_trace s!": ({})"
 
       let entry_idx_designator :=
       -- Murϕ.Expr.designator (
@@ -5810,7 +5851,11 @@ lst_stmts_decls
         dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
         dbg_trace stmt_trans_info.specific_murphi_dest_expr
 
-        if stmt_trans_info.use_specific_dest_in_transition then
+        if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.curr_ctrler_designator_idx.isSome then
+          stmt_trans_info.curr_ctrler_designator_idx.get!
+        else if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.specific_murphi_dest_expr.isSome then
           stmt_trans_info.specific_murphi_dest_expr.get!
         else
           Murϕ.Expr.designator (
