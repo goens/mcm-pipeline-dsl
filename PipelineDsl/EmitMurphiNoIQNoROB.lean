@@ -555,8 +555,8 @@ function iq_insert(
              inst : INST;
            ) : IQ;
   var iq_new : IQ;
-  var iq_tail : IQ_idx_t;
-  var i : IQ_idx_t;
+  var iq_tail : inst_idx_t;
+  var i : inst_idx_t;
   begin
   --
   iq_new := iq;
@@ -565,9 +565,9 @@ function iq_insert(
   iq_new .num_entries := iq .num_entries + 1;
   --#for i:0 .. CORE_INST_NUM do
   -- i := CORE_INST_NUM;
-  i := IQ_NUM_ENTRIES_ENUM_CONST;
+  i := IQ_NUM_ENTRIES_CONST;
   --#while i <= CORE_INST_NUM do
-  while 0 <= i do
+  while 0 < i do
     -- find an entry to insert into
     if ( iq_new .entries[i] .state = iq_await_creation )
       then
