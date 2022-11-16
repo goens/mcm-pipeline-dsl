@@ -1567,6 +1567,10 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
   let this_ctrler : controller_info :=
     -- dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
     get_ctrler_matching_name ctrler_name lst_ctrlers
+  dbg_trace s!"Translate Ident Var. Ctrler: ({ctrler_name})"
+  dbg_trace s!"Translate Ident Var. tail_entry: ({tail_entry})"
+  dbg_trace s!"Translate Ident Var. specific_murphi_dest_expr: ({specific_murphi_dest_expr})"
+  dbg_trace s!"Translate Ident Var. qual_name_idents: ({qual_name_idents})"
   let this_ctrler_state_vars := this_ctrler.state_vars
   let state_var_idents : List Identifier :=
   this_ctrler_state_vars.map (
@@ -1582,7 +1586,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_state_var :=
     ident_matches_ident_list state_var_idents one_ident 
 
-    let ident_matches_state_var := or ident_matches_state_var (one_ident == "curr_state")
+    let ident_matches_state_var := ident_matches_state_var || (one_ident == "curr_state")
     let one_ident := if (one_ident == "curr_state") then "state" else one_ident
 
     -- dbg_trace "!!! BEGIN IDENT !!!"
@@ -1594,6 +1598,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     -- and generate the name using the
     -- sth.name.whatever.longer.name
 
+    dbg_trace s!"Translate Ident Var. one_ident: ({one_ident})"
+    dbg_trace s!"Translate Ident Var. state_var_idents: ({state_var_idents})"
+    dbg_trace s!"Translate Ident Var. Ident is a State_Var: ({ident_matches_state_var})"
     if ident_matches_state_var
     then
       -- If this matches then i should
@@ -1607,6 +1614,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- AZ CHECKPOINT TODO:
       -- finish this
 
+      dbg_trace s!"Translate Ident Var. is_indexable: ({is_indexable})"
       if is_indexable
       then
         -- if fifo, then make it with 
@@ -1663,6 +1671,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         dbg_trace "WHAT CTRLER STRUCTURE IS NOT FIFO"
         Murϕ.Designator.mk one_ident []
     else
+      dbg_trace s!"Translate Ident Var. ident doesn't match state var: ({one_ident})"
       Murϕ.Designator.mk one_ident []
 
   | h::t =>
@@ -1888,6 +1897,10 @@ partial def ast_term_to_murphi_expr
       let specific_murphi_dest_expr_is_some : Bool :=
       term_trans_info.specific_murphi_dest_expr.isSome
       
+      dbg_trace s!"term.var translation: Ctrler: ({curr_ctrler_name})"
+      dbg_trace s!"term.var translation Src_Ctrler: ({term_trans_info.src_ctrler})"
+      dbg_trace s!"term.var translation is_rhs?: ({term_trans_info.is_rhs})"
+
       if ident_in_args
       then
         dbg_trace " IDENT_IN_ARGS TRANSLATION CASE"
@@ -1961,13 +1974,19 @@ partial def ast_term_to_murphi_expr
           dbg_trace " BASIC ENTRY "
           tail_or_entry.entry
 
+        let ctrler_to_use : String :=
+          if term_trans_info.src_ctrler.isSome then
+            term_trans_info.src_ctrler.get!
+          else
+            curr_ctrler_name
+
         let murphi_designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           [ident]
           lst_ctrlers
           -- Note that curr_ctrler is likely
           -- the dest ctrler
-          curr_ctrler_name
+          ctrler_to_use -- curr_ctrler_name
           tail_or_entry_or_custom
           
           -- will if none naturally if it is none
@@ -2102,7 +2121,10 @@ partial def ast_term_to_murphi_expr
         else
           dbg_trace "BASIC ENTRY"
           tail_or_entry.entry
-      
+      -- TODO: Also check for matching state var???? I don't know...
+      dbg_trace s!"Translate Qual.var root_ident: ({root_ident})"
+      dbg_trace s!"Translate Qual.var lst_src_args: ({lst_src_args})"
+      dbg_trace s!"Translate Qual.var ident_in_args: ({ident_in_args})"
       if ident_in_args
       then
         -- Then we check if it's one of the
@@ -4336,7 +4358,30 @@ lst_stmts_decls
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
             -- Convert to Murphi Stmt
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
+            let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| £ctrler_curr_idx]
+
+            let actual_when_stmt : Pipeline.Statement :=
+              find_when_stmt_from_transition first_state_list "insert" ctrler_name
+
+            let when_stmt_args : List String :=
+              match (get_when_stmt_src_args actual_when_stmt) with
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+              | .ok lst_args => lst_args
+
+            let when_stmt_src_ctrler : String :=
+              match get_when_stmt_src_ctrler actual_when_stmt with
+              | .ok src_ctrler => src_ctrler
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt src_ctrler in 'insert' API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -4345,15 +4390,27 @@ lst_stmts_decls
               src_ctrler := 
               dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
               dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
-              --stmt_trans_info.src_ctrler,
+              -- stmt_trans_info.src_ctrler,
               dbg_trace s!"Translate with src ctrler: ({ctrler_name})"
-              ctrler_name,
+
+              -- if stmt_trans_info.src_ctrler.isSome then
+              --   stmt_trans_info.src_ctrler.get!
+              -- else
+              --   Option.some ctrler_name,
+              if stmt_trans_info.src_ctrler.isNone then
+                Option.some when_stmt_src_ctrler
+              else
+                if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                  Option.some stmt_trans_info.ctrler_name
+                else
+                  Option.some stmt_trans_info.ctrler_name
+              ,
               lst_src_args :=
                 if stmt_trans_info.lst_src_args.isSome then
                   stmt_trans_info.lst_src_args
                 else
                   -- THe list of args from the func call
-                  Option.none
+                  Option.some when_stmt_args
                 ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
@@ -4363,7 +4420,14 @@ lst_stmts_decls
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
               use_specific_dest_in_transition := true
-              curr_ctrler_designator_idx := murphi_dest_idx_expr
+              curr_ctrler_designator_idx :=
+                if stmt_trans_info.src_ctrler.isNone then
+                  murphi_dest_idx_expr
+                else
+                  if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                    stmt_trans_info.curr_ctrler_designator_idx
+                  else
+                    Option.some murphi_dest_idx_expr
             }
             -- TODO: Test the translation, I suspect I may need to set the
             -- sepcific_murphi_dest_expr to this "i" index...
@@ -4375,43 +4439,51 @@ lst_stmts_decls
 
             let dest_num_entries_const_name : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
 
+            let ctrler_loop_break : String := dest_ctrler_name.append "_loop_break"
+            let ctrler_found_entry : String := dest_ctrler_name.append "_found_entry"
+            let ctrler_entry_idx : String :=   dest_ctrler_name.append "_entry_idx"
+            let ctrler_difference : String :=  dest_ctrler_name.append "_difference"
+            let ctrler_offset : String :=      dest_ctrler_name.append "_offset"
+              -- This one is defined above
+            -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
+
             let dest_ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t";
             let dest_ctrler_name_ : String := dest_ctrler_name ++ "_";
             let stmts : List Murϕ.Statement := [murϕ| 
 
-              loop_break := false;
+              £ctrler_loop_break := false;
               if next_state .core_[j] .£dest_ctrler_name_ .num_entries = £dest_num_entries_const_name then
-                loop_break := true;
+                £ctrler_loop_break := true;
               endif;
 
-              entry_idx := 0;
+              £ctrler_entry_idx := 0;
               --# (1) loop to tail searching for:
               --# if plus 0 is outside this range, this should be caught
               --# by difference check
               -- NOTE: the -1 is because tail is actually 1 more than the actual tail, so it acts as an "insert" location
-              found_entry := false;
-              -- difference := ( ( (£dest_num_entries_const_name - 1 + £dest_num_entries_const_name) - 1 ) - entry_idx ) % £dest_num_entries_const_name;
-              difference := (£dest_num_entries_const_name - 1 );
-              offset := 0;
+              £ctrler_found_entry := false;
+              -- difference := ( ( (£dest_num_entries_const_name - 1 + £dest_num_entries_const_name) - 1 ) - £ctrler_entry_idx ) % £dest_num_entries_const_name;
+              £ctrler_difference := (£dest_num_entries_const_name - 1 );
+              £ctrler_offset := 0;
               --#if (difference != -1) then
-              while ( (offset <= difference) & (loop_break = false) & (found_entry = false)
-                      & (difference >= 0)
+              while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_loop_break = false) & (£ctrler_found_entry = false)
+                      & (£ctrler_difference >= 0)
                     ) do
                 --# do the search
-                curr_idx := ( entry_idx + offset ) % £dest_num_entries_const_name;
-                if (next_state .core_[j] .£dest_ctrler_name_ .entries[ curr_idx ].state = £dest_ctrler_'await_insert'_state) then
+                £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
+                if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].state = £dest_ctrler_'await_insert'_state) then
                   -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
                   £murphi_when_stmt;
-                  found_entry := true;
+                  £ctrler_found_entry := true;
                 end;
-                if (offset != difference) then
-                  offset := offset + 1;
+                if (£ctrler_offset != £ctrler_difference) then
+                  £ctrler_offset := £ctrler_offset + 1;
                 else
-                  loop_break := true;
+                  £ctrler_loop_break := true;
                 endif;
               end;
               next_state .core_[j] .£dest_ctrler_name_ .num_entries := (next_state .core_[j] .£dest_ctrler_name_ .num_entries + 1);
-              if (found_entry = false) then
+              if (£ctrler_found_entry = false) then
                 error "Couldn't find an empty entry to insert into";
               end;
               -- Can't use for loop since we can't break...
@@ -4426,12 +4498,12 @@ lst_stmts_decls
             let decls : List Murϕ.Decl := 
               -- [murϕ_decl| ctrler : £dest_ctrler_name]
               -- (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
-              [murϕ_var_decls| var loop_break : boolean;] ++
-              [murϕ_var_decls| var entry_idx : £ctrler_idx_t] ++
-              [murϕ_var_decls| var found_entry : boolean] ++
-              [murϕ_var_decls| var difference : £ctrler_idx_t] ++
-              [murϕ_var_decls| var offset : £ctrler_idx_t] ++
-              [murϕ_var_decls| var curr_idx : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_loop_break : boolean;] ++
+              [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_found_entry : boolean] ++
+              [murϕ_var_decls| var £ctrler_difference : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_offset : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t] ++
               murphi_when_stmts_decls.decls
 
             let stmts_decls : lst_stmts_decls := {
@@ -4523,7 +4595,28 @@ lst_stmts_decls
             dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
+            let actual_when_stmt : Pipeline.Statement :=
+              find_when_stmt_from_transition dest_ctrler.transition_list "insert" ctrler_name
+
+            let when_stmt_args : List String :=
+              match (get_when_stmt_src_args actual_when_stmt) with
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+              | .ok lst_args => lst_args
+
+            let when_stmt_src_ctrler : String :=
+              match get_when_stmt_src_ctrler actual_when_stmt with
+              | .ok src_ctrler => src_ctrler
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt src_ctrler in 'insert' API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
             -- Convert to Murphi Stmt
+
             let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .tail]
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
@@ -4531,15 +4624,23 @@ lst_stmts_decls
               ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
               --            want to set this to the SQ somehow...
               src_ctrler := 
-              dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
-              dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
-              stmt_trans_info.src_ctrler,
+              -- dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              -- dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              -- stmt_trans_info.src_ctrler
+              if stmt_trans_info.src_ctrler.isNone then
+                Option.some when_stmt_src_ctrler
+              else
+                if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                  Option.some stmt_trans_info.ctrler_name
+                else
+                  Option.some stmt_trans_info.ctrler_name
+              ,
               lst_src_args :=
                 if stmt_trans_info.lst_src_args.isSome then
                   stmt_trans_info.lst_src_args
                 else
                   -- THe list of args from the func call
-                  Option.none
+                  Option.some when_stmt_args
                 ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
@@ -4628,7 +4729,7 @@ lst_stmts_decls
               -- controllers with multiple elements, and thus we need to use 'tail_search'
               -- which indexes the dest with 'curr_idx'
               use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
-              curr_ctrler_designator_idx := murphi_dest_idx_expr -- stmt_trans_info.curr_ctrler_designator_idx
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx -- murphi_dest_idx_expr
             }
             -- TODO: Test the translation, I suspect I may need to set the
             -- sepcific_murphi_dest_expr to this "i" index...
@@ -4777,7 +4878,9 @@ partial def api_term_func_to_murphi_func
     -- we could techinically use Except and 'throw' here
     -- if the len isn't 1
     -- dbg_trace "== trying to get expr from func call arg list =="
-    let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+    -- let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+    let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
+    let murphi_ctrler_curr_idx : Murϕ.Expr := [murϕ| £ctrler_curr_idx]
 
     let match_cond : Pipeline.Expr := lst_exprs[0]!
     let match_cond_trans_info : expr_translation_info :=  {
@@ -4786,13 +4889,13 @@ partial def api_term_func_to_murphi_func
       -- The "main ctrler to translate with"
       -- is it the 
       ctrler_name := term_trans_info.ctrler_name,
-      src_ctrler := term_trans_info.src_ctrler,
+      src_ctrler := Option.some dest_ctrler_name, -- term_trans_info.src_ctrler,
       lst_src_args := term_trans_info.lst_src_args,
       func := term_trans_info.func,
       is_await := term_trans_info.is_await,
       entry_keyword_dest := Option.some dest_ctrler_name,
       trans_obj := term_trans_info.trans_obj,
-      specific_murphi_dest_expr :=  curr_idx,
+      specific_murphi_dest_expr := Option.some murphi_ctrler_curr_idx,
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
@@ -4858,17 +4961,37 @@ partial def api_term_func_to_murphi_func
     let when_search_success := when_search_success_list[0]!
     let when_search_fail := when_search_fail_list[0]!
 
+    dbg_trace s!"When ctrler: ({term_trans_info.ctrler_name})\n"++
+      s!"When src_ctrler: ({dest_ctrler_name})"
+
+    let when_success_stmt_args : List String :=
+      match (get_when_stmt_src_args when_search_success) with
+      | .error msg =>
+        let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+        dbg_trace msg'
+        -- default
+        panic! msg'
+      | .ok lst_args => lst_args
+    let when_fail_stmt_args : List String :=
+      match (get_when_stmt_src_args when_search_fail) with
+      | .error msg =>
+        let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+        dbg_trace msg'
+        -- default
+        panic! msg'
+      | .ok lst_args => lst_args
+
     let when_search_success_trans_info : stmt_translation_info := {
       stmt := when_search_success,
       lst_ctrlers := term_trans_info.lst_ctrlers,
       ctrler_name := term_trans_info.ctrler_name,
-      src_ctrler := term_trans_info.src_ctrler,
-      lst_src_args := term_trans_info.lst_src_args,
+      src_ctrler := Option.some dest_ctrler_name, -- term_trans_info.src_ctrler,
+      lst_src_args := Option.some when_success_stmt_args -- term_trans_info.lst_src_args,
       func := term_trans_info.func,
       is_await := term_trans_info.is_await,
       entry_keyword_dest := Option.some dest_ctrler_name,
       trans_obj := term_trans_info.trans_obj,
-      specific_murphi_dest_expr := curr_idx,
+      specific_murphi_dest_expr := Option.some murphi_ctrler_curr_idx,
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
@@ -4879,8 +5002,8 @@ partial def api_term_func_to_murphi_func
       stmt := when_search_fail,
       lst_ctrlers := term_trans_info.lst_ctrlers,
       ctrler_name := term_trans_info.ctrler_name,
-      src_ctrler := term_trans_info.src_ctrler,
-      lst_src_args := term_trans_info.lst_src_args,
+      src_ctrler := Option.some dest_ctrler_name, -- term_trans_info.src_ctrler,
+      lst_src_args := Option.some when_fail_stmt_args -- term_trans_info.lst_src_args,
       func := term_trans_info.func,
       is_await := term_trans_info.is_await,
       entry_keyword_dest := Option.some dest_ctrler_name,
@@ -4918,12 +5041,13 @@ partial def api_term_func_to_murphi_func
 
     -- TODO: Give them slightly more unique names, so they don't collide..
     -- This affects the curr_idx designator that will need to be adjusted as well
-    let ctrler_while_break : String := /- dest_ctrler_name.append -/ "_while_break"
-    let ctrler_found_entry : String := /- dest_ctrler_name.append -/ "_found_entry"
-    let ctrler_entry_idx : String :=   /- dest_ctrler_name.append -/ "_entry_idx"
-    let ctrler_difference : String :=  /- dest_ctrler_name.append -/ "_difference"
-    let ctrler_offset : String :=      /- dest_ctrler_name.append -/ "_offset"
-    let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
+    let ctrler_while_break : String := dest_ctrler_name.append "_while_break"
+    let ctrler_found_entry : String := dest_ctrler_name.append "_found_entry"
+    let ctrler_entry_idx : String :=   dest_ctrler_name.append "_entry_idx"
+    let ctrler_difference : String :=  dest_ctrler_name.append "_difference"
+    let ctrler_offset : String :=      dest_ctrler_name.append "_offset"
+      -- This one is defined above
+    -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
 
     let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
     let decls : List Murϕ.Decl := [

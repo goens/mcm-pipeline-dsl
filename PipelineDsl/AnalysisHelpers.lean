@@ -692,3 +692,140 @@ def get_listen_handle_blks_from_stmts
     | _ => []
 
   return list_handle_blks
+
+def get_when_stmt_src_args
+(when_stmt : Pipeline.Statement)
+: Except String (List Identifier)
+:= do
+  match when_stmt with
+  | .when _ args _ => return args
+  | _ =>
+    let msg : String := "Error: function expected a when stmt\n"++
+      s!"Instead got this stmt: ({when_stmt})"
+    throw msg
+
+def get_when_stmt_src_ctrler
+(when_stmt : Pipeline.Statement)
+: Except String (String)
+:= do
+  match when_stmt with
+  | .when qname _ _ =>
+    match qname with
+    | .mk lst_str => return lst_str[0]!
+  | _ =>
+    let msg : String := "Error: function expected a when stmt\n"++
+      s!"Instead got this stmt: ({when_stmt})"
+    throw msg
+
+
+partial def recursive_await_when_stmt_search
+(lst_stmts : List Pipeline.Statement)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: (List Pipeline.Statement)
+:=
+  dbg_trace s!"Recursive await-when search stmts: ({lst_stmts})"
+  let lst_of_lst_stmts :=
+  lst_stmts.map (
+    λ stmt =>
+      match stmt with
+      | Statement.await _ lst_stmts =>
+        let ret_val :=
+        recursive_await_when_stmt_search lst_stmts func_name curr_ctrler_name
+        -- needed to do this explicitly so
+        -- Lean4 will type check :D
+        ret_val
+      | Statement.when qual_name _ _ =>
+        -- stmt is the block of code, of course
+        -- lst_ident would be the arguments of the when stmt
+        -- qual_name should be the structure name and func
+        -- If we've found one with a matching
+        -- (a) func name and
+        -- (b) dest struct name
+        -- then we can return this in a list form
+        match qual_name with
+        | QualifiedName.mk lst_ident =>
+          let contains_func := lst_ident.contains func_name
+          let contains_ctrler := lst_ident.contains curr_ctrler_name
+          let contains_func_from_ctrler :=
+          and contains_func contains_ctrler
+          dbg_trace s!"When, list_ident: ({lst_ident})"++
+          s!"\ncontains_func: ({contains_func}), func_name: ({func_name})"++
+          s!"\ncontains_ctrler: ({contains_ctrler}), curr_ctrler_name: ({curr_ctrler_name})"
+
+          if contains_func_from_ctrler
+          then
+            [stmt]
+          else
+            []
+      -- AZ NOTE:
+      -- just a thought...
+      -- is there any case where there are multiple 
+      -- await-when statments for one function call from
+      -- another structure?
+      -- Maybe if there's an if statement,
+      -- but in this case, we can say the developer should
+      -- put the if-statement inside the await-when, not outside
+
+      -- AZ NOTE: the rest of these cases are just
+      -- cases of nesting, to recursively search
+      -- for the await-when
+      | Statement.block lst =>
+        let ret_val :=
+        recursive_await_when_stmt_search lst func_name curr_ctrler_name
+        ret_val
+      | Statement.conditional_stmt cond => 
+        match cond with
+        | Conditional.if_else_statement expr stmt1 stmt2 =>
+          let ret_val :=
+          recursive_await_when_stmt_search [stmt1, stmt2] func_name curr_ctrler_name 
+          ret_val
+        | Conditional.if_statement expr stmt =>
+          let ret_val :=
+          recursive_await_when_stmt_search [stmt] func_name curr_ctrler_name 
+          ret_val
+      | Statement.listen_handle stmt lst => 
+        let ret_val :=
+        recursive_await_when_stmt_search [stmt] func_name curr_ctrler_name
+        ret_val
+      | _ => []
+  )
+  let lst_of_stmts := List.join lst_of_lst_stmts
+  lst_of_stmts
+
+partial def find_when_stmt_from_transition
+(trans_list : List Pipeline.Description)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: Pipeline.Statement
+:=
+  let when_with_matching_func_and_src_ctrler_name :=
+  trans_list.map (
+    λ trans =>
+      -- get the transition stmts, find stmts
+      -- which 
+      match trans with
+      | Description.state ident stmt =>
+        match stmt with
+        | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
+          let when_blk :=
+          recursive_await_when_stmt_search lst_stmts func_name curr_ctrler_name
+          when_blk
+        | _ => dbg_trace "stmt under transition should be blk!"
+          []
+      | _ => dbg_trace "wasn't passed a transition?"
+        []
+  )
+  let when_stmts_lst := List.join when_with_matching_func_and_src_ctrler_name
+  let when_stmt :=
+  match when_stmts_lst with
+  | [one_stmt] => one_stmt
+  | h::t =>
+  dbg_trace "found multiple matching when stmts?"
+  default
+  | [] =>
+  dbg_trace "found no matching when stmts?"
+  default
+
+  when_stmt
