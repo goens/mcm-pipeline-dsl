@@ -1069,7 +1069,7 @@ def get_ctrler_state_handle_blocks
   let list_state_matching_name : List Description :=
   ctrler.transition_list.filter (λ state : Description =>
     match state with
-    | .state name stmt =>
+    | .state name _ =>
       if name == state_name then true
       else false
     | _ => false
@@ -1398,5 +1398,7 @@ def more_generic_core_in_order_stall_transform
         else
           ctrler
     )
+  
+  -- dbg_trace s!"The updated ctrler list with the ctrler + stall state: ({updated_ctrler_list})"
 
   return updated_ctrler_list
