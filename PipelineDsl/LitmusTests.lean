@@ -144,8 +144,8 @@ def litmus_test_core_empty_murphi_expr
       ( Sta .core_[£core_idx] .RENAME_.num_entries = 0 )
       &
       ( Sta .core_[£core_idx] .ROB_.num_entries = 0 )
-      &
-      ( Sta .core_[£core_idx] .SB_.num_entries = 0 )
+      -- &
+      -- ( Sta .core_[£core_idx] .SB_.num_entries = 0 )
     ]
   )
 

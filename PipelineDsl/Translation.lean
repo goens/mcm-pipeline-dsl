@@ -3902,47 +3902,6 @@ lst_stmts_decls
 
             -- 
             let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
-            -- AZ NOTE:
-            -- These are probably the main things... check around line 3400 if need other things..
-
-            -- AZ NOTE: 
-            -- for the "await" state check;
-            -- particularily want to check if we're in
-            -- an await state awaiting on response from
-            -- another unit, ex. Memory Response, or ROB Commit
-
-            -- "detect in-flight action / await states"
-            -- could be a simple check for "await" stmt in
-            -- a transition, but we don't need all
-            -- transitions...?
-            -- Just some specific ones?
-            -- That have either have a pair of send-receive
-            -- Or are explicitly marked, such as mem access
-            -- or ROB response
-
-            -- start by looking at list of transitions..
-            -- for the dest struct that is..
-            -- General detection algo:
-            -- search for transitions with await & none
-            -- check that the predecessor block
-            -- initiates some request to the await'd structure
-
-            -- Or, well, there's also the option of just
-            -- knowing what type of await'ing we're doing;
-            -- i.e. ROB Commit API is a asynch in-flight await
-            -- i.e. mem reponse API is also a in-flight await
-            -- This is probably a decent stop-gap solution to
-            -- just get things working without needing to
-            -- implement too much analysis
-
-            -- Though there's still the issue of what should we do for the
-            -- "squash in-flight action"
-
-            -- So how do we know what the "squash" action is?
-            -- In the discussion, Dan & Vijay brought up
-            -- perhaps having the user specify the SSP of
-            -- wht the squash action is...
-            -- Okay, so how to express this...?
 
             -- AZ TODO:
             -- Identify the units which store the
@@ -3952,9 +3911,11 @@ lst_stmts_decls
             -- search for controllers which process loads
             -- have ctrler which store loads, and 
             -- has a transition to process loads
-            let speculative_ld_unit_name := "LQ"
+            -- let speculative_ld_unit_name := "LQ"
+            let speculative_ld_unit_name := "LSQ"
             -- SPECULATIVE STORE UNIT
-            let speculative_st_unit_name := "SQ"
+            -- let speculative_st_unit_name := "SQ"
+            let speculative_st_unit_name := "LSQ"
               -- NOTE: Things to consider:
               -- (1) Is the ctrler/struct a queue?
               --     i.e. how do we access an in-flight load
@@ -4030,31 +3991,25 @@ lst_stmts_decls
             -- on the μarch
             -- Thus TODO: Check if these structures exist and
             -- gen template code accordingly...
+
             let speculative_ld_unit_idx_type := speculative_ld_unit_name.append "_idx_t"
             let speculative_st_unit_idx_type := speculative_st_unit_name.append "_idx_t"
             let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
-            let decls : List Murϕ.Decl := [
+            let decls : List Murϕ.Decl :=
+              [murϕ_var_decls| var squash_ld_id : £speculative_ld_unit_idx_type; ] ++
+              [murϕ_var_decls| var squash_st_id : £speculative_st_unit_idx_type; ] ++
+            [
               (Murϕ.Decl.var ["loop_break"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
               (Murϕ.Decl.var ["difference"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
               (Murϕ.Decl.var ["entry_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
               (Murϕ.Decl.var ["offset"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
               (Murϕ.Decl.var ["curr_idx"] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-              -- (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
               (Murϕ.Decl.var ["violating_seq_num"] (Murϕ.TypeExpr.previouslyDefined "ROB_count_t")),
-              -- (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
               (Murϕ.Decl.var ["rob_idx"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
-              -- (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
               (Murϕ.Decl.var ["squash_diff"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
-              -- (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
               (Murϕ.Decl.var ["squash_offset"] (Murϕ.TypeExpr.previouslyDefined "ROB_count_t")),
               (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB")),
-              -- (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
               (Murϕ.Decl.var ["squash_idx"] (Murϕ.TypeExpr.previouslyDefined "ROB_idx_t")),
-              (Murϕ.Decl.var ["squash_ld_id"] (Murϕ.TypeExpr.previouslyDefined speculative_ld_unit_idx_type)),
-              -- [murϕ_var_decls|
-              --   var squash_st_id : £speculative_st_unit_idx_type
-              -- ]
-              (Murϕ.Decl.var ["squash_st_id"] (Murϕ.TypeExpr.previouslyDefined speculative_st_unit_idx_type)),
               (Murϕ.Decl.var ["curr_rob_inst"] (Murϕ.TypeExpr.previouslyDefined "INST"))
             ]
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
