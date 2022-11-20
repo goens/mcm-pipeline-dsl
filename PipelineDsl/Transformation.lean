@@ -221,12 +221,15 @@ partial def true_if_stmts_awaits_ld_mem_response
     match qual_name with
     | .mk strs => strs
 
-    if ((list_names[0]! == "memory_interface") &&
-      (list_names[1]! == "access_completed") &&
-      (list_idents[0]! == "value") ) then
-      dbg_trace "=== THE MEM AWAIT FOUND ==="
-      dbg_trace s!"{stmt}"
-      [true]
+    if (list_names.length == 2) && (list_idents.length == 1) then
+      if ((list_names[0]! == "memory_interface") &&
+        (list_names[1]! == "access_completed") &&
+        (list_idents[0]! == "value") ) then
+        dbg_trace "=== FOUND THE MEM AWAIT for stalling on ==="
+        dbg_trace s!"The when mem stmt: {stmt}"
+        [true]
+      else
+        []
     else
       []
     -- true_if_stmts_awaits_ld_mem_response stmt
