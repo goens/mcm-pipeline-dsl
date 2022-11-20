@@ -130,6 +130,7 @@ partial def true_if_stmts_have_load_mem_access
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_load_mem_access)
     | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_load_mem_access stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_have_load_mem_access)
+  | Statement.await (Option.some _) lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_load_mem_access)
   | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_load_mem_access)
   | Statement.when qname list_idens stmt => true_if_stmts_have_load_mem_access stmt
   -- | Statement.listen_handle  => 
@@ -176,6 +177,7 @@ partial def true_if_stmts_have_store_mem_access
     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map true_if_stmts_have_store_mem_access)
     | Conditional.if_statement expr1 stmt1 => true_if_stmts_have_store_mem_access stmt1
   | Statement.block lst_stmt => List.join (lst_stmt.map true_if_stmts_have_store_mem_access)
+  | Statement.await (Option.some _) lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_store_mem_access)
   | Statement.await none lst_stmt1 => List.join (lst_stmt1.map true_if_stmts_have_store_mem_access)
   | Statement.when qname list_idens stmt => true_if_stmts_have_store_mem_access stmt
   -- | Statement.listen_handle  => 
