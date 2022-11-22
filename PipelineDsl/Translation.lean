@@ -3398,297 +3398,34 @@ lst_stmts_decls
           let dest_ctrler_name := qual_name_list[0]!
           let api_func_name := qual_name_list[1]!
 
-
-          -- if api_func_name == "insert"
-          -- then
-
-          --   let dest_ctrler_tail_designator :=
-          --   -- Get a struct name
-          --   Murϕ.Designator.mk (dest_ctrler_name ++ "_") [Sum.inl "tail"]
-
-          --   let ctrler_lst_with_name :=
-          --   ctrlers_lst.filter (
-          --     λ ctrler =>
-          --       -- match if ctrler name
-          --       -- is the struct name
-          --       ctrler.name == dest_ctrler_name
-          --   )
-
-          --   let dest_ctrler :=
-          --   match ctrler_lst_with_name with
-          --   | [one_ctrler] => one_ctrler
-          --   | h::t =>
-          --     dbg_trace "Multiple ctrlers w/ the same name!?"
-          --     default
-          --   | [] => dbg_trace "dest ctrler not in ctrler list?"
-          --     dbg_trace "is it a default ctrler?"
-          --     dbg_trace "or a undefined ctrler?"
-          --     -- I should do a name check, like for:
-          --     -- memory_interface, or 
-          --     dbg_trace dest_ctrler_name
-          --     -- dbg_trace ctrlers_lst
-          --     default
-          --   let when_stmt :=
-          --   find_when_from_transition dest_ctrler.transition_list "insert" ctrler_name
-
-          --   let when_stmt_murphi_stmts :=
-
-          --   match when_stmt with
-          --   | Pipeline.Statement.when qual_name lst_ident stmt =>
-          --     let qual_name_list :=
-          --     match qual_name with
-          --     | QualifiedName.mk lst_idents =>
-          --       lst_idents
-          --     let qual_name_len_2 := qual_name_list.length == 2
-
-          --     let sanity_check :=
-          --     if qual_name_len_2
-          --     then
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "PASS: qualified name, is len 2!"
-          --       true
-          --     else
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "FAIL: qualified name, is not len 2!"
-          --       false
-              
-          --     dbg_trace "== This was also len 2 checked! =="
-          --     let struct_name : Identifier := qual_name_list[0]!
-          --     let when_func_name : Identifier := qual_name_list[1]!
-          --     let struct_name_sanity := struct_name == ctrler_name
-          --     let when_func_name_sanity := when_func_name == func_name
-
-          --     let struct_sanity_check :=
-          --     if struct_name_sanity
-          --     then
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "PASS: first identifier is the curr_ctrler_name"
-          --       true
-          --     else
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "FAIL: first identifier is not the curr_ctrler_name"
-          --       false
-
-          --     let func_sanity_check :=
-          --     if when_func_name_sanity
-          --     then
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "PASS: second identifier is the 'insert' func"
-          --       true
-          --     else
-          --       dbg_trace "translating insert func!"
-          --       dbg_trace "FAIL: second identifier is not the 'insert' func"
-          --       false
-
-          --     let trans_info : stmt_translation_info := (
-          --       -- info
-          --       stmt_translation_info.mk
-          --       stmt
-          --       ctrlers_lst
-          --       dest_ctrler_name
-          --       struct_name
-          --       lst_ident
-          --       (Option.some api_func_name)
-          --       (await_or_not_state.not_await)
-          --       none
-          --       stmt_trans_info.trans_obj
-          --       none
-          --       stmt_trans_info.lst_decls
-          --       stmt_trans_info.is_rhs
-          --       stmt_trans_info.use_specific_dest_in_transition
-          --       stmt_trans_info.curr_ctrler_designator_idx
-          --     )
-
-          --     -- let murphi_stmts : List Murϕ.Statement :=
-          --     let murphi_stmts : lst_stmts_decls :=
-          --     ast_stmt_to_murphi_stmts trans_info
-
-          --     murphi_stmts
-
-          --   | _ => dbg_trace "shouldn't get another stmt type"
-          --     -- []
-          --     empty_stmt_decl_lsts
-
-          --   when_stmt_murphi_stmts
-
-          -- else
           if (and (api_func_name == "send_load_request")
           (dest_ctrler_name == "memory_interface"))
           then
-            -- should be from reg_file
-            -- This should just use the mem
-            -- interface that's manually written
-            -- in Murphi
-            -- i.e. gen this and use the
-            -- pre-exisiting mem-interface API
 
-            -- 3 things to do
-            /- 
-            1. get the ld_entry or st_entry
-            -- this depends on the current entry type...
-            -- depends on transition, is it for ld or st?
-            -- encode this into the API, so this is not implicit
-            -- i.e. send_load_request
+            let dsl_term_phys_addr : Pipeline.Term := Pipeline.Term.var ("phys_addr")
+            let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
 
-            -- Also, must figure out if we index into a queue entry?
-            -- or not...
-            2. use the helper function to get the out_msg msg created
-            3. set the out_busy to true
-            -/
-            let this_ctrler : controller_info :=
-    dbg_trace "===== mem_interface api gen ====="
-              get_ctrler_matching_name ctrler_name ctrlers_lst
-            let ctrler_ordering :=
-              get_ctrler_elem_ordering this_ctrler
+            let phys_addr_trans_term : term_translation_info :=
+              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            let inst_seq_num_trans_term : term_translation_info :=
+              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
 
-            let is_indexable : Bool :=
-              IndexableCtrlerTypesStrings.contains ctrler_ordering
-            
-            -- if it's fifo, then
-            -- index to this rule's entry j
-            -- else,
-            -- we need to access the entry info in some other way?
-            let ld_or_st_inst_info : List Murϕ.Statement :=
-            if is_indexable
-            then
-              -- get info by accessing
-              -- <structure>.entries[j]
+            let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
+            let murphi_inst_seq_num_trans_expr := ast_term_to_murphi_expr inst_seq_num_trans_term
 
-
-              let ld_st_entry_designator := (
-              Designator.mk (
-                -- Example in comments
-                -- core_
-                "next_state"
-              )
-              [
-                -- Example in comments
-                -- Sta.core_
-                Sum.inl "core_",
-                -- Sta.core_[j]
-                Sum.inr core_idx_designator,
-                -- Sta.core_[j].LQ
-                Sum.inl (ctrler_name.append "_"),
-                -- Sta.core_[j].LQ.entries
-                Sum.inl entries,
-                -- Sta.core_[j].LQ.entries[i]
-                Sum.inr entry_idx_designator
-              ]
-              )
-
-              let ld_st_entry_expr :=
-              Murϕ.Expr.designator ld_st_entry_designator
-
-              let ld_st_designator : Murϕ.Designator :=
-              Murϕ.Designator.mk "ld_st_entry" []
-              let ld_st_entry_stmt : Murϕ.Statement :=
-              Murϕ.Statement.assignment ld_st_designator ld_st_entry_expr
-
-              [ld_st_entry_stmt]
-            else
-              -- TODO:
-              -- This case is for something like
-              -- the load exec unit in the NoSQ
-              []
-
-            let set_core_mem_out_msg : Murϕ.Statement :=
-            -- TODO: fix "ambiguous" here
-            [murϕ|
-            next_state .core_[ j ] .mem_interface_  .out_msg := insert_ld_in_mem_interface( ld_st , j)]
-
-            let out_msg := "out_msg"
-            let out_msg_designator : Murϕ.Designator := (
-            Designator.mk (
-              -- Example in comments
-              -- core_
-              "next_state"
-            )
-            [
-              -- Example in comments
-              Sum.inl "core_",
-              -- core_[j]
-              Sum.inr core_idx_designator,
-              -- core_[j].mem_interface_
-              Sum.inl ("mem_interface_"),
-              -- core_[j].mem_interface_.out_msg
-              Sum.inl out_msg
-            ])
-
-            -- NOTE: Duplicated! from the if cond above..
-            let ld_st_entry_designator := (
-            Designator.mk (
-            -- Example in comments
-            -- core_
-            "next_state"
-            )
-            [
-            -- Example in comments
-            -- Sta.core_
-            Sum.inl "core_",
-            -- Sta.core_[j]
-            Sum.inr core_idx_designator,
-            -- Sta.core_[j].LQ
-            Sum.inl (ctrler_name.append "_"),
-            -- Sta.core_[j].LQ.entries
-            Sum.inl entries,
-            -- Sta.core_[j].LQ.entries[i]
-            Sum.inr entry_idx_designator
+            let assn_out_msg : List Murϕ.Statement := [murϕ|
+              next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
+              next_state .core_[ j ] .mem_interface_ .out_msg .r_w := read;
+              next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
+              next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
+              next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
+              next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+              next_state .core_[ j ] .mem_interface_ .out_busy := true;
             ]
-            )
-
-            let func_call_expr :=
-            Murϕ.Expr.call "insert_ld_in_mem_interface" [
-              -- list of args
-              Murϕ.Expr.designator ld_st_entry_designator,
-              Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
-            ]
-
-            -- assign the out_msg the func call
-            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
-            --                                       ld_entry,
-            --                                       j
-            --                                      );
-            let assn_out_msg_func_call_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment out_msg_designator func_call_expr
-
-            let out_busy := "out_busy"
-            let out_busy_designator : Murϕ.Designator := (
-            Designator.mk (
-              -- Example in comments
-              -- core_
-              "next_state"
-            )
-            [
-              -- Example in comments
-              Sum.inl "core_",
-              -- core_[i]
-              Sum.inr core_idx_designator,
-              -- core_[i].LQ
-              Sum.inl "mem_interface_",
-              -- core_[i].LQ.entries
-              Sum.inl out_busy
-            ])
-
-            let true_designator_expr :=
-            Murϕ.Expr.designator (Murϕ.Designator.mk "true" [])
-            -- assign the out_busy to true
-            --   £dest_ctrler_name .out_busy := false;
-            let assn_out_busy_true_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment out_busy_designator true_designator_expr
-            -- let set_core_mem_out_busy :=
-            -- [murϕ|
-            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
-            --                                       ld_entry,
-            --                                       j
-            --                                      );
-            --   £dest_ctrler_name .out_busy := false;
-            -- ]
-            let combined_stmts :=
-            -- ld_or_st_inst_info.append [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
-            [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
+            dbg_trace s!"memory_interface->send_load_request() API: ({assn_out_msg})"
 
             let stmts_decls : lst_stmts_decls := {
-              stmts := combined_stmts,
+              stmts := assn_out_msg,
               decls := []
             }
             stmts_decls
@@ -3697,159 +3434,47 @@ lst_stmts_decls
           if (and (api_func_name == "send_store_request")
           (dest_ctrler_name == "memory_interface"))
           then
-            let this_ctrler : controller_info :=
-    dbg_trace "===== mem_interface api gen ====="
-              get_ctrler_matching_name ctrler_name ctrlers_lst
-            let ctrler_ordering :=
-              get_ctrler_elem_ordering this_ctrler
 
-            let is_indexable : Bool :=
-              IndexableCtrlerTypesStrings.contains ctrler_ordering
-            
-            -- if it's fifo, then
-            -- index to this rule's entry j
-            -- else,
-            -- we need to access the entry info in some other way?
-            let ld_or_st_inst_info : List Murϕ.Statement :=
-            if is_indexable
-            then
-              -- get info by accessing
-              -- <structure>.entries[j]
+            -- let this_ctrler : controller_info :=
+            -- dbg_trace "===== mem_interface api gen ====="
+            --   get_ctrler_matching_name ctrler_name ctrlers_lst
+            -- let ctrler_ordering :=
+            --   get_ctrler_elem_ordering this_ctrler
 
+            -- -- Old stuff, maybe use this to check if the dest is a controller.
+            -- let is_indexable : Bool :=
+            --   IndexableCtrlerTypesStrings.contains ctrler_ordering
 
-              let ld_st_entry_designator := (
-              Designator.mk (
-                -- Example in comments
-                -- core_
-                "next_state"
-              )
-              [
-                -- Example in comments
-                -- Sta.core_
-                Sum.inl "core_",
-                -- Sta.core_[j]
-                Sum.inr core_idx_designator,
-                -- Sta.core_[j].LQ
-                Sum.inl (ctrler_name.append "_"),
-                -- Sta.core_[j].LQ.entries
-                Sum.inl entries,
-                -- Sta.core_[j].LQ.entries[i]
-                Sum.inr entry_idx_designator
-              ]
-              )
+            -- New version
+            let dsl_term_phys_addr : Pipeline.Term := Pipeline.Term.var ("phys_addr")
+            let dsl_term_write_value : Pipeline.Term := Pipeline.Term.var ("write_value")
+            let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
 
-              let ld_st_entry_expr :=
-              Murϕ.Expr.designator ld_st_entry_designator
+            let phys_addr_trans_term : term_translation_info :=
+              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            let write_value_trans_term : term_translation_info :=
+              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_write_value
+            let inst_seq_num_trans_term : term_translation_info :=
+              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
 
-              let ld_st_designator : Murϕ.Designator :=
-              Murϕ.Designator.mk "ld_st" []
-              let ld_st_entry_stmt : Murϕ.Statement :=
-              Murϕ.Statement.assignment ld_st_designator ld_st_entry_expr
-
-              [ld_st_entry_stmt]
-            else
-              -- TODO:
-              -- This case is for something like
-              -- the load exec unit in the NoSQ
-              []
-            -- NOTE: Duplicated, don't feel like modifying the
-            -- condition above right now...
-            let ld_st_entry_designator := (
-            Designator.mk (
-            -- Example in comments
-            -- core_
-            "next_state"
-            )
-            [
-            -- Example in comments
-            -- Sta.core_
-            Sum.inl "core_",
-            -- Sta.core_[j]
-            Sum.inr core_idx_designator,
-            -- Sta.core_[j].LQ
-            Sum.inl (ctrler_name.append "_"),
-            -- Sta.core_[j].LQ.entries
-            Sum.inl entries,
-            -- Sta.core_[j].LQ.entries[i]
-            Sum.inr entry_idx_designator
+            let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
+            let murphi_write_value_expr := ast_term_to_murphi_expr write_value_trans_term
+            let murphi_inst_seq_num_trans_expr := ast_term_to_murphi_expr inst_seq_num_trans_term
+            -- 
+            let assn_out_msg : List Murϕ.Statement := [murϕ|
+              next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
+              next_state .core_[ j ] .mem_interface_ .out_msg .r_w := write;
+              next_state .core_[ j ] .mem_interface_ .out_msg .value := £murphi_write_value_expr;
+              next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
+              next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
+              next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
+              next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+              next_state .core_[ j ] .mem_interface_ .out_busy := true;
             ]
-            )
-
-            let set_core_mem_out_msg : Murϕ.Statement :=
-            -- TODO: fix "ambiguous" here
-            [murϕ|
-            next_state .core_[ j ] .mem_interface_ .out_msg := insert_st_in_mem_interface( ld_st_entry_designator , j)]
-
-            let out_msg := "out_msg"
-            let out_msg_designator : Murϕ.Designator := (
-            Designator.mk (
-              -- Example in comments
-              -- core_
-              "next_state"
-            )
-            [
-              -- Example in comments
-              Sum.inl "core_",
-              -- core_[j]
-              Sum.inr core_idx_designator,
-              -- core_[j].LQ
-              Sum.inl ("mem_interface_"),
-              -- core_[j].LQ.entries
-              Sum.inl out_msg
-            ])
-
-            let func_call_expr :=
-            Murϕ.Expr.call "insert_st_in_mem_interface" [
-              -- list of args
-              Murϕ.Expr.designator ld_st_entry_designator,
-              Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])
-            ]
-
-            -- assign the out_msg the func call
-            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
-            --                                       ld_entry,
-            --                                       j
-            --                                      );
-            let assn_out_msg_func_call_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment out_msg_designator func_call_expr
-
-            let out_busy := "out_busy"
-            let out_busy_designator : Murϕ.Designator := (
-            Designator.mk (
-              -- Example in comments
-              -- core_
-              "next_state"
-            )
-            [
-              -- Example in comments
-              Sum.inl "core_",
-              -- core_[i]
-              Sum.inr core_idx_designator,
-              -- core_[i].LQ
-              Sum.inl "mem_interface_",
-              -- core_[i].LQ.entries
-              Sum.inl out_busy
-            ])
-
-            let true_designator_expr :=
-            Murϕ.Expr.designator (Murϕ.Designator.mk "true" [])
-            -- assign the out_busy to true
-            --   £dest_ctrler_name .out_busy := false;
-            let assn_out_busy_true_stmt : Murϕ.Statement :=
-            Murϕ.Statement.assignment out_busy_designator true_designator_expr
-            -- let set_core_mem_out_busy :=
-            -- [murϕ|
-            --   £dest_ctrler_name .out_msg := insert_ld_in_mem_interface(
-            --                                       ld_entry,
-            --                                       j
-            --                                      );
-            --   £dest_ctrler_name .out_busy := false;
-            -- ]
-            let combined_stmts :=
-            [assn_out_msg_func_call_stmt, assn_out_busy_true_stmt]
+            dbg_trace s!"memory_interface->send_store_request() API: ({assn_out_msg})"
 
             let stmts_decls : lst_stmts_decls := {
-              stmts := combined_stmts,
+              stmts := assn_out_msg,
               decls := []
             }
             stmts_decls
