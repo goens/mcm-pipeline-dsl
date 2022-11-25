@@ -4441,6 +4441,56 @@ lst_stmts_decls
               decls := murphi_decls
             }
             stmts_decls
+          else if (api_func_name == "squash") then
+            -- Just get the handle code
+            -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
+            let expected_func := "squash"
+            let expected_struct := "ROB"
+
+            let if_stmt_trans_info : stmt_translation_info := {
+              stmt := stmt_trans_info.stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name,--stmt_trans_info.ctrler_name,
+              src_ctrler := stmt_trans_info.ctrler_name, -- stmt_trans_info.src_ctrler,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := false
+            }
+
+            let ctrler_idx : String := dest_ctrler_name.append "_idx"
+            let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
+            let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
+            let state_handle_squash_if_stmt : lst_stmts_decls := (
+              ctrler_trans_handle_stmts_to_murphi_if_stmt (
+              if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx (
+              dest_ctrler_name) expected_func expected_struct
+            )
+
+            let dest_ctrler_ : String := dest_ctrler_name.append "_"
+            -- place into murphi statements
+            -- TODO NOTE: Should do this based on the structure type!
+            -- i.e. if it's a structure or a queue to reset state with.. etc.
+            let squash_entries_loop : List Murϕ.Statement := [murϕ|
+              for £ctrler_squash_idx : £ctrler_idx do
+                -- only try this if it's valid? Not if we want to allow this to generalize...
+                -- if (next_state .core_[j] .£dest_ctrler_ [£ctrler_squash_idx] .instruction .seq_num = 0)
+                £state_handle_squash_if_stmt.stmts;
+              endfor;
+            ]
+
+            let stmts_decls : lst_stmts_decls := {
+              stmts := squash_entries_loop
+              decls := state_handle_squash_if_stmt.decls
+            }
+            stmts_decls
           -- NOTE: probably don't need a <ctrler>.remove() api?
           -- Since ctrler entries generally do remove() when they get removed..?
           -- else if (api_func_name == "remove") then
