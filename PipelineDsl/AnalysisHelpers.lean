@@ -53,16 +53,20 @@ structure controller_info where
   -- The controller description, probably some info here...
   controller_descript : Description
   -- The entry description, probably some info here...
-  entry_descript : Description
+  entry_descript : Option Description
   -- The init transition
-  init_trans : Identifier
+  init_trans : Option Identifier
   -- Entry vars, like seq_num, ld_seq_num, inst, read_value
   -- NOTE: leave for now, figure out tomorrow
   -- Or translate from the entry_descript
-  state_vars : List TypedIdentifier
+  state_vars : Option (List TypedIdentifier)
   -- list of transitions this structure takes
   -- should be: Description.transition
-  transition_list : List Description
+  transition_list : Option (List Description)
+  -- ======== CTRLER State Machine STUFF ========
+  ctrler_init_trans : Option Identifier
+  ctrler_trans_list : Option (List Description)
+  ctrler_state_vars : Option (List TypedIdentifier)
 deriving Inhabited
 
 instance : ToString controller_info := ⟨
@@ -230,8 +234,10 @@ def ast0048_generate_controller_murphi_record
   -- read the transition names
   -- build allowable states murphi enum
   -- Also add state for searching
+  let state_vars : List TypedIdentifier :=
+    ctrl.state_vars.get!
   let murphi_state_vars : List Murϕ.Decl :=
-    ctrl.state_vars.map (
+    state_vars.map (
       λ dsl_typed_ident =>
       let (typed, ident) :=
       match dsl_typed_ident with
@@ -362,8 +368,10 @@ def ast0048_generate_controller_murphi_record
     ctrler_entries_range
 
   -- ========== Entries States =============
+  let transitions : List Description :=
+    ctrl.transition_list.get!
   let list_of_transition_names : List String :=
-    ctrl.transition_list.map λ trans => match trans with
+    transitions.map λ trans => match trans with
     | Pipeline.Description.state ident _ => ident
     | _ => dbg_trace "shouldn't reach here???!"
       panic! "TODO: Throw.."
@@ -645,7 +653,10 @@ def get_init_stmts_without_transition
 (ctrler : controller_info)
 : Except String Pipeline.Statement
 := do
-  let init_stmt_except : Except String Pipeline.Statement := get_init_state_stmts ctrler.init_trans ctrler.transition_list
+  let init_trans_extract : String := ctrler.init_trans.get!
+  let transition_list_extract : List Description := ctrler.transition_list.get!
+  let init_stmt_except : Except String Pipeline.Statement :=
+    get_init_state_stmts init_trans_extract transition_list_extract
   let init_stmt : Pipeline.Statement ← match init_stmt_except with
   | .ok stmt => pure stmt
   | .error msg =>
