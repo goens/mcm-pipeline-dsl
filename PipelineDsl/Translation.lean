@@ -1,7 +1,7 @@
 -- import PipelineDsl
 import PipelineDsl.AnalysisHelpers
 
-import PipelineDsl.Murphi
+import Murphi
 
 import PipelineDsl.AST
 -- import PipelineDsl.Transformation

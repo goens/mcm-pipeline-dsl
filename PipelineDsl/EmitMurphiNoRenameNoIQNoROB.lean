@@ -1,6 +1,6 @@
 import PipelineDsl.AnalysisHelpers
 
-import PipelineDsl.Murphi
+import Murphi
 
 import PipelineDsl.AST
 

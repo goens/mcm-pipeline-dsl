@@ -1,5 +1,5 @@
 
-import PipelineDsl.Murphi
+import Murphi
 import PipelineDsl.AnalysisHelpers
 
 open Murϕ in

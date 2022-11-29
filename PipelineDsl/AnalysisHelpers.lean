@@ -1,5 +1,5 @@
 import PipelineDsl.AST
-import PipelineDsl.Murphi
+import Murphi
 
 open Pipeline
 open Murϕ
