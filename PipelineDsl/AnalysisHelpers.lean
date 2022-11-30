@@ -77,9 +77,16 @@ instance : ToString controller_info := ⟨
     "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
     "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
     "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
-    "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n=== End Controller ===\n\n"
+    "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n" ++
+    s!"CTRLER_init_trans: ({i.ctrler_init_trans})\n" ++
+    s!"CTRLER_state_vars: ({i.ctrler_state_vars})\n" ++
+    s!"CTRLER_trans_list: ({i.ctrler_trans_list})\n" ++
+    "\n=== End Controller ===\n\n"
   ⟩ 
 
+
+def thing : controller_info := default
+#eval thing
 
 def filter_lst_of_stmts_for_ordering_asn
 (lst_stmts : List Pipeline.Statement)
