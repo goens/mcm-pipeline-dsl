@@ -433,8 +433,16 @@ def find_load_begin_perform_info
     filtered_by_load_controllers.filter (
       λ ctrler =>
         -- is there a mem access?
+        let transitions : List Description :=
+          if ctrler.init_trans.isSome then
+            ctrler.transition_list.get!
+          else if ctrler.ctrler_init_trans.isSome then
+            ctrler.ctrler_trans_list.get!
+          else
+            dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler})"
+              default
         let lst_trans_with_mem_access :=
-        ctrler.transition_list.filter (
+        transitions.filter (
           λ trans_descript =>
             match trans_descript with
             | Description.state ident stmt =>
@@ -1030,6 +1038,9 @@ def return_ctrler_with_updated_trans_list
   init_trans          := ctrler.init_trans,
   state_vars          := ctrler.state_vars,
   transition_list     := trans_lst
+  ctrler_init_trans   := ctrler.ctrler_init_trans
+  ctrler_trans_list   := ctrler.ctrler_trans_list
+  ctrler_state_vars   := ctrler.ctrler_state_vars
 }
 
 --======== ANALYZE and TRANSFORM =======
@@ -1139,7 +1150,14 @@ def handle_load_perform_controller
             []
           )
 
-      let transitions := ctrler.transition_list
+      let transitions := -- ctrler.transition_list
+        if ctrler.init_trans.isSome then
+          ctrler.transition_list.get!
+        else if ctrler.ctrler_init_trans.isSome then
+          ctrler.ctrler_trans_list.get!
+        else
+          dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler})"
+            default
 
       let num_transitions := transitions.length
       let replicated_stmt_lst :=

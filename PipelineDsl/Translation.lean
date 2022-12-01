@@ -1135,322 +1135,6 @@ def create_transition_from_lst_stmts
   identifier
   (Statement.block lst_stmts)
 
--- Aux function for recursive fn ast0046
--- is likely required:
--- got to handle reading things in a subcase
-
--- def ast0046_examine_statements
--- (lst_stmts : List Statement)
--- --( visit_nested : splitting_info )
--- (lst_transitions : List Description)
--- (top_transition_ident : Identifier)
--- (nested_stmts : List Statement)
--- :=
---   -- try to split transitions await
---   -- Cases of await stmt to handle:
---   -- (1) There is code then an await (i.e. await isn't first thing):
---   -- (a) split transition at this pt, results in 2 transitions.
---   -- The first transition can have the old name
---   -- The second one can have some string appended to it's name
---   -- (b) add second transition to list of transitions to check
---   -- (2) There's an await+when inside an await+when
---   -- This can be seen as a chain of await transitions
---   -- (3) There's an await with multiple whens
---   -- 
---   -- General strategy
---   -- Check if transition has stmts then await block(s), split block
---   -- return the first half and the second half with the await
---   -- else if await block is the first stmt
---   -- then we "process" the await block
---   -- which is:
---   -- (a) breaking down nested await into an await+when chain
---   -- (b) if there are multiple whens, this doesn't need to be handled
---   -- here (no splitting or whatever, it's already a fork in the BB)
---   -- else there are no awaits, just return the transition
-
---   -- want to extract
---   -- match lst_stmts with
---   -- | Statement.block lst_stmts =>
---   --   List.foldl
---   --   ()
---   --   ()
---   --   ()
-
---   List.foldl
---   (
---     λ checked next_stmt =>
---     -- [base case]
---     if (
---       -- if the next_stmt is the head of the transition
---       -- and an await, then continue to next stmt
---       and
---       (
---         and
---         (
---           -- next_stmt is await
---           match next_stmt with
---           | Statement.await lst_stmts => true
---           | _ => false
---         )
---         -- and the list of checked stmts
---         -- is empty (await is the head)
---         (lst_stmts.length == 0)
---       )
---       -- ensure we're also not nested
---       (nested_stmts.length == 0)
---     )
---     -- if await is the head stmt
---     -- then continue!
---     -- But we will add this to the
---     -- previously checked nodes
---     then --add_stmt_to_checked_list checked next_stmt
---       checked.cons next_stmt
---     else
---     -- [next inductive step]
---     -- now check if we encounter an await later
---     -- and this await is not nested
---     if (
---       and
---       (
---         and
---         (
---           -- NOTE: there's a difference between
---           -- a list of transitions to return,
---           -- and the level of nesting
-
---           -- I will need another list state
---           -- var for nested stmts
-
---           -- next_stmt is await
---           (
---             match next_stmt with
---             | Statement.await lst_stmts => true
---             | _ => false
---           )
---           -- and the list of checked stmts
---           -- is not empty (this await is the head)
---         )
---         (lst_stmts.length != 0)
---       )
---       -- we have not nested into a stmt block
---       (nested_stmts.length == 0)
---     )
---     then
---       none
---     -- AZ CHECKPOINT:
---     -- Thought up to here
---     -- Just putting the "cases"
---     -- here for now, fill them in later
-
---     -- TODO: 
---     -- actually write in the TODO cases
-
---       -- split the transition
---       -- (1) take above items 
---       -- (2) separate the below not yet checked items
---       -- (can get them with removing common items
---       -- from the initially provided list)
-
---       -- If this is the first transition made,
---       -- use the same original name, so
---       -- transitions targeting this one will
---       -- reach this
---     else
---     if (lst_transitions.length == 0)
---       then -- build new trans w/ original name
---         -- recursively call this func
---         -- on the created transition's
---         -- statements list
---         [
---           create_transition_from_lst_stmts
---           lst_stmts
---           top_transition_ident
---           ,
---           create_transition_from_lst_stmts
---           -- get the remaining stmts in this thing
---           (
---           lst_stmts.filter
---           (
---             -- return the remaining unchecked elems
---             λ elem =>
---               List.notElem
---               elem lst_stmts
---           )
---           )
---           -- generate a clever/useful identifier name
---           (
---             -- base top-transition ident
---             top_transition_ident
---             ++ 
---             -- suffix
---             (
---               match next_stmt with
---               | Statement.await lst_stmts => 
---                 lst_stmts.map
---                 (
---                   λ stmt' =>
---                   match stmt' with
---                   | Statement.when
---                     qname lst_iden stmt
---                     =>
---                     match qname with
---                     | lst_ident' =>
---                       [List.intercalate lst_ident']
---                   | _ => []
---                 )
---               | _ => []
---             ).intercalate
---           )
---         ]
---     else
---     -- [next inductive step]
---     -- now check if we encounter an await later
---     -- and this await is nested
---     -- (this case comes from when we try to handle
---     -- stmt blocks)
---     if (
---       and
---       (
---         and
---         (
---           -- NOTE: there's a difference between
---           -- a list of transitions to return,
---           -- and the level of nesting
-
---           -- I will need another list state
---           -- var for nested stmts
-
---           -- next_stmt is await
---           (
---             match next_stmt with
---             | Statement.await lst_stmts => true
---             | _ => false
---           )
---           -- and the list of checked stmts
---           -- is not empty (this await is the head)
---         )
---         (lst_stmts.length != 0)
---       )
---       -- we have not nested into a stmt block
---       (nested_stmts.length != 0)
---     )
---     then
---       none
---     else
---     -- [other case]
---     -- handle stmts which can nest into sub-stmts
---     if (
---       -- next_stmt is a conditional
---       (
---         match next_stmt with
---         | Statement.conditional_stmt cond => true
---         | _ => false
---       )
---     )
---     then
---       none
---       -- recursively call this fn on the
---       -- nested stmt block
---       -- Also remember to update the
---       -- nesting info in the
---       -- checked var
-
---       -- do the recursive call by
---       -- matching into the stmts list
---       -- i.e. we don't have an if
---       -- case here in this lambda func
---       -- for block
---     else
---     if (
---       -- next_stmt is a when?
---       (
---         match next_stmt with
---         | Statement.when qname lst_iden stmt => true
---         | _ => false
---       )
---     )
---     then
---       none
---     else
---       -- if neither of these cases
---       -- then we just add the stmt to the checked list
---       -- and continue!
---       --add_stmt_to_checked_list checked next_stmt
---       checked.cons next_stmt
-
---   )
---   -- initial list of stmts to visit
---   -- and depth
---   -- so w
---   (
---     -- match visit_nested.lst_stmts with
---     match lst_stmts with
---     | h::t => [h]
---       -- create_splitting_info_with_lst_stmts [h] visit_nested
---     | [] => [] --create_splitting_info_with_lst_stmts [] visit_nested
---   )
---   (
---     -- match visit_nested.lst_stmts with
---     match lst_stmts with
---     | h::t => t
---       -- create_splitting_info_with_lst_stmts t visit_nested
---     | [] => []
---   )
-
---   -- To get this to work with a foldl:
---   -- The function returns a tuple/structure of 2 items:
---     -- the transition we'll return in place of this one
---     -- and the stmts we've nested into in order to search for an await
---   -- We try to process the current stmt in the transition
---   -- check if it's an await, and there are statements ahead of this!
---     -- if it's an await, and we aren't nested, we can split this block
---       -- How do we handle nested awaits?
---         -- do we recursively call this fn?
---         -- Or do we do "iteration to a fixed point"?
---       -- i think we'll recursively call this
---       -- Not important either way
---   -- check if it's a nestable stmt:
---     -- Conditional stmt,
---     -- Await that is the first stmt,
---     -- When stmt
---     -- listen_statement,
---     -- Block stmt (duh!)
-
---     -- Nestable statements mean we recurse a layer
---     -- recursing a layer means we check for awaits again
---     -- Checking for awaits means we check if an await is:
---     -- (1) At the top of a transition (in this case no)
---     -- (2) Not at the top of a transition
---     -- (3) if the Await is nested
---     -- If it's nested then we return a new transition List
---     -- which must split & consider all nested parts and statements
---   -- record if not either way to our list of stmts? or just the nesting?
---     -- heh. just the nesting :)
-      
-
--- def ast0047_access_transition_info
--- (descript : Description)
--- :=
---   match descript with
---   | Description.state iden stmt =>
---     match stmt with
---     | Statement.block lst_stmt' =>
---       ast0046_examine_statements [stmt]
---     -- want to error if this is not a block
---     -- first stmt in transition should be a block!
---     | _ => []
---   | _ => []
-
--- def ctrler_ident_stmt_ast_to_ctrler
--- (ident : Identifier)
--- (stmt : Statement)
--- (descript : Description)
--- : Except String controller_info
--- := do
-
--- Tie ast0010 (entries / names / identifiers)
--- and ast0013 entry first transition
--- into a controller_into struct
 def ast0019_controller_info (ast : AST)
 : Except String (List controller_info)
 := do
@@ -1955,6 +1639,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 -- (stmt_trans_info : stmt_translation_info)
 ( tail_entry : tail_or_entry)
 ( specific_murphi_dest_expr : Option Murϕ.Expr )
+( entry_or_ctrlr_desig_prefix : entry_or_ctrler )
 -- AZ TODO: handle these, so we can translate
 -- exprs that use Entry?
 -- or terms in general that match a ctrler's
@@ -2008,7 +1693,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_state_var :=
     ident_matches_ident_list state_var_idents one_ident 
 
-    let ident_matches_state_var := ident_matches_state_var || (one_ident == "curr_state")
+    let ident_matches_state_var := ident_matches_state_var || (one_ident == "curr_state") || (one_ident == "state")
     let one_ident := if (one_ident == "curr_state") then "state" else one_ident
 
     -- dbg_trace "!!! BEGIN IDENT !!!"
@@ -2037,7 +1722,16 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- finish this
 
       dbg_trace s!"Translate Ident Var. is_indexable: ({is_indexable})"
-      if is_indexable
+      let ctrler_name_ : String := ctrler_name.append "_"
+      let ctrler_not_entry_bool : Bool :=
+        match entry_or_ctrlr_desig_prefix with
+        | .entry => false
+        | .ctrler => true
+      if ctrler_not_entry_bool then
+        -- Generate the Murphi desig; without the entries[ designator ]
+        let mur_desig : Murϕ.Designator := [murϕ_designator| next_state .core_[j] .£ctrler_name_ .£one_ident]
+        mur_desig
+      else if is_indexable
       then
         -- if fifo, then make it with 
         -- the <struct_name>.<entries>[<struct>.tail]
@@ -2100,7 +1794,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_ident_list :=
     ident_matches_ident_list state_var_idents h
 
-    let ident_matches_ident_list := or ident_matches_ident_list (t.contains "curr_state")
+    let ident_matches_ident_list := or ident_matches_ident_list (t.contains "curr_state") || (t.contains "state")
     let t := t.map ( fun ident_str => if (ident_str == "curr_state") then "state" else ident_str)
 
     dbg_trace s!"State Var Identifier List: ({state_var_idents})"
@@ -2130,7 +1824,23 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- replace "i" with "<structure>.tail?"
       dbg_trace s!"Is this structure indexable: ({ctrler_ordering}, ({IndexableCtrlerTypesStrings}), {is_indexable})"
 
-      if is_indexable
+      let ctrler_name_ : String := ctrler_name.append "_"
+      let ctrler_not_entry_bool : Bool :=
+        match entry_or_ctrlr_desig_prefix with
+        | .entry => false
+        | .ctrler => true
+
+      -- let list_sum : List (ID ⊕ Murϕ.Expr) := list_ident_to_murphi_ID t
+      if ctrler_not_entry_bool then
+        let mur_desig : Murϕ.Designator := --[murϕ_designator| next_state .core_[j] .£ctrler_name_ .£h .£list_sum]
+          Murϕ.Designator.mk "next_state" ([
+          Sum.inl "core_",
+          Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+          Sum.inl ctrler_name_,
+          Sum.inl h
+          ] ++ (list_ident_to_murphi_ID t))
+        mur_desig
+      else if is_indexable
       then
         -- if ctrler is indexable, then gen the name with
         -- the <struct_name>.<entries>[<struct>.tail]
@@ -2369,9 +2079,10 @@ partial def ast_term_to_murphi_expr
         
 
         let murphi_designator : Designator :=
-        list_ident_to_murphi_designator_ctrler_var_check (
-          [ident]
-        ) (lst_ctrlers) src_ctrler_extracted (tail_entry) term_trans_info.specific_murphi_dest_expr
+          list_ident_to_murphi_designator_ctrler_var_check 
+          ([ident]) (lst_ctrlers) src_ctrler_extracted (tail_entry)
+          term_trans_info.specific_murphi_dest_expr
+          term_trans_info.translate_entry_or_ctrler
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2407,7 +2118,7 @@ partial def ast_term_to_murphi_expr
           else
             ( curr_ctrler_name, term_trans_info.curr_ctrler_designator_idx)
 
-        let murphi_designator := (
+        let murphi_designator : Murϕ.Designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           [ident]
           lst_ctrlers
@@ -2418,6 +2129,7 @@ partial def ast_term_to_murphi_expr
           
           -- will if none naturally if it is none
           specific_or_curr_designator_idx
+          term_trans_info.translate_entry_or_ctrler
         )
         let murphi_expr_designator :=
         Murϕ.Expr.designator murphi_designator
@@ -2438,7 +2150,7 @@ partial def ast_term_to_murphi_expr
       --   tail_or_entry.entry
       let tail_or_entry_or_custom := tail_or_entry.entry
 
-      let murphi_designator := (
+      let murphi_designator : Murϕ.Designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         [ident]
         lst_ctrlers
@@ -2447,6 +2159,7 @@ partial def ast_term_to_murphi_expr
         -- will if none naturally if it is none
         -- If we use the current_ctrler, use the curr_ctrler_designator_idx
         term_trans_info.curr_ctrler_designator_idx -- term_trans_info.specific_murphi_dest_expr
+        term_trans_info.translate_entry_or_ctrler
       )
       let murphi_expr_designator :=
       Murϕ.Expr.designator murphi_designator
@@ -2502,9 +2215,10 @@ partial def ast_term_to_murphi_expr
 
       -- then translate using the entry_keyword_dest
       let murphi_designator : Designator :=
-      list_ident_to_murphi_designator_ctrler_var_check (
-        lst_ident
-      ) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry) term_trans_info.specific_murphi_dest_expr
+        list_ident_to_murphi_designator_ctrler_var_check 
+        (lst_ident) (lst_ctrlers) (entry_keyword_dest) (tail_or_entry.entry)
+        term_trans_info.specific_murphi_dest_expr
+        term_trans_info.translate_entry_or_ctrler
 
       let murphi_expr_designator : Murϕ.Expr := 
       Murϕ.Expr.designator murphi_designator
@@ -2576,9 +2290,10 @@ partial def ast_term_to_murphi_expr
         else
         true
         let murphi_designator : Designator :=
-        list_ident_to_murphi_designator_ctrler_var_check (
-          lst_ident
-        ) (lst_ctrlers) src_ctrler_extracted tail_or_entry_or_custom/-(tail_or_entry.entry)-/ term_trans_info.specific_murphi_dest_expr
+          list_ident_to_murphi_designator_ctrler_var_check
+          (lst_ident) (lst_ctrlers) src_ctrler_extracted tail_or_entry_or_custom/-(tail_or_entry.entry)-/
+          term_trans_info.specific_murphi_dest_expr
+          term_trans_info.translate_entry_or_ctrler
 
         let murphi_expr_designator : Murϕ.Expr := 
         Murϕ.Expr.designator murphi_designator
@@ -2618,7 +2333,7 @@ partial def ast_term_to_murphi_expr
           else
             term_trans_info.specific_murphi_dest_expr
 
-        let murphi_designator := (
+        let murphi_designator : Murϕ.Designator := (
           list_ident_to_murphi_designator_ctrler_var_check
           lst_ident lst_ctrlers
           curr_ctrler_name
@@ -2626,6 +2341,7 @@ partial def ast_term_to_murphi_expr
           desig_idx -- term_trans_info.curr_ctrler_designator_idx -- term_trans_info.specific_murphi_dest_expr
           -- Note that curr_ctrler is likely
           -- the dest ctrler
+          term_trans_info.translate_entry_or_ctrler
         )
         let murphi_expr_designator :=
         Murϕ.Expr.designator murphi_designator
@@ -2662,13 +2378,14 @@ partial def ast_term_to_murphi_expr
         --   dbg_trace "BASIC ENTRY"
         --   tail_or_entry.entry
 
-      let murphi_designator := (
+      let murphi_designator : Murϕ.Designator := (
         list_ident_to_murphi_designator_ctrler_var_check
         lst_ident
         lst_ctrlers
         curr_ctrler_name
         tail_or_entry_or_custom
         term_trans_info.specific_murphi_dest_expr
+        term_trans_info.translate_entry_or_ctrler
       )
       let murphi_expr_designator :=
       Murϕ.Expr.designator murphi_designator
@@ -6136,6 +5853,7 @@ lst_stmts_decls
         list_ident_to_murphi_designator_ctrler_var_check
         lst_idents ctrlers_lst ctrler_name assigned_var_entry --tail_entry
         designator_idx --stmt_trans_info.specific_murphi_dest_expr
+        stmt_trans_info.translate_entry_or_ctrler
 
 -- AZ TODO CHECKPOINT:
 -- make this ast_expr_to_murphi_expr also
