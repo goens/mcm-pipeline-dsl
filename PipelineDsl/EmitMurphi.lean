@@ -40,23 +40,32 @@ def ctrler_to_record
 : Murϕ.TypeExpr -- record
 :=
   -- get the list of state vars,
-  let state_vars : List TypedIdentifier := ctrler.state_vars
+  let state_vars : List TypedIdentifier :=
+    if ctrler.init_trans.isSome then
+      ctrler.state_vars.get!
+    else if ctrler.ctrler_init_trans.isSome then
+      ctrler.ctrler_state_vars.get!
+    else
+      dbg_trace s!"Error, ctrler doesn't seem to match an entry-type or single state machine-type"
+      default
+      
   -- convert them from ast to murphi
   let murphi_decls : List Murϕ.Decl :=
-  state_vars.map (
-    λ typedident =>
-     let (tident, ident) :=
-      match typedident with
-      | TypedIdentifier.mk tident ident => (tident, ident)
+    state_vars.map (
+      λ typedident =>
+       let (tident, ident) :=
+        match typedident with
+        | TypedIdentifier.mk tident ident => (tident, ident)
 
-      let type_expr : Murϕ.TypeExpr :=
-      Murϕ.TypeExpr.previouslyDefined tident
+        let type_expr : Murϕ.TypeExpr :=
+        Murϕ.TypeExpr.previouslyDefined tident
 
-      let murphi_decl : Murϕ.Decl :=
-      Murϕ.Decl.var [ident] type_expr
+        let murphi_decl : Murϕ.Decl :=
+        Murϕ.Decl.var [ident] type_expr
 
-      murphi_decl
-  )
+        murphi_decl
+    )
+
   Murϕ.TypeExpr.record murphi_decls
 
 -- Probably want a gen func that gens the
@@ -136,9 +145,18 @@ def gen_murphi_file_decls
   -- Separate the "const decls"
   -- and the "type decls"
   let const_decls : List Murϕ.Decl := List.join (ctrler_records.map (λ records => records.const_decl_lst))
-  let ctrler_type_decl : List Murϕ.Decl := List.join (ctrler_records.map (
-  λ records => (([records.entry_state_decl].append records.range_enum_decl).concat records.entry_decl).concat records.ctrler_decl
-    ))
+  let ctrler_type_decl : List Murϕ.Decl := List.join (ctrler_records.map 
+  (λ records =>
+    let entry_decl : Option Murϕ.Decl := records.entry_decl
+    let entry_decl_list : List Murϕ.Decl :=
+      match entry_decl with
+      | Option.some decl_ => [decl_]
+      | Option.none => []
+    let ctrler_decls : List Murϕ.Decl := List.join
+      [[records.entry_state_decl], records.range_enum_decl, entry_decl_list, [records.ctrler_decl]]
+    ctrler_decls
+  )
+  )
 
   -- let entries : List Murϕ.Decl := ctrler_records.map ( λ records => records.entry_decl )
   -- let ctrlers : List Murϕ.Decl := ctrler_records.map ( λ records => records.ctrler_decl)

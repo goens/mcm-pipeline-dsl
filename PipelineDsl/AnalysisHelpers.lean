@@ -1,12 +1,8 @@
 import PipelineDsl.AST
 import PipelineDsl.Murphi
 
-open Pipeline
-open Murϕ
-
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
-
 -- Inst in Litmus Test
 inductive InstType
 | load : InstType
@@ -46,6 +42,9 @@ def IndexableCtrlerTypesStrings : List String := IndexableCtrlerTypes.map (fun c
 structure file_name_and_output where
 name : String
 murphi_code : Murϕ.Program
+
+open Pipeline
+open Murϕ
 
 structure controller_info where
   -- Name, like LQ, SQ, SB, etc.
@@ -182,7 +181,7 @@ open Murϕ in
 structure ctrler_decl_entry_decl_const_decl where
 -- Decl.type ctrl.name (TypeExpr.record, ID/String TypeExpr.record)
 ctrler_decl : Decl
-entry_decl : Decl -- Decl.type, ID/String TypeExpr.record
+entry_decl : Option Decl -- Decl.type, ID/String TypeExpr.record
 const_decl_lst : List Decl -- Decl.const, ID/String Expr.integerConst
 range_enum_decl : List Decl -- 
 entry_state_decl : Decl
@@ -241,218 +240,293 @@ def ast0048_generate_controller_murphi_record
   -- read the transition names
   -- build allowable states murphi enum
   -- Also add state for searching
+
+  let entry_or_ctrler : Bool :=
+    if ctrl.init_trans.isSome then
+      true
+    else if ctrl.ctrler_init_trans.isSome then
+      false
+    else
+      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrl})"
+        default
+
   let state_vars : List TypedIdentifier :=
-    ctrl.state_vars.get!
-  let murphi_state_vars : List Murϕ.Decl :=
-    state_vars.map (
-      λ dsl_typed_ident =>
-      let (typed, ident) :=
-      match dsl_typed_ident with
-      | TypedIdentifier.mk typed ident => (typed, ident)
+    if ctrl.init_trans.isSome then
+      ctrl.state_vars.get!
+    else if ctrl.ctrler_init_trans.isSome then
+      ctrl.ctrler_state_vars.get!
+    else
+      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrl})"
+      default
+  let transitions : List Description :=
+    if ctrl.init_trans.isSome then
+      ctrl.transition_list.get!
+    else if ctrl.ctrler_init_trans.isSome then
+      ctrl.ctrler_trans_list.get!
+    else
+      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrl})"
+      default
 
-        -- use ident for the Decl name
-        -- map type (typed) to a type for the decl
-        -- inductive Decl
-        --   | const : ID → Expr → Decl
-        --   | type  : ID → TypeExpr → Decl
-        --   | var   : List ID → TypeExpr → Decl
-        let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
+  -- dbg_trace s!"gen murphi_record for ctrler: ({ctrl})"
+  if !entry_or_ctrler then
+    -- ===== Gen the state vars for the ctrler
+    let murphi_state_vars : List Murϕ.Decl :=
+      state_vars.map (
+        λ dsl_typed_ident =>
+        let (typed, ident) :=
+        match dsl_typed_ident with
+        | TypedIdentifier.mk typed ident => (typed, ident)
 
-        Murϕ.Decl.var [ident] murphi_type_expr
-    )
+          -- use ident for the Decl name
+          -- map type (typed) to a type for the decl
+          -- inductive Decl
+          --   | const : ID → Expr → Decl
+          --   | type  : ID → TypeExpr → Decl
+          --   | var   : List ID → TypeExpr → Decl
+          let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
 
-  let murphi_decls_lst :=
+          Murϕ.Decl.var [ident] murphi_type_expr
+      )
+    let murphi_decls_list : List Murϕ.Decl :=
     murphi_state_vars.concat (
       Decl.var ["state"] (
         TypeExpr.previouslyDefined
         (ctrl.name.append "_state")
       )
     )
+    let murphi_ctrler_record : Murϕ.Decl :=
+      Decl.var [ctrl.name] (TypeExpr.record murphi_decls_list)
 
-  -- This is a record of what an entry looks like
-  let murphi_entry_record := TypeExpr.record murphi_decls_lst
-  -- make the controller record with a given num of entries
-  let murphi_entry_record_decl_name := (String.join [ctrl.name, "_entry_values"])
-  -- NOTE: key item to return for code gen
-  let murphi_entry_record_decl :=
-    Decl.type
-      murphi_entry_record_decl_name
-      murphi_entry_record
-  -- Get the num of entries in a controller
-  let num_entries :=
-    match ctrl.controller_descript with
-    | Description.controller ident stmt =>
-      match stmt with
-      | Statement.block lst_stmt =>
-        let num_entries_stmt :=
-        lst_stmt.filter (
-          λ stmt => match stmt with
-          | Statement.value_declaration typed_iden expr =>
-            match typed_iden with
-            | TypedIdentifier.mk tiden iden =>
-              if iden == "num_entries"
-                then true
-                else false
-          | _ => false
+    -- ===== Gen the ctrler's states     
+    let list_of_transition_names : List String :=
+      transitions.map λ trans => match trans with
+      | Pipeline.Description.state ident _ => ident
+      | _ => dbg_trace "shouldn't reach here???!"
+        panic! "TODO: Throw.."
+    let ctrler_entry_state :=
+      Murϕ.Decl.type (ctrl.name.append "_state") (
+      Murϕ.TypeExpr.enum list_of_transition_names)
+
+    let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl := {
+      ctrler_decl := murphi_ctrler_record,
+      entry_decl := Option.none,
+      const_decl_lst := [],
+      range_enum_decl := [],
+      entry_state_decl := ctrler_entry_state
+
+      }
+    ctrler_entry_const_decls
+  else
+    -- let state_vars : List TypedIdentifier :=
+    --   ctrl.state_vars.get!
+    let murphi_state_vars : List Murϕ.Decl :=
+      state_vars.map (
+        λ dsl_typed_ident =>
+        let (typed, ident) :=
+        match dsl_typed_ident with
+        | TypedIdentifier.mk typed ident => (typed, ident)
+
+          -- use ident for the Decl name
+          -- map type (typed) to a type for the decl
+          -- inductive Decl
+          --   | const : ID → Expr → Decl
+          --   | type  : ID → TypeExpr → Decl
+          --   | var   : List ID → TypeExpr → Decl
+          let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type typed
+
+          Murϕ.Decl.var [ident] murphi_type_expr
+      )
+
+    let murphi_decls_lst :=
+      murphi_state_vars.concat (
+        Decl.var ["state"] (
+          TypeExpr.previouslyDefined
+          (ctrl.name.append "_state")
         )
-        let num_entries_value_decl :=
-          match num_entries_stmt with
-          | [one] => one
-          -- Shouldn't have more than one, or an empty list?
-          | _ => dbg_trace "FAIL! No entries number for controller"
-            dbg_trace s!"Controller: {ctrl}"
-          default
-        let num_entries' :=
-          match num_entries_value_decl with
-          | Statement.value_declaration typed_iden expr =>
-            match expr with
-            | Expr.some_term term =>
-              match term with
-              | Term.const cnst =>
-                match cnst with
-                | Const.num_lit num => num
-                | _ => dbg_trace "FAIL!"
-                  default
+      )
+
+    -- This is a record of what an entry looks like
+    let murphi_entry_record := TypeExpr.record murphi_decls_lst
+    -- make the controller record with a given num of entries
+    let murphi_entry_record_decl_name := (String.join [ctrl.name, "_entry_values"])
+    -- NOTE: key item to return for code gen
+    let murphi_entry_record_decl :=
+      Decl.type
+        murphi_entry_record_decl_name
+        murphi_entry_record
+    -- Get the num of entries in a controller
+    let num_entries :=
+      match ctrl.controller_descript with
+      | Description.controller ident stmt =>
+        match stmt with
+        | Statement.block lst_stmt =>
+          let num_entries_stmt :=
+          lst_stmt.filter (
+            λ stmt => match stmt with
+            | Statement.value_declaration typed_iden expr =>
+              match typed_iden with
+              | TypedIdentifier.mk tiden iden =>
+                if iden == "num_entries"
+                  then true
+                  else false
+            | _ => false
+          )
+          let num_entries_value_decl :=
+            match num_entries_stmt with
+            | [one] => one
+            -- Shouldn't have more than one, or an empty list?
+            | _ => dbg_trace "FAIL! No entries number for controller"
+              dbg_trace s!"Controller: {ctrl}"
+            default
+          let num_entries' :=
+            match num_entries_value_decl with
+            | Statement.value_declaration typed_iden expr =>
+              match expr with
+              | Expr.some_term term =>
+                match term with
+                | Term.const cnst =>
+                  match cnst with
+                  | Const.num_lit num => num
+                  | _ => dbg_trace "FAIL!"
+                    default
+                | _ => default
               | _ => default
             | _ => default
-          | _ => default
-        num_entries'
+          num_entries'
+        -- another bad case
+        | _ => default
       -- another bad case
       | _ => default
-    -- another bad case
-    | _ => default
-  let num_entries_range_enum := Nat.sub num_entries 1
+    let num_entries_range_enum := Nat.sub num_entries 1
 
-  -- ========== Ctrler Num Entries =============
-  let ctrler_num_entries_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_CONST"])
-  let ctrler_num_entries_const :=
-    Decl.const
-    ctrler_num_entries_const_name
-    (Expr.integerConst num_entries)
+    -- ========== Ctrler Num Entries =============
+    let ctrler_num_entries_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_CONST"])
+    let ctrler_num_entries_const :=
+      Decl.const
+      ctrler_num_entries_const_name
+      (Expr.integerConst num_entries)
 
-  let ctrler_num_entries_name_designator :=
-    Designator.mk ctrler_num_entries_const_name []
+    let ctrler_num_entries_name_designator :=
+      Designator.mk ctrler_num_entries_const_name []
 
-  let ctrler_entries_count :=
-    TypeExpr.integerSubrange
-    (Expr.integerConst 0)
-    (Expr.designator ctrler_num_entries_name_designator)
-  let ctrler_entries_count_decl_name :=
-    -- (String.join [ctrl.name, "_COUNT_ENUM"])
-    (String.join [ctrl.name, "_count_t"])
-  -- NOTE: Another decl to return
-  let ctrler_entries_count_decl :=
-    Decl.type (
-      ctrler_entries_count_decl_name
-    )
-    ctrler_entries_count
+    let ctrler_entries_count :=
+      TypeExpr.integerSubrange
+      (Expr.integerConst 0)
+      (Expr.designator ctrler_num_entries_name_designator)
+    let ctrler_entries_count_decl_name :=
+      -- (String.join [ctrl.name, "_COUNT_ENUM"])
+      (String.join [ctrl.name, "_count_t"])
+    -- NOTE: Another decl to return
+    let ctrler_entries_count_decl :=
+      Decl.type (
+        ctrler_entries_count_decl_name
+      )
+      ctrler_entries_count
 
-  -- ========== Ctrler Entries Enum =============
-  let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_ENUM_CONST"])
-  let ctrler_num_entries_range_enum_const :=
-    Decl.const 
-    ctrler_num_entries_range_enum_const_name
-    (Expr.integerConst num_entries_range_enum)
+    -- ========== Ctrler Entries Enum =============
+    let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_ENUM_CONST"])
+    let ctrler_num_entries_range_enum_const :=
+      Decl.const 
+      ctrler_num_entries_range_enum_const_name
+      (Expr.integerConst num_entries_range_enum)
 
-  let ctrler_entries_enum_name_designator :=
-    Designator.mk ctrler_num_entries_range_enum_const_name []
+    let ctrler_entries_enum_name_designator :=
+      Designator.mk ctrler_num_entries_range_enum_const_name []
 
-  -- Build Decl for the range of values the entry can take
-  -- We should also build a constant to reference this
-  -- controller's upper bound on num of entries
-  let ctrler_entries_range :=
-    TypeExpr.integerSubrange
-    (Expr.integerConst 0)
-    (Expr.designator ctrler_entries_enum_name_designator)
-  let ctrler_entries_range_decl_name :=
-    -- (String.join [ctrl.name, "_ENTRIES_ENUM"])
-    (String.join [ctrl.name, "_idx_t"])
-  -- NOTE: Another decl to return
-  let ctrler_entries_range_decl :=
-    Decl.type (
-      ctrler_entries_range_decl_name
-    )
-    ctrler_entries_range
+    -- Build Decl for the range of values the entry can take
+    -- We should also build a constant to reference this
+    -- controller's upper bound on num of entries
+    let ctrler_entries_range :=
+      TypeExpr.integerSubrange
+      (Expr.integerConst 0)
+      (Expr.designator ctrler_entries_enum_name_designator)
+    let ctrler_entries_range_decl_name :=
+      -- (String.join [ctrl.name, "_ENTRIES_ENUM"])
+      (String.join [ctrl.name, "_idx_t"])
+    -- NOTE: Another decl to return
+    let ctrler_entries_range_decl :=
+      Decl.type (
+        ctrler_entries_range_decl_name
+      )
+      ctrler_entries_range
 
-  -- ========== Entries States =============
-  let transitions : List Description :=
-    ctrl.transition_list.get!
-  let list_of_transition_names : List String :=
-    transitions.map λ trans => match trans with
-    | Pipeline.Description.state ident _ => ident
-    | _ => dbg_trace "shouldn't reach here???!"
-      panic! "TODO: Throw.."
-  let ctrler_entry_state :=
-    Murϕ.Decl.type (ctrl.name.append "_state") (
-    Murϕ.TypeExpr.enum list_of_transition_names)
+    -- ========== Entries States =============
+    let list_of_transition_names : List String :=
+      transitions.map λ trans => match trans with
+      | Pipeline.Description.state ident _ => ident
+      | _ => dbg_trace "shouldn't reach here???!"
+        panic! "TODO: Throw.."
+    let ctrler_entry_state :=
+      Murϕ.Decl.type (ctrl.name.append "_state") (
+      Murϕ.TypeExpr.enum list_of_transition_names)
 
-  -- Now we can build a Decl for the controller record
-  let murphi_ctrler_record_name := "entries"
-  let decl_lst : List Murϕ.Decl := [
-    Decl.var [
-      -- Name of this array of entries
-      murphi_ctrler_record_name
-      ]
-    (
-    -- and the array entries and number of entries
-    TypeExpr.array
-    (
+    -- Now we can build a Decl for the controller record
+    let murphi_ctrler_record_name := "entries"
+    let decl_lst : List Murϕ.Decl := [
+      Decl.var [
+        -- Name of this array of entries
+        murphi_ctrler_record_name
+        ]
+      (
+      -- and the array entries and number of entries
+      TypeExpr.array
+      (
+        TypeExpr.previouslyDefined
+        ctrler_entries_range_decl_name
+      )
+      (
       TypeExpr.previouslyDefined
-      ctrler_entries_range_decl_name
-    )
-    (
-    TypeExpr.previouslyDefined
-    murphi_entry_record_decl_name
-    )
-    ),
-    -- Decl.var ["state"] (
-    --   TypeExpr.previouslyDefined
-    --   (ctrl.name.append "_state")
-    --   ),
-    -- Head, tail, and num_entries counter
-    Decl.var ["num_entries"] (
-    TypeExpr.previouslyDefined
-    ctrler_entries_count_decl_name
-    )
-  ]
-
-  let ctrler_ordering := get_ctrler_elem_ordering ctrl
-  let is_fifo : Bool := ctrler_ordering == FIFO.name
-  let total_decl_lst : List Murϕ.Decl :=
-    if is_fifo then
-      decl_lst ++ [
-      Decl.var ["head"] (
-      TypeExpr.previouslyDefined
-      ctrler_entries_range_decl_name
+      murphi_entry_record_decl_name
+      )
       ),
-      Decl.var ["tail"] (
+      -- Decl.var ["state"] (
+      --   TypeExpr.previouslyDefined
+      --   (ctrl.name.append "_state")
+      --   ),
+      -- Head, tail, and num_entries counter
+      Decl.var ["num_entries"] (
       TypeExpr.previouslyDefined
-      ctrler_entries_range_decl_name
-      )]
-    else
-      decl_lst
+      ctrler_entries_count_decl_name
+      )
+    ]
 
-  let murphi_ctrler_record :=
-    Decl.var [ctrl.name] (
-      TypeExpr.record total_decl_lst
-        -- The array of entries, which is also a record
-        -- NOTE: don't do msg buffers!
-    )
+    let ctrler_ordering := get_ctrler_elem_ordering ctrl
+    let is_fifo : Bool := ctrler_ordering == FIFO.name
+    let total_decl_lst : List Murϕ.Decl :=
+      if is_fifo then
+        decl_lst ++ [
+        Decl.var ["head"] (
+        TypeExpr.previouslyDefined
+        ctrler_entries_range_decl_name
+        ),
+        Decl.var ["tail"] (
+        TypeExpr.previouslyDefined
+        ctrler_entries_range_decl_name
+        )]
+      else
+        decl_lst
 
-  -- We must also send back the supporting Decl's
-  -- for translation/code generation
-  let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl := {
-    ctrler_decl := murphi_ctrler_record,
-    entry_decl := murphi_entry_record_decl,
-    const_decl_lst := [
-      ctrler_num_entries_range_enum_const,
-      ctrler_num_entries_const
-      ],
-    range_enum_decl := [ctrler_entries_range_decl, ctrler_entries_count_decl],
-    entry_state_decl := ctrler_entry_state
+    let murphi_ctrler_record :=
+      Decl.var [ctrl.name] (
+        TypeExpr.record total_decl_lst
+          -- The array of entries, which is also a record
+          -- NOTE: don't do msg buffers!
+      )
 
-    }
-  ctrler_entry_const_decls
+    -- We must also send back the supporting Decl's
+    -- for translation/code generation
+    let ctrler_entry_const_decls : ctrler_decl_entry_decl_const_decl := {
+      ctrler_decl := murphi_ctrler_record,
+      entry_decl := Option.some murphi_entry_record_decl,
+      const_decl_lst := [
+        ctrler_num_entries_range_enum_const,
+        ctrler_num_entries_const
+        ],
+      range_enum_decl := [ctrler_entries_range_decl, ctrler_entries_count_decl],
+      entry_state_decl := ctrler_entry_state
+
+      }
+    ctrler_entry_const_decls
 
 def find_speculative_ld_ctrler
 : String

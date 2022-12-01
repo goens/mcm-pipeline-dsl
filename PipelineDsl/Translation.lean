@@ -153,6 +153,7 @@ def entry_or_ctrler.toString : entry_or_ctrler → String
 | .ctrler => "Currently translating for a ctrler-type structure"
 instance : ToString entry_or_ctrler where toString := entry_or_ctrler.toString
 
+
 structure term_translation_info where
 term : Pipeline.Term
 lst_ctrlers : List controller_info
@@ -1138,6 +1139,7 @@ def create_transition_from_lst_stmts
 def ast0019_controller_info (ast : AST)
 : Except String (List controller_info)
 := do
+  dbg_trace "Start ctrler info extraction from parsed AST"
   -- Get all AST descriptions
   let ast_descriptions : List Description := match ast with | structure_descriptions lst => lst;
   -- -- Get description Identifiers / Names of controllers
@@ -1164,8 +1166,10 @@ def ast0019_controller_info (ast : AST)
 
   -- ======== New code
   -- let ctrlers_with_name_and_descript : List controller_info ← 
+  dbg_trace "Get ctrler info"
   let ctrlers : List (List (controller_info)) ← 
     (
+      dbg_trace "got each description, match to ctrler!"
     ast_descriptions.mapM (λ descript : Description =>
       match descript with
       | .controller ident stmt =>
@@ -1173,6 +1177,7 @@ def ast0019_controller_info (ast : AST)
         let ctrler_with_name : controller_info := set_ctrler_name ctrler ident
         let ctrler_with_descript : controller_info := ast0030_set_controller_descript ctrler_with_name descript
 
+        dbg_trace s!"ctrler_with_descript: ({ctrler_with_descript})"
         -- let ctrler_with_ctrler_state_machine : controller_info := 
         let option_init_state : Except String (List (Option Identifier)) := 
           match stmt with
@@ -1227,6 +1232,7 @@ def ast0019_controller_info (ast : AST)
           | [] => Option.none
           | [one] => one 
           | _ => Option.none
+        dbg_trace s!"option ctrler init: ({option_init})"
         let ctrler_with_ctrler_option_init : controller_info := {
           name := ctrler_with_descript.name
           controller_descript := ctrler_with_descript.controller_descript
@@ -1239,16 +1245,16 @@ def ast0019_controller_info (ast : AST)
           ctrler_state_vars := ctrler_with_descript.ctrler_state_vars
         }
         let parsed_states : List Description := ast0040_get_trans ast
-        let ctrler_with_ctrler_state_vars : controller_info :=
-          ctrl_set_ctrl_state_vars ctrler_with_ctrler_option_init
         let ctrler_with_option_ctrler_trans_list : controller_info :=
           if option_init.isSome then
             -- is some, so find states & state vars.
+            let ctrler_with_ctrler_state_vars : controller_info :=
+              ctrl_set_ctrl_state_vars ctrler_with_ctrler_option_init
             let ctrler_with_ctrler_states     : controller_info :=
               ctrl_find_ctrl_states ctrler_with_ctrler_state_vars parsed_states
             ctrler_with_ctrler_states
           else
-            ctrler_with_ctrler_state_vars
+            ctrler_with_ctrler_option_init
         
         -- Check if there's an "Entry" Descript
         let descripts : List Description :=
@@ -1340,29 +1346,33 @@ def ast0019_controller_info (ast : AST)
           | [] => Option.none
           | [one] => one 
           | _ => Option.none
+        dbg_trace s!"option entry init: ({option_entry_init})"
         let ctrler_with_option_entry_init : controller_info := {
-          name := ctrler_with_descript.name
-          controller_descript := ctrler_with_descript.controller_descript
-          entry_descript := ctrler_with_descript.entry_descript
+          name := ctrler_with_option_entry.name
+          controller_descript := ctrler_with_option_entry.controller_descript
+          entry_descript := ctrler_with_option_entry.entry_descript
           init_trans := option_entry_init
-          state_vars := ctrler_with_descript.state_vars
-          transition_list := ctrler_with_descript.transition_list
-          ctrler_init_trans := ctrler_with_descript.ctrler_init_trans
-          ctrler_trans_list := ctrler_with_descript.ctrler_trans_list
-          ctrler_state_vars := ctrler_with_descript.ctrler_state_vars
+          state_vars := ctrler_with_option_entry.state_vars
+          transition_list := ctrler_with_option_entry.transition_list
+          ctrler_init_trans := ctrler_with_option_entry.ctrler_init_trans
+          ctrler_trans_list := ctrler_with_option_entry.ctrler_trans_list
+          ctrler_state_vars := ctrler_with_option_entry.ctrler_state_vars
         }
+        dbg_trace s!"ctrler_with_option_entry_init: ({ctrler_with_option_entry_init})"
         
         -- ==== Get transitions, states ,etc...
-        let ctrler_with_entry_state_vars : controller_info :=
-          ast0035_ctrl_obj_set_vars ctrler_with_option_entry_init
         let ctrler_with_option_entry_states : controller_info :=
-          if ctrler_with_option_entry_init.entry_descript.isSome then
+          if ctrler_with_option_entry_init.init_trans.isSome then
             -- use old Functions to get etnry state vars and states
             let ctrler_with_entry_states : controller_info :=
-              ctrl_find_entry_states ctrler_with_entry_state_vars parsed_states
-            ctrler_with_entry_states
-          else
+              ctrl_find_entry_states ctrler_with_option_entry_init parsed_states
+            dbg_trace s!"ctrler_with_entry_states: ({ctrler_with_entry_states})"
+            let ctrler_with_entry_state_vars : controller_info :=
+              ast0035_ctrl_obj_set_vars ctrler_with_entry_states
             ctrler_with_entry_state_vars
+          else
+            ctrler_with_option_entry_init
+        dbg_trace s!"ctrler_with_option_entry_states: ({ctrler_with_option_entry_states})"
         pure [ctrler_with_option_entry_states]
       | _ => pure []
     ))
@@ -7735,7 +7745,7 @@ def dsl_trans_entry_descript_to_murphi_rule
   -/
   let ctrler_name_ : String := ctrler.name.append "_"
   let entry_is_at_state_expr := [murϕ|
-    core_[j] .£ctrler_name_ .entries[i] .state = £current_state_name
+    Sta .core_[j] .£ctrler_name_ .entries[i] .state = £current_state_name
   ]
   /-
   2. do a check on the transition, if we insert into
