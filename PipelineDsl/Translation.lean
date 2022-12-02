@@ -2477,6 +2477,16 @@ partial def ast_term_to_murphi_expr
         [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
       else if qual_name_list[1]! == "out_busy" && qual_name_list[0]! == "memory_interface"  then
         [murϕ| Sta .core_[j] .mem_interface_ .out_busy = true]
+      else if qual_name_list[1]! == "read" && qual_name_list[0]! == "reg_file" then
+        dbg_trace "== Translating reg_file read API =="
+        let reg_idx_expr := lst_expr[1]!
+        let reg_idx_trans_expr : expr_translation_info :=
+          assn_term_to_expr_translation_info term_trans_info reg_idx_expr
+        let reg_idx_murphi_expr : Murϕ.Expr := ast_expr_to_murphi_expr reg_idx_trans_expr
+
+        let reg_write_stmt : Murϕ.Expr :=
+        [murϕ| next_state .core_[j] .rf_ .rf[ £reg_idx_murphi_expr ]]
+        reg_write_stmt
       else
         let msg : String :=
           "Not prepared to handle other len 2 name functions..."++
