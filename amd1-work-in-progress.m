@@ -456,14 +456,18 @@ begin
   rob := Sta.core_[ j ].ROB_;
   mem_interface := Sta.core_[ j ].mem_interface_;
   -- Do this based on the stage state
-  if (Sta.core_[j].memory_unit_sender_.state = mem_unit_receiver) then
+  if (Sta.core_[j].memory_unit_sender_.state = mem_unit_receiver) &
+    (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
     if (mem_interface.in_msg.r_w = read) then
-      -- lq := associative_assign_ld(lq, mem_interface.in_msg);
-      --rob := associative_ack_st(rob, mem_interface.in_msg);
+      rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+      assert(rob.entries[rob_id].state = rob_commit_if_head);
+      rob.entries[rob_id].is_executed := true;
+      next_state.core[j].memory_unit_sender_.state := mem_unit_send_get_input;
     elsif (mem_interface.in_msg.r_w = write) then
-      -- rob := associative_ack_st(sb, mem_interface.in_msg);
+      error "first memory stage got a write, but it doesn't handle stores...";
     end;
-  elsif (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) then
+  elsif (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
+    (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
     if (mem_interface.in_msg.r_w = read) then
       rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
       assert(rob.entries[rob_id].state = rob_wait_load_replay);
