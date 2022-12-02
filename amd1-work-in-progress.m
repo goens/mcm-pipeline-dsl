@@ -35,7 +35,7 @@ INST : record
   imm : val_t;
   write_value : val_t;
 end;
-ROB_state : enum {rob_wait_load_replay, rob_commit_if_head, rob_await_creation, init_rob_entry};
+ROB_state : enum {rob_received_load_replay, rob_wait_load_replay, rob_commit_if_head, rob_await_creation, init_rob_entry};
 ROB_idx_t : 0 .. ROB_NUM_ENTRIES_ENUM_CONST;
 ROB_count_t : 0 .. ROB_NUM_ENTRIES_CONST;
 ROB_entry_values : record
@@ -44,6 +44,7 @@ ROB_entry_values : record
   is_executed : boolean;
   write_value : val_t;
   phys_addr : val_t;
+  replay_value : val_t;
   state : ROB_state;
 end;
 ROB : record
@@ -166,34 +167,34 @@ begin
   endfor;
 end;
 
-function associative_ack_st (
-  sb : ROB;
-  msg : MEM_REQ
-) : ROB;
-  var sb_new : ROB;
-  var sb_iter : ROB_idx_t;
-  var sb_count : ROB_count_t;
-  var curr_entry : ROB_entry_values;
-  var curr_entry_id : ROB_idx_t;
-  var seq_num : inst_count_t;
-begin
-  sb_new := sb;
-  sb_iter := 0;
-  sb_count := sb.num_entries;
-  seq_num := msg.seq_num;
-  for i : 0 .. ROB_NUM_ENTRIES_ENUM_CONST do
-    curr_entry_id := ((sb_iter + i) % ROB_NUM_ENTRIES_CONST);
-    curr_entry := sb_new.entries[ curr_entry_id ];
-    if (curr_entry.instruction.seq_num = seq_num) then
-      -- assert (curr_entry.state = rob_commit_time_await_st_mem_resp) "ACK ROB: Should be in await mem resp?";
-      curr_entry.state := rob_clear_lsq_store_head;
-      sb_new.entries[ curr_entry_id ] := curr_entry;
-      return sb_new;
-    end;
-  endfor;
-  error "didn't find the Load to write the read val into?";
-  return sb_new;
-end;
+-- function associative_ack_st (
+--   sb : ROB;
+--   msg : MEM_REQ
+-- ) : ROB;
+--   var sb_new : ROB;
+--   var sb_iter : ROB_idx_t;
+--   var sb_count : ROB_count_t;
+--   var curr_entry : ROB_entry_values;
+--   var curr_entry_id : ROB_idx_t;
+--   var seq_num : inst_count_t;
+-- begin
+--   sb_new := sb;
+--   sb_iter := 0;
+--   sb_count := sb.num_entries;
+--   seq_num := msg.seq_num;
+--   for i : 0 .. ROB_NUM_ENTRIES_ENUM_CONST do
+--     curr_entry_id := ((sb_iter + i) % ROB_NUM_ENTRIES_CONST);
+--     curr_entry := sb_new.entries[ curr_entry_id ];
+--     if (curr_entry.instruction.seq_num = seq_num) then
+--       -- assert (curr_entry.state = rob_commit_time_await_st_mem_resp) "ACK ROB: Should be in await mem resp?";
+--       curr_entry.state := rob_clear_lsq_store_head;
+--       sb_new.entries[ curr_entry_id ] := curr_entry;
+--       return sb_new;
+--     end;
+--   endfor;
+--   error "didn't find the Load to write the read val into?";
+--   return sb_new;
+-- end;
 
 function init_state_fn (
   
@@ -445,6 +446,7 @@ ruleset j : cores_t do
 ==>
  
   var next_state : STATE;
+  -- manually edited, don't touch..
   -- var lq : LSQ;
   var rob : ROB;
   var rob_id : ROB_idx_t;
@@ -487,24 +489,6 @@ begin
   Sta := next_state;
 
 end;
-end;
-
-
-ruleset j : cores_t do 
-  invariant "test_invariant"
-((Sta.core_[ j ].LSQ_.num_entries = 1) -> (Sta.core_[ j ].LSQ_.tail = ((Sta.core_[ j ].LSQ_.head + 1) % LSQ_NUM_ENTRIES_CONST)));
-end;
-
-rule "reset" 
-((Sta.core_[ 0 ].RENAME_.num_entries = 0) & ((Sta.core_[ 0 ].ROB_.num_entries = 0) & ((Sta.core_[ 0 ].IQ_.num_entries = 0) & ((Sta.core_[ 0 ].LSQ_.num_entries = 0) & ((Sta.core_[ 1 ].RENAME_.num_entries = 0) & ((Sta.core_[ 1 ].ROB_.num_entries = 0) & ((Sta.core_[ 1 ].IQ_.num_entries = 0) & (Sta.core_[ 1 ].LSQ_.num_entries = 0))))))))
-==>
- 
-  var next_state : STATE;
-
-begin
-  next_state := Sta;
-  Sta := init_state_fn();
-
 end;
 
 
@@ -578,7 +562,7 @@ ruleset j : cores_t; i : second_memory_stage_idx_t do
 
 begin
   next_state := Sta;
-  if (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
+  if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
     if (instruction.op = ld) then
       next_state.core_[ j ].mem_interface_.out_msg.addr := phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
@@ -690,7 +674,7 @@ ruleset j : cores_t; i : memory_unit_sender_idx_t do
 
 begin
   next_state := Sta;
-  if (next_state.core_[ j ].second_memory_stage_.state != second_mem_unit_receive) then
+  if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
     if (instruction.op = ld) then
       next_state.core_[ j ].mem_interface_.out_msg.addr := phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
