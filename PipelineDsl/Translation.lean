@@ -1743,11 +1743,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match entry_or_ctrlr_desig_prefix with
         | .entry => false
         | .ctrler => true
-      if ctrler_not_entry_bool then
-        -- Generate the Murphi desig; without the entries[ designator ]
-        let mur_desig : Murϕ.Designator := [murϕ_designator| next_state .core_[j] .£ctrler_name_ .£one_ident]
-        mur_desig
-      else if is_indexable
+      if is_indexable
       then
         -- if fifo, then make it with 
         -- the <struct_name>.<entries>[<struct>.tail]
@@ -1799,7 +1795,11 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           Sum.inl one_ident
         ]
         murphi_designator
-      else
+      else if ctrler_not_entry_bool then
+        -- Generate the Murphi desig; without the entries[ designator ]
+        let mur_desig : Murϕ.Designator := [murϕ_designator| next_state .core_[j] .£ctrler_name_ .£one_ident]
+        mur_desig
+      else 
         dbg_trace "WHAT CTRLER STRUCTURE IS NOT FIFO"
         Murϕ.Designator.mk one_ident []
     else
@@ -1830,8 +1830,16 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- If this matches then i should
       -- check if this var comes from
       -- a fifo structure to index into
+      let h_is_ctrler_type : Bool :=
+        (lst_ctrlers.filter (λ ctrl : controller_info => ctrl.name == h)).length > 0
+
       let ctrler_ordering :=
-        get_ctrler_elem_ordering this_ctrler
+        if !h_is_ctrler_type then
+          get_ctrler_elem_ordering this_ctrler
+        else
+          let h_ctrler : controller_info :=
+            get_ctrler_matching_name h lst_ctrlers
+          get_ctrler_elem_ordering h_ctrler
 
       let is_indexable : Bool :=
         IndexableCtrlerTypesStrings.contains ctrler_ordering
@@ -1842,35 +1850,17 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 
       let ctrler_name_ : String := ctrler_name.append "_"
 
-      let h_is_ctrler : Bool :=
-        (lst_ctrlers.filter (λ ctrl : controller_info => ctrl.name == h)).length > 0
-      -- let h_ctrler : controller_info :=
-      --   get_ctrler_matching_name h lst_ctrlers
+      -- let h_is_ctrler_type : Bool :=
+      --   (lst_ctrlers.filter (λ ctrl : controller_info => ctrl.name == h)).length > 0
 
       let ctrler_not_entry_bool : Bool :=
-        h_is_ctrler ||
+        h_is_ctrler_type ||
         match entry_or_ctrlr_desig_prefix with
         | .entry => false
         | .ctrler => true
 
       -- let list_sum : List (ID ⊕ Murϕ.Expr) := list_ident_to_murphi_ID t
-      if ctrler_not_entry_bool then
-        let mur_desig : Murϕ.Designator := --[murϕ_designator| next_state .core_[j] .£ctrler_name_ .£h .£list_sum]
-          if h_is_ctrler then
-            Murϕ.Designator.mk "next_state" ([
-            Sum.inl "core_",
-            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-            Sum.inl ( h.append "_" )
-            ] ++ (list_ident_to_murphi_ID t))
-          else
-            Murϕ.Designator.mk "next_state" ([
-            Sum.inl "core_",
-            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-            Sum.inl ctrler_name_,
-            Sum.inl h
-            ] ++ (list_ident_to_murphi_ID t))
-        mur_desig
-      else if is_indexable
+      if is_indexable
       then
         -- if ctrler is indexable, then gen the name with
         -- the <struct_name>.<entries>[<struct>.tail]
@@ -1926,7 +1916,23 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 
         dbg_trace s!"Generated Term Designator: ({murphi_designator})"
         murphi_designator
-      else
+      else if ctrler_not_entry_bool then
+        let mur_desig : Murϕ.Designator := --[murϕ_designator| next_state .core_[j] .£ctrler_name_ .£h .£list_sum]
+          if h_is_ctrler_type then
+            Murϕ.Designator.mk "next_state" ([
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ( h.append "_" )
+            ] ++ (list_ident_to_murphi_ID t))
+          else
+            Murϕ.Designator.mk "next_state" ([
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ctrler_name_,
+            Sum.inl h
+            ] ++ (list_ident_to_murphi_ID t))
+        mur_desig
+      else 
         dbg_trace "WHAT CTRLER STRUCTURE ISN'T FIFO?"
         Murϕ.Designator.mk h (list_ident_to_murphi_ID t)
     else
@@ -7485,7 +7491,7 @@ def dsl_trans_ctrler_to_murphi
   -/
   let ctrler_name_ : String := ctrler.name.append "_"
   let entry_is_at_state_expr := [murϕ|
-    core_[j] .£ctrler_name_ .state = £current_state_name
+    Sta .core_[j] .£ctrler_name_ .state = £current_state_name
   ]
 
   /-
@@ -7637,8 +7643,9 @@ def dsl_trans_ctrler_to_murphi
     dbg_trace lst_murphi_stmt
   dbg_trace "===== END TRANSLATION INFO ====="
 
-  let is_a_per_entry_rule : Bool :=
-    find_designator_with_expr_i lst_murphi_stmt
+  -- let is_a_per_entry_rule : Bool :=
+  --   -- find_designator_with_expr_i lst_murphi_stmt
+  --   false
   
   let rule_core_quantifier : Murϕ.Quantifier :=
       (
@@ -7650,15 +7657,15 @@ def dsl_trans_ctrler_to_murphi
       )
 
   let list_rule_quantifiers :=
-  if is_a_per_entry_rule then
-    let ruleset_buffer_idx := "i"
-    let ctrler_idx :=
-      TypeExpr.previouslyDefined (ctrler_name.append "_idx_t")
+  -- if is_a_per_entry_rule then
+  --   let ruleset_buffer_idx := "i"
+  --   let ctrler_idx :=
+  --     TypeExpr.previouslyDefined (ctrler_name.append "_idx_t")
 
-    [rule_core_quantifier].concat (
-      Quantifier.simple ruleset_buffer_idx ctrler_idx
-    )
-  else
+  --   [rule_core_quantifier].concat (
+  --     Quantifier.simple ruleset_buffer_idx ctrler_idx
+  --   )
+  -- else
     [rule_core_quantifier]
   -- ======= After the analysis ======
   let murphi_core_ruleset :=

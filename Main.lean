@@ -160,13 +160,33 @@ def main (args : List String): IO Unit := do
 -- ctrler_lst : List controller_info
 -- trans : Description -- Description.transition
   let all_rules : List Murϕ.Rule := List.join (
-    (List.join all_joined_ctrlers).map dsl_trans_entry_descript_to_murphi_rule)
+    (List.join all_joined_ctrlers).map 
+    ( λ dsl_trans : dsl_trans_info =>
+      let this_ctrler : controller_info :=
+        -- dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
+        get_ctrler_matching_name dsl_trans.ctrler_name dsl_trans.ctrler_lst
+      
+      if this_ctrler.init_trans.isSome then
+        dsl_trans_entry_descript_to_murphi_rule dsl_trans
+      else if this_ctrler.ctrler_init_trans.isSome then
+        let except_murphi_rule : Except String ( List Murϕ.Rule ) :=
+          dsl_trans_ctrler_to_murphi dsl_trans
+        match except_murphi_rule with
+        | .ok list_rule => list_rule
+        | .error msg => dbg_trace s!"Hit an error while translating a ctrler-type structure: ({msg})"
+          default
+      else
+        dbg_trace s!"A ctrler that doesn't have either an entry-type or ctrler-type init statement?"
+        default
+    )
+    )
   println! s!"All Rules:\n{all_rules}"
 
   -- translate other parts, and get the murphi file..
   let ctrler_names : List Identifier := ctrlers.map λ ctrler => ctrler.name
   let buffer_idx_seq_num_search_funcs := gen_buffer_ctrler_seq_num_search_func ctrler_names
   let (const_decls, ctrler_decls) := gen_murphi_file_decls ctrlers
+  println! s!"Ctrlers: ({ctrlers})"
 
 -- def compose_murphi_file_components
 -- -- Consts, like num entries per buffer-type ctrler
