@@ -35,7 +35,7 @@ INST : record
   imm : val_t;
   write_value : val_t;
 end;
-ROB_state : enum {rob_received_load_replay, rob_wait_load_replay, rob_commit_if_head, rob_await_creation, init_rob_entry};
+ROB_state : enum {rob_complete_store, rob_wait_store_completed, rob_received_load_replay, rob_wait_load_replay, rob_commit_if_head, rob_await_creation, init_rob_entry};
 ROB_idx_t : 0 .. ROB_NUM_ENTRIES_ENUM_CONST;
 ROB_count_t : 0 .. ROB_NUM_ENTRIES_CONST;
 ROB_entry_values : record
@@ -267,11 +267,29 @@ begin
         rob.entries[ i ].instruction.op := inval;
         rob.entries[ i ].instruction.seq_num := 0;
         rob.entries[ i ].is_executed := false;
+        rob.entries[ i ].phys_addr := 0;
+        rob.entries[ i ].write_value := 0;
         rob.entries[ i ].state := rob_await_creation;
       endfor;
       rob.head := 0;
       rob.tail := 0;
       rob.num_entries := 0;
+    end;
+    alias mem_stage_one : init_state.core_[ core ].memory_unit_sender_ do
+      for i : 0 .. CORE_INST_NUM do
+        mem_stage_one.instruction.op := inval;
+        mem_stage_one.instruction.seq_num := 0;
+        mem_stage_one.phys_addr := 0;
+        mem_stage_one.state := mem_unit_send_get_input;
+      endfor;
+    end;
+    alias mem_stage_two : init_state.core_[ core ].second_memory_stage_ do
+      for i : 0 .. CORE_INST_NUM do
+        mem_stage_two.instruction.op := inval;
+        mem_stage_two.instruction.seq_num := 0;
+        mem_stage_two.phys_addr := 0;
+        mem_stage_two.state := second_mem_unit_get_inputs;
+      endfor;
     end;
   endfor;
   alias rename_c0 : init_state.core_[ 0 ].RENAME_ do
@@ -458,13 +476,13 @@ begin
   rob := Sta.core_[ j ].ROB_;
   mem_interface := Sta.core_[ j ].mem_interface_;
   -- Do this based on the stage state
-  if (Sta.core_[j].memory_unit_sender_.state = mem_unit_receiver) &
+  if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver) &
     (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
     if (mem_interface.in_msg.r_w = read) then
       rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
       assert(rob.entries[rob_id].state = rob_commit_if_head);
       rob.entries[rob_id].is_executed := true;
-      next_state.core[j].memory_unit_sender_.state := mem_unit_send_get_input;
+      next_state.core_[j].memory_unit_sender_.state := mem_unit_send_get_input;
     elsif (mem_interface.in_msg.r_w = write) then
       error "first memory stage got a write, but it doesn't handle stores...";
     end;
@@ -477,7 +495,7 @@ begin
       rob.entries[rob_id].state := rob_received_load_replay;
     elsif (mem_interface.in_msg.r_w = write) then
       rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
-      assert(rob.entries[rob_id].state = rob_wait_store_complete);
+      assert(rob.entries[rob_id].state = rob_wait_store_completed);
       rob.entries[rob_id].state := rob_complete_store;
     end;
     next_state.core_[j].second_memory_stage_.state := second_mem_unit_get_inputs;
@@ -509,16 +527,16 @@ begin
         next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
       else
         if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) then
-          next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.instruction;
-          next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.phys_addr;
-          next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.write_value;
+          next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+          next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].phys_addr;
+          next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].write_value;
           next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_send;
           next_state.core_[ j ].ROB_.entries[ i ].state := rob_wait_load_replay;
         else
           if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = st) then
-            next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.instruction;
-            next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.phys_addr;
-            next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.write_value;
+            next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+            next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].phys_addr;
+            next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].write_value;
             next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_send;
             next_state.core_[ j ].ROB_.entries[ i ].state := rob_wait_store_completed;
           end;
@@ -553,34 +571,34 @@ end;
 end;
 
 
-ruleset j : cores_t; i : second_memory_stage_idx_t do 
+ruleset j : cores_t do 
   rule "second_memory_stage second_mem_unit_send ===> second_mem_unit_receive || second_mem_unit_receive" 
-(((Sta.core_[ j ].second_memory_stage_.entries[ i ].state = second_mem_unit_send) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
+(((Sta.core_[ j ].second_memory_stage_.state = second_mem_unit_send) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
-    if (instruction.op = ld) then
-      next_state.core_[ j ].mem_interface_.out_msg.addr := phys_addr;
+  if ((next_state.core_[ j ].memory_unit_sender_.state != mem_unit_send_get_input) & !((Sta.core_[ j ].mem_interface_.out_busy = true))) then
+    if (next_state.core_[ j ].second_memory_stage_.instruction.op = ld) then
+      next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
       next_state.core_[ j ].mem_interface_.out_msg.valid := true;
       next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
       next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-      next_state.core_[ j ].mem_interface_.out_msg.seq_num := instruction.seq_num;
+      next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].second_memory_stage_.instruction.seq_num;
       next_state.core_[ j ].mem_interface_.out_busy := true;
       next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_receive;
     else
-      if (instruction.op = st) then
-        next_state.core_[ j ].mem_interface_.out_msg.addr := phys_addr;
+      if (next_state.core_[ j ].second_memory_stage_.instruction.op = st) then
+        next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
         next_state.core_[ j ].mem_interface_.out_msg.r_w := write;
-        next_state.core_[ j ].mem_interface_.out_msg.value := write_value;
+        next_state.core_[ j ].mem_interface_.out_msg.value := next_state.core_[ j ].second_memory_stage_.write_value;
         next_state.core_[ j ].mem_interface_.out_msg.valid := true;
         next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
         next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-        next_state.core_[ j ].mem_interface_.out_msg.seq_num := instruction.seq_num;
+        next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].second_memory_stage_.instruction.seq_num;
         next_state.core_[ j ].mem_interface_.out_busy := true;
         next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_receive;
       end;
@@ -592,17 +610,17 @@ end;
 end;
 
 
-ruleset j : cores_t; i : second_memory_stage_idx_t do 
+ruleset j : cores_t do 
   rule "second_memory_stage secnd_mem_init ===> second_mem_unit_get_inputs" 
-(Sta.core_[ j ].second_memory_stage_.entries[ i ].state = secnd_mem_init)
+(Sta.core_[ j ].second_memory_stage_.state = secnd_mem_init)
 ==>
  
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  phys_addr := 0;
-  write_value := 0;
+  next_state.core_[ j ].second_memory_stage_.phys_addr := 0;
+  next_state.core_[ j ].second_memory_stage_.write_value := 0;
   next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_get_inputs;
   Sta := next_state;
 
@@ -623,8 +641,8 @@ begin
   next_state := Sta;
   if (next_state.core_[ j ].IQ_.entries[ i ].instruction.op = ld) then
     if (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
-      next_state.core_[ j ].memory_unit_sender_.instruction := next_state.core_[ j ].IQ_.instruction;
-      next_state.core_[ j ].memory_unit_sender_.phys_addr := phys_addr;
+      next_state.core_[ j ].memory_unit_sender_.instruction := next_state.core_[ j ].IQ_.entries[ i ].instruction;
+      next_state.core_[ j ].memory_unit_sender_.phys_addr := next_state.core_[ j ].memory_unit_sender_.instruction.imm;
       next_state.core_[ j ].memory_unit_sender_.state := memory_unit_stage_send;
       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
       next_state.core_[ j ].IQ_.entries[ i ].state := iq_await_creation;
@@ -665,9 +683,9 @@ end;
 end;
 
 
-ruleset j : cores_t; i : memory_unit_sender_idx_t do 
+ruleset j : cores_t do 
   rule "memory_unit_sender memory_unit_stage_send ===> memory_unit_receiver" 
-((Sta.core_[ j ].memory_unit_sender_.entries[ i ].state = memory_unit_stage_send) & !(Sta.core_[ j ].mem_interface_.out_busy))
+((Sta.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
   var next_state : STATE;
@@ -675,13 +693,13 @@ ruleset j : cores_t; i : memory_unit_sender_idx_t do
 begin
   next_state := Sta;
   if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
-    if (instruction.op = ld) then
-      next_state.core_[ j ].mem_interface_.out_msg.addr := phys_addr;
+    if (next_state.core_[ j ].memory_unit_sender_.instruction.op = ld) then
+      next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].memory_unit_sender_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
       next_state.core_[ j ].mem_interface_.out_msg.valid := true;
       next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
       next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-      next_state.core_[ j ].mem_interface_.out_msg.seq_num := instruction.seq_num;
+      next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].memory_unit_sender_.instruction.seq_num;
       next_state.core_[ j ].mem_interface_.out_busy := true;
       next_state.core_[ j ].memory_unit_sender_.state := memory_unit_receiver;
     end;
@@ -692,16 +710,16 @@ end;
 end;
 
 
-ruleset j : cores_t; i : memory_unit_sender_idx_t do 
+ruleset j : cores_t do 
   rule "memory_unit_sender memory_unit_send_init ===> mem_unit_send_get_input" 
-(Sta.core_[ j ].memory_unit_sender_.entries[ i ].state = memory_unit_send_init)
+(Sta.core_[ j ].memory_unit_sender_.state = memory_unit_send_init)
 ==>
  
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  phys_addr := 0;
+  next_state.core_[ j ].memory_unit_sender_.phys_addr := 0;
   next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
   Sta := next_state;
 
@@ -725,7 +743,7 @@ ruleset j : cores_t; i : RENAME_idx_t do
 begin
   next_state := Sta;
   if (next_state.core_[ j ].RENAME_.head = i) then
-    if (!((Sta.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) & (!((Sta.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST)) & !((Sta.core_[ j ].LSQ_.num_entries = LSQ_NUM_ENTRIES_CONST)))) then
+    if (!((Sta.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) & !((Sta.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST))) then
       if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = st) then
       end;
       IQ_loop_break := false;
@@ -757,8 +775,6 @@ begin
       next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
       next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
       next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
-      next_state.core_[ j ].LSQ_.tail := ((Sta.core_[ j ].LSQ_.tail + 1) % LSQ_NUM_ENTRIES_CONST);
-      next_state.core_[ j ].LSQ_.num_entries := (Sta.core_[ j ].LSQ_.num_entries + 1);
       next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.op := inval;
       next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
       next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].state := issue_if_head;
