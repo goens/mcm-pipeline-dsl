@@ -745,6 +745,12 @@ def ast0032_get_entry_vars ( entry : Description ) :=
   | Description.entry iden stmt => ast0033_get_block stmt
   | _ => default
 
+def get_ctrler_descript_vars ( entry : Description ) :=
+  dbg_trace s!"The controller to get ctrler state vars for: ({entry})"
+  match entry with
+  | Description.controller iden stmt => ast0033_get_block stmt
+  | _ => default
+
 def ast0035_ctrl_obj_set_vars (ctrl : controller_info) : controller_info := {
   name := ctrl.name,
   controller_descript := ctrl.controller_descript,
@@ -765,7 +771,7 @@ def ctrl_set_ctrl_state_vars (ctrl : controller_info) : controller_info := {
   state_vars := ctrl.state_vars,
   transition_list := ctrl.transition_list
   ctrler_init_trans := ctrl.ctrler_init_trans,
-  ctrler_state_vars :=  ast0032_get_entry_vars ctrl.controller_descript,
+  ctrler_state_vars := get_ctrler_descript_vars ctrl.controller_descript,
   ctrler_trans_list := ctrl.ctrler_trans_list
   }
 
@@ -1835,7 +1841,14 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       dbg_trace s!"Is this structure indexable: ({ctrler_ordering}, ({IndexableCtrlerTypesStrings}), {is_indexable})"
 
       let ctrler_name_ : String := ctrler_name.append "_"
+
+      let h_is_ctrler : Bool :=
+        (lst_ctrlers.filter (λ ctrl : controller_info => ctrl.name == h)).length > 0
+      -- let h_ctrler : controller_info :=
+      --   get_ctrler_matching_name h lst_ctrlers
+
       let ctrler_not_entry_bool : Bool :=
+        h_is_ctrler ||
         match entry_or_ctrlr_desig_prefix with
         | .entry => false
         | .ctrler => true
@@ -1843,12 +1856,19 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       -- let list_sum : List (ID ⊕ Murϕ.Expr) := list_ident_to_murphi_ID t
       if ctrler_not_entry_bool then
         let mur_desig : Murϕ.Designator := --[murϕ_designator| next_state .core_[j] .£ctrler_name_ .£h .£list_sum]
-          Murϕ.Designator.mk "next_state" ([
-          Sum.inl "core_",
-          Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
-          Sum.inl ctrler_name_,
-          Sum.inl h
-          ] ++ (list_ident_to_murphi_ID t))
+          if h_is_ctrler then
+            Murϕ.Designator.mk "next_state" ([
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ( h.append "_" )
+            ] ++ (list_ident_to_murphi_ID t))
+          else
+            Murϕ.Designator.mk "next_state" ([
+            Sum.inl "core_",
+            Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+            Sum.inl ctrler_name_,
+            Sum.inl h
+            ] ++ (list_ident_to_murphi_ID t))
         mur_desig
       else if is_indexable
       then
@@ -2455,6 +2475,8 @@ partial def ast_term_to_murphi_expr
         let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
         let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
         [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
+      else if qual_name_list[1]! == "out_busy" && qual_name_list[0]! == "memory_interface"  then
+        [murϕ| Sta .core_[j] .mem_interface_ .out_busy = true]
       else
         let msg : String :=
           "Not prepared to handle other len 2 name functions..."++
@@ -4707,7 +4729,7 @@ lst_stmts_decls
               find_when_from_transition states_to_search api_func_name ctrler_name
             dbg_trace s!"dest_ctrler_name: ({dest_ctrler_name})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
-            dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
+            dbg_trace s!"When stmt for 'arbitrary' ({api_func_name}) API: ({when_stmt})"
             -- Convert to Murphi Stmt
             let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
             let when_stmt_trans_info : stmt_translation_info := {
@@ -4718,7 +4740,10 @@ lst_stmts_decls
               src_ctrler := 
               dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
               dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
-              stmt_trans_info.src_ctrler,
+              if stmt_trans_info.src_ctrler.isNone then
+                Option.some ctrler_name
+              else
+                Option.some stmt_trans_info.ctrler_name,
               lst_src_args :=
                 if stmt_trans_info.lst_src_args.isSome then
                   stmt_trans_info.lst_src_args
@@ -6118,7 +6143,14 @@ lst_stmts_decls
         -- If this isn't a FIFO / buffer structure
         -- Then do we just assign the unit's state?
         -- []
-        empty_stmt_decl_lsts
+        -- empty_stmt_decl_lsts
+        let ctrler_name_ : String := ctrler_name.append "_";
+        let stmts_decls : lst_stmts_decls := {
+          -- Should just be ctrler
+          stmts := [murϕ| next_state .core_[j] .£ctrler_name_ .state := £ident;],
+          decls := []
+        }
+        stmts_decls
     murphi_stmt
   -- TODO: Fill in these cases,
   -- These kinda go hand in hand,
@@ -6400,7 +6432,13 @@ lst_stmts_decls
         -- If this isn't a FIFO / buffer structure
         -- Then do we just assign the unit's state?
         -- []
-        empty_stmt_decl_lsts
+        let ctrler_name_ : String := ctrler_name.append "_";
+        let stmts_decls : lst_stmts_decls := {
+          -- Should just be ctrler
+          stmts := [murϕ| next_state .core_[j] .£ctrler_name_ .state := £ident;],
+          decls := []
+        }
+        stmts_decls
     murphi_stmt
   | Statement.complete ident =>
     -- NOTE: Copied from Statement.transition
@@ -6529,7 +6567,13 @@ lst_stmts_decls
         -- If this isn't a FIFO / buffer structure
         -- Then do we just assign the unit's state?
         -- []
-        empty_stmt_decl_lsts
+        let ctrler_name_ : String := ctrler_name.append "_";
+        let stmts_decls : lst_stmts_decls := {
+          -- Should just be ctrler
+          stmts := [murϕ| next_state .core_[j] .£ctrler_name_ .state := £ident;],
+          decls := []
+        }
+        stmts_decls
     murphi_stmt
 
 end -- END mutually recursive func region --
