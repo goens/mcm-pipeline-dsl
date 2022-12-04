@@ -331,6 +331,15 @@ function search_ROB_seq_num_idx (
 ) : ROB_idx_t;
 begin
   for i : ROB_idx_t do
+    -- put "rob seq_num search idx: (";
+    -- put i;
+    -- put ")\n";
+    -- put "Rob inst seq_num: (";
+    -- put ROB_.entries[ i ].instruction.seq_num;
+    -- put ")\n";
+    -- put "input seq_num: (";
+    -- put seq_num;
+    -- put ")\n";
     if (ROB_.entries[ i ].instruction.seq_num = seq_num) then
       return i;
     end;
@@ -471,6 +480,8 @@ ruleset j : cores_t do
   var mem_interface : MEM_INTERFACE;
 
 begin
+  put "core send into core";
+  put next_state.core_[ j ].memory_unit_sender_.state;
   next_state := Sta;
   -- lq := Sta.core_[ j ].LSQ_;
   rob := Sta.core_[ j ].ROB_;
@@ -479,8 +490,18 @@ begin
   if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver) &
     (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
     if (mem_interface.in_msg.r_w = read) then
-      rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+      rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].memory_unit_sender_.instruction.seq_num);
+      put "Rob id: (";
+      put rob_id;
+      put ")\n";
+      put "mem_seq_num in: (";
+      put mem_interface.in_msg.seq_num;
+      put ")\n";
+      put "mem_unit_sender_seq_num: (";
+      put Sta.core_[j].memory_unit_sender_.instruction.seq_num;
+      put ")\n";
       assert(rob.entries[rob_id].state = rob_commit_if_head);
+      -- assert();
       rob.entries[rob_id].is_executed := true;
       next_state.core_[j].memory_unit_sender_.state := mem_unit_send_get_input;
     elsif (mem_interface.in_msg.r_w = write) then
@@ -499,6 +520,8 @@ begin
       rob.entries[rob_id].state := rob_complete_store;
     end;
     next_state.core_[j].second_memory_stage_.state := second_mem_unit_get_inputs;
+  else
+    error "Got a message but don't know which unit to send it to!";
   endif;
   mem_interface.in_busy := false;
   -- next_state.core_[ j ].LSQ_ := lq;
@@ -573,14 +596,24 @@ end;
 
 ruleset j : cores_t do 
   rule "second_memory_stage second_mem_unit_send ===> second_mem_unit_receive || second_mem_unit_receive" 
-(((Sta.core_[ j ].second_memory_stage_.state = second_mem_unit_send) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
+--(
+--(
+(Sta.core_[ j ].second_memory_stage_.state = second_mem_unit_send) &
+--!(Sta.core_[ j ].mem_interface_.out_busy)) &
+!(Sta.core_[ j ].mem_interface_.out_busy)--)
 ==>
  
   var next_state : STATE;
 
 begin
+  put "Second mem unit stage executing?\n";
+  put Sta.core_[ j ].second_memory_stage_.state;
   next_state := Sta;
+
+  put next_state.core_[ j ].memory_unit_sender_.state;
+
   if ((next_state.core_[ j ].memory_unit_sender_.state != mem_unit_send_get_input) & !((Sta.core_[ j ].mem_interface_.out_busy = true))) then
+    put "";
     if (next_state.core_[ j ].second_memory_stage_.instruction.op = ld) then
       next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
@@ -604,8 +637,11 @@ begin
       end;
     end;
   end;
+  put "Done 'sending'?\n";
+  put next_state.core_[ j ].second_memory_stage_.state;
   Sta := next_state;
-
+  put Sta.core_[ j ].second_memory_stage_.state;
+  return;
 end;
 end;
 
