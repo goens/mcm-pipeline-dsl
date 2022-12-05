@@ -207,7 +207,7 @@ def dsl_type_to_murphi_type
   -- address    |    addr_idx_t
   -- u32        |    val_t
   -- packet     |    N/A
-  -- seq_num    |    inst_idx_t
+  -- seq_num    |    inst_count_t
   -- inst       |    INST
   -- boolean    |    boolean
   let murphi_type_name : ID :=
@@ -216,7 +216,7 @@ def dsl_type_to_murphi_type
   else if dsl_type == "u32" then
   "val_t"
   else if dsl_type == "seq_num" then
-  "inst_idx_t"
+  "inst_count_t"
   else if dsl_type == "inst" then
   "INST"
   else if dsl_type == "bool" then
