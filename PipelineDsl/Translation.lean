@@ -2497,10 +2497,11 @@ partial def ast_term_to_murphi_expr
         [murϕ| Sta .core_[j] .mem_interface_ .out_busy = true]
       else if qual_name_list[1]! == "read" && qual_name_list[0]! == "reg_file" then
         dbg_trace "== Translating reg_file read API =="
-        let reg_idx_expr := lst_expr[1]!
+        let reg_idx_expr := lst_expr[0]!
         let reg_idx_trans_expr : expr_translation_info :=
           assn_term_to_expr_translation_info term_trans_info reg_idx_expr
         let reg_idx_murphi_expr : Murϕ.Expr := ast_expr_to_murphi_expr reg_idx_trans_expr
+        dbg_trace s!"Reg_file idx: ({reg_idx_expr})"
 
         let reg_write_stmt : Murϕ.Expr :=
         [murϕ| next_state .core_[j] .rf_ .rf[ £reg_idx_murphi_expr ]]
@@ -5471,7 +5472,7 @@ partial def dsl_type_to_murphi_type_string
   else if dsl_type == "u32" then
     "val_t"
   else if dsl_type == "seq_num" then
-    "inst_idx_t"
+    "inst_count_t"
   else if dsl_type == "inst" then
     "INST"
   else
@@ -5490,7 +5491,7 @@ partial def murphi_type_to_null
     Murϕ.Expr.integerConst 0
   else if murphi_type == "val_t" then
     Murϕ.Expr.integerConst 0
-  else if murphi_type == "inst_idx_t" then
+  else if murphi_type == "inst_count_t" then
     Murϕ.Expr.integerConst 0
   else
     let msg : String :=
