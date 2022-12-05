@@ -4680,7 +4680,7 @@ lst_stmts_decls
               translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
             }
 
-            let ctrler_idx : String := dest_ctrler_name.append "_idx"
+            let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
             -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
             let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
             let ctrler_squash_idx_expr : Murϕ.Expr := [murϕ| £ctrler_squash_idx]
