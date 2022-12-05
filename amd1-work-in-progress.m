@@ -40,7 +40,7 @@ ROB_idx_t : 0 .. ROB_NUM_ENTRIES_ENUM_CONST;
 ROB_count_t : 0 .. ROB_NUM_ENTRIES_CONST;
 ROB_entry_values : record
   instruction : INST;
-  seq_num : inst_idx_t;
+  seq_num : inst_count_t;
   is_executed : boolean;
   write_value : val_t;
   phys_addr : val_t;
@@ -65,7 +65,7 @@ IQ_idx_t : 0 .. IQ_NUM_ENTRIES_ENUM_CONST;
 IQ_count_t : 0 .. IQ_NUM_ENTRIES_CONST;
 IQ_entry_values : record
   instruction : INST;
-  seq_num : inst_idx_t;
+  seq_num : inst_count_t;
   state : IQ_state;
 end;
 IQ : record
@@ -517,6 +517,8 @@ begin
       assert(rob.entries[rob_id].state = rob_wait_load_replay);
       rob.entries[rob_id].replay_value := mem_interface.in_msg.value;
       rob.entries[rob_id].state := rob_received_load_replay;
+      put "CORE-ACK: 2ND MEM: LOAD:..\n";
+      put mem_interface.in_msg;
     elsif (mem_interface.in_msg.r_w = write) then
       rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
       assert(rob.entries[rob_id].state = rob_wait_store_completed);
@@ -592,7 +594,7 @@ ruleset j : cores_t; i : ROB_idx_t do
 ==>
  
   var old_read : val_t;
-  var violating_seq_num : inst_idx_t;
+  var violating_seq_num : inst_count_t;
   var IQ_loop_break : boolean;
   var IQ_entry_idx : IQ_idx_t;
   var IQ_found_entry : boolean;
@@ -603,7 +605,13 @@ ruleset j : cores_t; i : ROB_idx_t do
 
 begin
   next_state := Sta;
-  old_read := next_state.core_[ j ].rf_.rf[ 0 ];
+  old_read := next_state.core_[ j ].rf_.rf[ next_state.core_[ j ].ROB_.entries[ i ].instruction.dest_reg ];
+  put "Old_read: (";
+  put old_read;
+  put ")\n";
+  put next_state.core_[ j ].ROB_.entries[ i ].replay_value;
+  put "Old RF: \n";
+  put next_state.core_[ j ].rf_;
   if (old_read = next_state.core_[ j ].ROB_.entries[ i ].replay_value) then
     next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
     next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
@@ -617,59 +625,36 @@ begin
     violating_seq_num := next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num;
     for ROB_squash_idx : ROB_idx_t do
       if true then
-        if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_wait_load_replay) then
+        if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
           if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
-            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-            IQ_loop_break := false;
-            if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
-              IQ_loop_break := true;
-            end;
-            IQ_entry_idx := 0;
-            IQ_found_entry := false;
-            IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
-            IQ_offset := 0;
-            while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
-              IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
-              if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
-                IQ_found_entry := true;
-              end;
-              if (IQ_offset != IQ_difference) then
-                IQ_offset := (IQ_offset + 1);
-              else
+            if next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed then
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+              IQ_loop_break := false;
+              if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
                 IQ_loop_break := true;
               end;
-            end;
-            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
-            if (IQ_found_entry = false) then
-              error "Couldn't find an empty entry to insert into";
-            end;
-            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_commit_if_head;
-          end;
-        elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
-          if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
-            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-            IQ_loop_break := false;
-            if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
-              IQ_loop_break := true;
-            end;
-            IQ_entry_idx := 0;
-            IQ_found_entry := false;
-            IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
-            IQ_offset := 0;
-            while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
-              IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
-              if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
-                IQ_found_entry := true;
+              IQ_entry_idx := 0;
+              IQ_found_entry := false;
+              IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
+              IQ_offset := 0;
+              while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
+                IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
+                if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
+                  next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction;
+                  next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
+                  IQ_found_entry := true;
+                end;
+                if (IQ_offset != IQ_difference) then
+                  IQ_offset := (IQ_offset + 1);
+                else
+                  IQ_loop_break := true;
+                end;
               end;
-              if (IQ_offset != IQ_difference) then
-                IQ_offset := (IQ_offset + 1);
-              else
-                IQ_loop_break := true;
+              next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
+              if (IQ_found_entry = false) then
+                error "Couldn't find an empty entry to insert into";
               end;
-            end;
-            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
-            if (IQ_found_entry = false) then
-              error "Couldn't find an empty entry to insert into";
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_commit_if_head;
             end;
           end;
         end;
@@ -684,6 +669,8 @@ begin
     next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
   end;
   Sta := next_state;
+  put "New RF: \n";
+  put next_state.core_[ j ].rf_;
 
 end;
 end;
@@ -707,15 +694,15 @@ begin
       else
         if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) then
           next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
-          next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].phys_addr;
-          next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].write_value;
+          next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].instruction.imm;
+          next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].instruction.write_value;
           next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_send;
           next_state.core_[ j ].ROB_.entries[ i ].state := rob_wait_load_replay;
         else
           if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = st) then
             next_state.core_[ j ].second_memory_stage_.instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
-            next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].phys_addr;
-            next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].write_value;
+            next_state.core_[ j ].second_memory_stage_.phys_addr := next_state.core_[ j ].ROB_.entries[ i ].instruction.imm;
+            next_state.core_[ j ].second_memory_stage_.write_value := next_state.core_[ j ].ROB_.entries[ i ].instruction.write_value;
             next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_send;
             next_state.core_[ j ].ROB_.entries[ i ].state := rob_wait_store_completed;
           end;
@@ -836,7 +823,7 @@ begin
   if (next_state.core_[ j ].IQ_.entries[ i ].instruction.op = ld) then
     if (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
       next_state.core_[ j ].memory_unit_sender_.instruction := next_state.core_[ j ].IQ_.entries[ i ].instruction;
-      next_state.core_[ j ].memory_unit_sender_.phys_addr := next_state.core_[ j ].memory_unit_sender_.instruction.imm;
+      next_state.core_[ j ].memory_unit_sender_.phys_addr := next_state.core_[ j ].IQ_.entries[ i ].instruction.imm;
       next_state.core_[ j ].memory_unit_sender_.state := memory_unit_stage_send;
       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
       next_state.core_[ j ].IQ_.entries[ i ].state := iq_await_creation;
@@ -966,6 +953,8 @@ begin
         error "Couldn't find an empty entry to insert into";
       end;
       next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].ROB_.entries[ i ].instruction.imm;
+      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].ROB_.entries[ i ].instruction.write_value;
       next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
       next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
       next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
