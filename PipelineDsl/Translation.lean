@@ -1858,6 +1858,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         match entry_or_ctrlr_desig_prefix with
         | .entry => false
         | .ctrler => true
+      dbg_trace s!"Translate term for ctrler-type? : ({ctrler_not_entry_bool})";
+      dbg_trace s!"h_is_ctrler_type: ({h_is_ctrler_type})";
+      dbg_trace s!"entry_or_ctrlr_desig_prefix: ({entry_or_ctrlr_desig_prefix})";
 
       -- let list_sum : List (ID ⊕ Murϕ.Expr) := list_ident_to_murphi_ID t
       if is_indexable
@@ -2211,7 +2214,8 @@ partial def ast_term_to_murphi_expr
     -- designator.
 
     let is_src_ctrler_none : Bool :=
-      src_ctrler == none
+      src_ctrler.isNone
+    dbg_trace s!"Translate Term.qualified_var, src_ctrler: ({src_ctrler})";
 
     let root_ident_option := lst_ident[0]?
     let root_ident := if root_ident_option.isSome then
@@ -2281,12 +2285,20 @@ partial def ast_term_to_murphi_expr
     -- check if the first item in the list
     -- belongs to the args list
 
-      let lst_src_args_extracted :=
+      let lst_src_args_extracted : List String :=
         if lst_src_args.isSome
         then
           lst_src_args.get!
         else
-          panic! "calling func didn't provide the list of src ctrler args!"
+          let src_ctrler_obj : controller_info :=
+            get_ctrler_matching_name src_ctrler.get! lst_ctrlers
+        --   panic! "calling func didn't provide the list of src ctrler args!"
+          dbg_trace s!"Term.qualified_var, call didn't pass lst_src_args, using ctrler state vars: ({src_ctrler_obj})"
+          src_ctrler_obj.state_vars.get!.map (
+            λ state_var : TypedIdentifier =>
+              match state_var with
+              | .mk _ ident => ident
+          )
       let ident_in_args : Bool :=
         lst_src_args_extracted.contains ident
 
