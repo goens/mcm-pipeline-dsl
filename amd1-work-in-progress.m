@@ -480,24 +480,26 @@ ruleset j : cores_t do
   var mem_interface : MEM_INTERFACE;
 
 begin
-  put "core send into core";
-  put next_state.core_[ j ].memory_unit_sender_.state;
+  put "CORE-ACK: core send into core\n";
   next_state := Sta;
+  put next_state.core_[ j ].memory_unit_sender_.state;
   -- lq := Sta.core_[ j ].LSQ_;
   rob := Sta.core_[ j ].ROB_;
   mem_interface := Sta.core_[ j ].mem_interface_;
   -- Do this based on the stage state
+  put "CORE-ACK: About to check if 1st mem unit or 2nd mem unit is the recipient..\n";
   if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver) &
     (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
+    put "CORE-ACK: 1st Mem unit is the recipient, check if load or store..\n";
     if (mem_interface.in_msg.r_w = read) then
       rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].memory_unit_sender_.instruction.seq_num);
-      put "Rob id: (";
+      put "CORE-ACK: Rob id: (";
       put rob_id;
       put ")\n";
-      put "mem_seq_num in: (";
+      put "CORE-ACK: mem_seq_num in: (";
       put mem_interface.in_msg.seq_num;
       put ")\n";
-      put "mem_unit_sender_seq_num: (";
+      put "CORE-ACK: mem_unit_sender seq_num: (";
       put Sta.core_[j].memory_unit_sender_.instruction.seq_num;
       put ")\n";
       assert(rob.entries[rob_id].state = rob_commit_if_head);
@@ -505,10 +507,11 @@ begin
       rob.entries[rob_id].is_executed := true;
       next_state.core_[j].memory_unit_sender_.state := mem_unit_send_get_input;
     elsif (mem_interface.in_msg.r_w = write) then
-      error "first memory stage got a write, but it doesn't handle stores...";
+      error "CORE-ACK: first memory stage got a write, but it doesn't handle stores...\n";
     end;
   elsif (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
     (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
+    put "CORE-ACK: Second mem unit is the recipient, check if load or store..\n";
     if (mem_interface.in_msg.r_w = read) then
       rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
       assert(rob.entries[rob_id].state = rob_wait_load_replay);
@@ -519,14 +522,167 @@ begin
       assert(rob.entries[rob_id].state = rob_wait_store_completed);
       rob.entries[rob_id].state := rob_complete_store;
     end;
+      put "CORE-ACK: Rob id: (";
+      put rob_id;
+      put ")\n";
+      put "CORE-ACK: mem_seq_num in: (";
+      put mem_interface.in_msg.seq_num;
+      put ")\n";
+      put "CORE-ACK: second_memory_stage seq_num: (";
+      put Sta.core_[j].second_memory_stage_.instruction.seq_num;
+      put ")\n";
     next_state.core_[j].second_memory_stage_.state := second_mem_unit_get_inputs;
   else
-    error "Got a message but don't know which unit to send it to!";
+    error "CORE-ACK: Got a message but don't know which unit to send it to!\n";
   endif;
+  put "CORE-ACK: Reached end of if stmt..\n";
   mem_interface.in_busy := false;
   -- next_state.core_[ j ].LSQ_ := lq;
   next_state.core_[ j ].ROB_ := rob;
   next_state.core_[ j ].mem_interface_ := mem_interface;
+  Sta := next_state;
+
+end;
+end;
+
+rule "reset" 
+((Sta.core_[ 0 ].RENAME_.num_entries = 0) &
+((Sta.core_[ 0 ].ROB_.num_entries = 0) &
+((Sta.core_[ 0 ].IQ_.num_entries = 0) &
+((Sta.core_[ 1 ].RENAME_.num_entries = 0) &
+((Sta.core_[ 1 ].ROB_.num_entries = 0) &
+((Sta.core_[ 1 ].IQ_.num_entries = 0)
+))))))
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  Sta := init_state_fn();
+
+end;
+
+
+ruleset j : cores_t; i : ROB_idx_t do 
+  rule "ROB rob_complete_store ===> rob_await_creation" 
+(Sta.core_[ j ].ROB_.entries[ i ].state = rob_complete_store)
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
+  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
+  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
+  next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+  next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
+  next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
+  Sta := next_state;
+
+end;
+end;
+
+
+ruleset j : cores_t; i : ROB_idx_t do 
+  rule "ROB rob_received_load_replay ===> rob_await_creation || rob_await_creation" 
+(Sta.core_[ j ].ROB_.entries[ i ].state = rob_received_load_replay)
+==>
+ 
+  var old_read : val_t;
+  var violating_seq_num : inst_idx_t;
+  var IQ_loop_break : boolean;
+  var IQ_entry_idx : IQ_idx_t;
+  var IQ_found_entry : boolean;
+  var IQ_difference : IQ_idx_t;
+  var IQ_offset : IQ_idx_t;
+  var IQ_curr_idx : IQ_idx_t;
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  old_read := next_state.core_[ j ].rf_.rf[ 0 ];
+  if (old_read = next_state.core_[ j ].ROB_.entries[ i ].replay_value) then
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
+    next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+    next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
+    next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
+  else
+    next_state.core_[ j ].rf_.rf[ next_state.core_[ j ].ROB_.entries[ i ].instruction.dest_reg ] := next_state.core_[ j ].ROB_.entries[ i ].replay_value;
+    violating_seq_num := next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num;
+    for ROB_squash_idx : ROB_idx_t do
+      if true then
+        if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_wait_load_replay) then
+          if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+            IQ_loop_break := false;
+            if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
+              IQ_loop_break := true;
+            end;
+            IQ_entry_idx := 0;
+            IQ_found_entry := false;
+            IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
+            IQ_offset := 0;
+            while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
+              IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
+              if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
+                IQ_found_entry := true;
+              end;
+              if (IQ_offset != IQ_difference) then
+                IQ_offset := (IQ_offset + 1);
+              else
+                IQ_loop_break := true;
+              end;
+            end;
+            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
+            if (IQ_found_entry = false) then
+              error "Couldn't find an empty entry to insert into";
+            end;
+            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_commit_if_head;
+          end;
+        elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
+          if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+            next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+            IQ_loop_break := false;
+            if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
+              IQ_loop_break := true;
+            end;
+            IQ_entry_idx := 0;
+            IQ_found_entry := false;
+            IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
+            IQ_offset := 0;
+            while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
+              IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
+              if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
+                IQ_found_entry := true;
+              end;
+              if (IQ_offset != IQ_difference) then
+                IQ_offset := (IQ_offset + 1);
+              else
+                IQ_loop_break := true;
+              end;
+            end;
+            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
+            if (IQ_found_entry = false) then
+              error "Couldn't find an empty entry to insert into";
+            end;
+          end;
+        end;
+      end;
+    endfor;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
+    next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+    next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
+    next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
+  end;
   Sta := next_state;
 
 end;
@@ -606,14 +762,15 @@ ruleset j : cores_t do
   var next_state : STATE;
 
 begin
-  put "Second mem unit stage executing?\n";
+  put "2ND: Second mem unit stage executing..?\n";
   put Sta.core_[ j ].second_memory_stage_.state;
   next_state := Sta;
 
   put next_state.core_[ j ].memory_unit_sender_.state;
 
-  if ((next_state.core_[ j ].memory_unit_sender_.state != mem_unit_send_get_input) & !((Sta.core_[ j ].mem_interface_.out_busy = true))) then
-    put "";
+  put "2ND: Check if mem out is busy or not..";
+  if (!(Sta.core_[ j ].mem_interface_.out_busy = true)) then
+    put "2ND: Mem out not busy, so check if inst type is ld or st..\n";
     if (next_state.core_[ j ].second_memory_stage_.instruction.op = ld) then
       next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
@@ -623,24 +780,25 @@ begin
       next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].second_memory_stage_.instruction.seq_num;
       next_state.core_[ j ].mem_interface_.out_busy := true;
       next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_receive;
+    elsif (next_state.core_[ j ].second_memory_stage_.instruction.op = st) then
+      next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
+      next_state.core_[ j ].mem_interface_.out_msg.r_w := write;
+      next_state.core_[ j ].mem_interface_.out_msg.value := next_state.core_[ j ].second_memory_stage_.write_value;
+      next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+      next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+      next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+      next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].second_memory_stage_.instruction.seq_num;
+      next_state.core_[ j ].mem_interface_.out_busy := true;
+      next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_receive;
     else
-      if (next_state.core_[ j ].second_memory_stage_.instruction.op = st) then
-        next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
-        next_state.core_[ j ].mem_interface_.out_msg.r_w := write;
-        next_state.core_[ j ].mem_interface_.out_msg.value := next_state.core_[ j ].second_memory_stage_.write_value;
-        next_state.core_[ j ].mem_interface_.out_msg.valid := true;
-        next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
-        next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-        next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].second_memory_stage_.instruction.seq_num;
-        next_state.core_[ j ].mem_interface_.out_busy := true;
-        next_state.core_[ j ].second_memory_stage_.state := second_mem_unit_receive;
-      end;
-    end;
+      error "2ND: ERROR: Inst type isn't ld or st\n";
+    endif;
   end;
-  put "Done 'sending'?\n";
+  put "2ND: Done 'sending'?\n";
   put next_state.core_[ j ].second_memory_stage_.state;
   Sta := next_state;
   put Sta.core_[ j ].second_memory_stage_.state;
+  put "2ND: Updated the state, right..?\n";
   return;
 end;
 end;
