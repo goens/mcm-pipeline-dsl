@@ -2332,8 +2332,15 @@ partial def ast_term_to_murphi_expr
         -- if yes, we gen with the src
         -- ctrler's args
         -- the curr ctrler is for the src ctrler
+        dbg_trace s!"Translate Term.qualified_var,specific desig: ({term_trans_info.specific_murphi_dest_expr})"
+        dbg_trace s!"Translate Term.qualified_var,curr_ctrler desig: ({term_trans_info.curr_ctrler_designator_idx})"
         let entry_designator : Option Murϕ.Expr :=
-          term_trans_info.curr_ctrler_designator_idx
+          if term_trans_info.specific_murphi_dest_expr.isSome then
+            term_trans_info.specific_murphi_dest_expr
+          else if term_trans_info.curr_ctrler_designator_idx.isSome then
+            term_trans_info.curr_ctrler_designator_idx
+          else
+            Option.none
 
         let murphi_designator : Designator :=
           list_ident_to_murphi_designator_ctrler_var_check
@@ -2423,6 +2430,10 @@ partial def ast_term_to_murphi_expr
         -- else
         --   dbg_trace "BASIC ENTRY"
         --   tail_or_entry.entry
+
+      -- NOTE: Something to consider, but i don't think this is a good idea.
+      -- let desig_expr : Option Murϕ.Expr :=
+      --   if term_trans_info.specific_murphi_dest_expr then
 
       let murphi_designator : Murϕ.Designator := (
         list_ident_to_murphi_designator_ctrler_var_check
@@ -3076,7 +3087,10 @@ List (Murϕ.Expr × lst_stmts_decls)
         -- and so I assume the caller has provided this..?
         -- or I set the manually here.
         src_ctrler := trans_and_func.stmt_trans_info.src_ctrler, -- expected_struct,
-        lst_src_args := args,
+        lst_src_args := match args with
+        | [] => Option.none
+        | _ => Option.some args
+        ,
         func := expected_func,
         is_await := trans_and_func.stmt_trans_info.is_await,
         -- don't think we need this here, but...
@@ -4353,7 +4367,9 @@ lst_stmts_decls
                   stmt_trans_info.lst_src_args
                 else
                   -- THe list of args from the func call
-                  Option.some when_stmt_args
+                  match when_stmt_args with
+                  | [] => Option.none
+                  | _ => Option.some when_stmt_args
                 ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
@@ -4621,7 +4637,9 @@ lst_stmts_decls
                   stmt_trans_info.lst_src_args
                 else
                   -- THe list of args from the func call
-                  Option.some when_stmt_args
+                  match when_stmt_args with
+                  | [] => Option.none
+                  | _ => Option.some when_stmt_args
                 ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
@@ -4757,6 +4775,16 @@ lst_stmts_decls
             dbg_trace s!"dest_ctrler_name: ({dest_ctrler_name})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'arbitrary' ({api_func_name}) API: ({when_stmt})"
+
+            let when_stmt_args : List String :=
+              match (get_when_stmt_src_args when_stmt) with
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt args in 'Arbitrary' API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+              | .ok lst_args => lst_args
+
             -- Convert to Murphi Stmt
             let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
             let when_stmt_trans_info : stmt_translation_info := {
@@ -4773,10 +4801,17 @@ lst_stmts_decls
                 Option.some stmt_trans_info.ctrler_name,
               lst_src_args :=
                 if stmt_trans_info.lst_src_args.isSome then
-                  stmt_trans_info.lst_src_args
+                  if stmt_trans_info.lst_src_args.get!.length > 0 then
+                    stmt_trans_info.lst_src_args
+                  else
+                    match when_stmt_args with
+                    | [] => Option.none
+                    | _ => Option.some when_stmt_args
                 else
                   -- THe list of args from the func call
-                  Option.none
+                  match when_stmt_args with
+                  | [] => Option.none
+                  | _ => Option.some when_stmt_args
                 ,
               func := stmt_trans_info.func,
               is_await := stmt_trans_info.is_await,
