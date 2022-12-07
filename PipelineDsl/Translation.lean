@@ -2331,16 +2331,14 @@ partial def ast_term_to_murphi_expr
             panic! "calling func didn't provide the list of src ctrler args!"
         -- if yes, we gen with the src
         -- ctrler's args
-        let bool_thing : Bool :=
-        if src_ctrler_extracted == "" then
-        dbg_trace "===== BLANK STRING CTRLER NAME ====="
-        false
-        else
-        true
+        -- the curr ctrler is for the src ctrler
+        let entry_designator : Option Murϕ.Expr :=
+          term_trans_info.curr_ctrler_designator_idx
+
         let murphi_designator : Designator :=
           list_ident_to_murphi_designator_ctrler_var_check
           (lst_ident) (lst_ctrlers) src_ctrler_extracted tail_or_entry_or_custom/-(tail_or_entry.entry)-/
-          term_trans_info.specific_murphi_dest_expr
+          entry_designator -- term_trans_info.specific_murphi_dest_expr
           term_trans_info.translate_entry_or_ctrler
 
         let murphi_expr_designator : Murϕ.Expr := 
@@ -4784,14 +4782,16 @@ lst_stmts_decls
               is_await := stmt_trans_info.is_await,
               entry_keyword_dest := Option.some dest_ctrler_name,
               trans_obj := stmt_trans_info.trans_obj,
-              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              -- Swap curr ctrler designator & specific murphi desig
+              -- since we just call in the opposite order
+              specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx,
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
               -- By setting these fields, I assume we'll specifically mean to use this with 
               -- controllers with multiple elements, and thus we need to use 'tail_search'
               -- which indexes the dest with 'curr_idx'
               use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
-              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx -- murphi_dest_idx_expr
+              curr_ctrler_designator_idx := stmt_trans_info.specific_murphi_dest_expr -- murphi_dest_idx_expr
               lhs_var_is_just_default := false
               translate_entry_or_ctrler := entry_or_ctrler_translation
             }
@@ -4964,6 +4964,7 @@ partial def api_term_func_to_murphi_func
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+      -- TODO: Double check what is this?
       curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx --term_trans_info.specific_murphi_dest_expr 
       lhs_var_is_just_default := false
       translate_entry_or_ctrler := term_trans_info.translate_entry_or_ctrler
@@ -5889,6 +5890,9 @@ lst_stmts_decls
         else
           dbg_trace "Ctrler & Src ctrler are the different! in Assignment stmt translation"
           dbg_trace "Thus, use curr ctrler_designator since it's the lhs!"
+          -- if specific_murphi_idx_isSome then
+          --   ( stmt_trans_info.specific_murphi_dest_expr, tail_or_entry.custom_entry )
+          -- else
           if curr_ctrler_idx_isSome then
             ( stmt_trans_info.curr_ctrler_designator_idx, tail_or_entry.custom_entry )
           else
