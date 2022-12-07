@@ -953,8 +953,8 @@ begin
         error "Couldn't find an empty entry to insert into";
       end;
       next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].ROB_.entries[ i ].instruction.imm;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].ROB_.entries[ i ].instruction.write_value;
+      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].RENAME_.entries[ i ].instruction.imm;
+      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].RENAME_.entries[ i ].instruction.write_value;
       next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
       next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
       next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
