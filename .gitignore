@@ -1,2 +1,4 @@
 /build
 /lean_packages
+generated-*.m
+generated-*.cpp
