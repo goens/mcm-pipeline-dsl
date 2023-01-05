@@ -921,3 +921,123 @@ partial def find_when_stmt_from_transition
   default
 
   when_stmt
+
+def get_state_of_name (descripts : List Pipeline.Description) (name : String)
+: Except String (Description) := do
+  let state_descripts_match : (List Description) :=
+  List.join (
+  descripts.map ( λ descript =>
+    match descript with
+    | .state state_name stmt =>
+      if state_name == name then [descript]
+      else []
+    | _ => []
+    ))
+
+  -- let state_descript_match : Description :=
+  match state_descripts_match with
+  | [state] => return state
+  | [] =>
+    let msg : String :=
+    s!"Error: Couldn't find state named ({name}) in state list ({descripts})"
+    throw msg
+  | _::_ =>
+    let msg : String :=
+    s!"Error: Found multiple states named ({name}) in state list ({descripts})"
+    throw msg
+
+
+def get_ctrler_states (ctrler : controller_info) : Except String (List Description)
+:= do
+  let ctrler_states : List Description ←
+    if ctrler.transition_list.isSome then
+      pure ctrler.transition_list.get!
+    else if ctrler.ctrler_trans_list.isSome then
+      pure ctrler.ctrler_trans_list.get!
+    else
+      let msg : String :=
+        "Error: global perform controller doesn't have states! ({ctrler})"
+      throw msg
+
+structure ctrler_and_message_info where
+ctrler_name : String
+passed_args : List String
+stmts : List Pipeline.Statement
+
+def stmt_has_when (stmt : Pipeline.Statement)
+: Except String (List ctrler_and_message_info)
+:= do
+  let list_ctrler_info : List ctrler_and_message_info ←
+    match stmt with
+    | .when qual_name arg_names stmt_blk =>
+      match qual_name with
+      | .mk idents =>
+        let when_blk_stmts : List Pipeline.Statement ←
+          match stmt_blk with
+          | .block stmts => pure stmts
+          | _ =>
+            let msg : String := "Error"
+            throw msg
+        let src_ctrler_info : ctrler_and_message_info := {
+          ctrler_name := idents[0]!, passed_args := arg_names, stmts := when_blk_stmts}
+        pure [src_ctrler_info]
+    | .await (Option.none) stmts =>
+      let ctrler_info_list_list : List (List ctrler_and_message_info) ←
+        (stmts.mapM stmt_has_when)
+      let ctrler_info_list : (List ctrler_and_message_info) := List.join ctrler_info_list_list
+      pure ctrler_info_list
+    
+--     missing cases:
+-- (Statement.stall _)
+-- (Statement.return_stmt _)
+-- (Statement.block _)
+-- (Statement.stray_expr _)
+-- (Statement.complete (String.mk _))
+-- (Statement.reset (String.mk _))
+-- (Statement.transition (String.mk _))
+-- (Statement.await (some _) _)
+-- (Statement.listen_handle _ _)
+-- (Statement.conditional_stmt _)
+-- (Statement.variable_assignment _ _)
+-- (Statement.value_declaration _ _)
+-- (Statement.variable_declaration _)
+-- (Statement.labelled_statement _ _)
+  -- TODO finish this..
+
+  -- placeholder to make this type check
+  return []
+
+def get_communicating_ctrler_from_state (state : Description)
+: Except String (List controller_info)
+:= do
+  -- > Recursive search through the ctrler stmts,
+  -- search for await-when <ctrler>.
+  -- > A better search would check in more detail,
+  -- whether lines of code are executed or not
+  -- > But for a simple first implementation, it will just
+  -- search for await-when
+
+  -- > Use another function to do the recursive call on
+  -- statements
+  let state_stmt_blk : Pipeline.Statement ←
+    match state with
+    | .state _ /- name -/ stmt_blk => pure stmt_blk
+    | _ =>
+      let msg : String := s!"No stmt blk in state: ({state})"
+      throw msg
+
+  let stmts : List Statement ←
+    match state_stmt_blk with
+    | .block lst_stmt => pure lst_stmt
+    | _ =>
+      let msg : String := s!"State had a stmt that's not a block: ({state})"
+      throw msg
+  
+  let states : List Description :=
+    stmts.map (λ stmt : Pipeline.Statement =>
+      -- Use a function here, check if stmt is await-when
+      -- TODO: Finish this..
+      default
+    )
+
+  return []

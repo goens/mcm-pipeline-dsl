@@ -1492,6 +1492,260 @@ def more_generic_core_in_order_stall_transform
 
   return updated_ctrler_list
 
+-- === An in order algorithm based on identifying 2 points (a) (b) ===
+
+def get_ctrler_states_begin_perform
+(inst_type : InstType)
+(all_ctrlers : List controller_info)
+: Except String (controller_info × String)
+:= do
+  let get_expected_inst_send_mem_req_ctrler
+    : controller_info → List String :=
+    match inst_type with
+    | .load => get_ctrler_state_globally_performing_load
+    | .store => get_ctrler_state_globally_performing_store
+
+  let ctrlers_that_send_mem_req
+    : List (controller_info × List String) :=
+    -- use the function on list of ctrlers
+    List.join (
+    all_ctrlers.map ( λ ctrler : controller_info =>
+      let list_states_with_send_mem_req : List String :=
+        get_expected_inst_send_mem_req_ctrler ctrler
+
+      if list_states_with_send_mem_req.length > 0 then
+        [ (ctrler, list_states_with_send_mem_req) ]
+      else
+        []
+    ))
+  let (ctrler_that_send_mem_req, states_that_send_mem_req)
+    -- Couldn't get it to work with declaring it's type.. keeps expecting ':='
+    -- : (controller_info × (List String))
+    ←
+    match ctrlers_that_send_mem_req with
+    | [] =>
+      let msg : String :=
+        "ERROR: Unexpected in 'more_generic_core_in_order_stall_transform\n" ++
+        s!"Found no ctrlers that send InstType:({inst_type.toString}) request"
+      throw msg
+    | [one] => pure one
+    | _ :: _ =>
+      let msg : String :=
+        "ERROR: Unexpected in 'more_generic_core_in_order_stall_transform\n" ++
+        s!"Found multiple ctrlers that send InstType:({inst_type.toString}) request\n" ++
+        s!"Ctrlers & Found States: ({ctrlers_that_send_mem_req})"
+      throw msg
+  dbg_trace "***** send_mem_req controller"
+  dbg_trace s!"({ctrler_that_send_mem_req})"
+
+  /-
+  3. Gen the new stall state's name
+  -/
+  -- Get ctrler state sending the mem req
+  let global_perform_state_that_send_mem_req : String ←
+    match states_that_send_mem_req with
+    | [state_name] => pure state_name
+    | [] => 
+      let error_msg : String :=
+        "FAIL: more_generic_core_in_order_stall_transform found NO states\n" ++
+        s!" that send ({inst_type.toString}) requests!" ++
+        s!"\nCtrler: {ctrler_that_send_mem_req.name}"
+      throw error_msg
+    | _ => -- "empty list or multiple states that send a load req?"
+      dbg_trace "multiple states that send a load req?"
+      let error_msg : String :=
+        "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states\n" ++
+        s!" that send ({inst_type.toString}) requests!" ++
+        s!"\nCtrler: {ctrler_that_send_mem_req.name}" ++
+        s!"\nStates: {states_that_send_mem_req}"
+      throw error_msg
+
+  -- let new_stall_global_perform_state_name : String :=
+  --   String.join [ctrler_that_send_mem_req.name, "_stall_",
+  --     global_perform_state_that_send_mem_req]
+  
+  return (ctrler_that_send_mem_req, global_perform_state_that_send_mem_req)
+
+def get_ctrler_states_complete_perform
+(inst_type : InstType)
+(all_ctrlers : List controller_info)
+: Except String (controller_info × String)
+:= do
+  let get_expected_inst_await_completion_msg_ctrler
+    : controller_info → List String :=
+    match inst_type with
+    | .load => get_ctrler_state_awaiting_mem_load_resp
+    | .store => get_ctrler_state_awaiting_mem_store_resp
+  let ctrlers_that_await_mem_completion
+    : List (controller_info × List String) :=
+    -- use the function on list of ctrlers
+    List.join (
+    all_ctrlers.map ( λ ctrler : controller_info =>
+      let list_states_with_mem_access : List String :=
+        get_expected_inst_await_completion_msg_ctrler ctrler
+
+      -- let ctrler_and_states_that_await_mem_completion
+      if list_states_with_mem_access.length > 0 then
+        [(ctrler, list_states_with_mem_access)]
+      else
+        []
+    ))
+  let (ctrler_that_await_mem_completion, states_that_await_mem_completion)
+    -- Couldn't get it to work with declaring it's type.. keeps expecting ':='
+    -- : (controller_info × (List String))
+    ←
+    match ctrlers_that_await_mem_completion with
+    | [] =>
+      let msg : String :=
+        "ERROR: in 'more_generic_core_in_order_stall_transform\n" ++
+        s!"Found no ctrlers that await InstType:({inst_type.toString}) response"++
+        s!"\nCtrlrs_that_await_mem_completion: ({ctrlers_that_await_mem_completion})"++
+        s!"\nall_ctrlers: ({all_ctrlers})"
+      throw msg
+    | [one] => pure one
+    | _ :: _ =>
+      let msg : String :=
+        "ERROR: in 'more_generic_core_in_order_stall_transform\n" ++
+        s!"Found multiple ctrlers that await InstType:({inst_type.toString}) response\n" ++
+        s!"Ctrlers & Found States: ({ctrlers_that_await_mem_completion})"
+      throw msg
+  dbg_trace "***** await mem completion controller"
+  dbg_trace s!"({ctrler_that_await_mem_completion})"
+
+  let global_perform_state_that_send_mem_req : String ←
+    match states_that_await_mem_completion with
+    | [state_name] => pure state_name
+    | [] => 
+      let error_msg : String :=
+        "FAIL: more_generic_core_in_order_stall_transform found NO states\n" ++
+        s!" that send ({inst_type.toString}) requests!" ++
+        s!"\nCtrler: {ctrler_that_await_mem_completion.name}"
+      throw error_msg
+    | _ => -- "empty list or multiple states that send a load req?"
+      dbg_trace "multiple states that send a load req?"
+      let error_msg : String :=
+        "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states\n" ++
+        s!" that send ({inst_type.toString}) requests!" ++
+        s!"\nCtrler: {ctrler_that_await_mem_completion.name}" ++
+        s!"\nStates: {states_that_await_mem_completion}"
+      throw error_msg
+
+  return (ctrler_that_await_mem_completion, global_perform_state_that_send_mem_req)
+
+
+def backtrack_check_reachablility
+(all_ctrlers : List controller_info)
+(ctrler_to_check : controller_info)
+(state_to_check : String)
+-- also requires the ctrler & state that we will "stall" at
+-- so we know if any variables depend on this
+(stalled_ctrler : controller_info)
+(stall_state : String) -- String, we can just check the name
+: Except String (List Bool)
+:= do
+  -- a simple incomplete check: use the axiomatic properties, stored insts, number, and type, exec order
+  -- To check if it allows insts past.
+  -- a more complete check: check if states use or reference the stalled ctrler's state
+
+  -- implement a simple check for now
+
+  -- 1. Check if this current ctrler conflicts with the ctrler to stall on
+  let is_this_the_stall_ctrler : Bool :=
+    ctrler_to_check.name == stalled_ctrler.name
+  
+  if is_this_the_stall_ctrler then
+    -- must check the axiomatic properties:
+    -- stored insts, number, and type, exec order
+    -- To Check: 
+    -- Does the ctrler contain all older insts that are still in-flight?
+    -- Refine this to some axiomatic properties that I can check..
+    -- sth like insertion order, removal order, or removal before committed
+    pure []
+  else
+    -- 2. Find all states that lead up to the state of interest
+    -- For each of these states, find ctrlers that contact this state, and
+    -- which state contacts this state
+    -- 3. Repeat this for those states
+    -- 4. If we reach the beginning / first ctrler, then we can return nothing?
+    -- if we hit an fail in a check, then return false
+
+    -- Then go back to previous controllers, and check if they conflict or not
+
+    let ctrler_to_check_states : List Description ←
+      get_ctrler_states ctrler_to_check
+
+    let predecessor_states_of_state_to_check : List String := (
+      get_states_leading_to_given_state (state_to_check, ctrler_to_check_states))
+      ++ [state_to_check]
+      -- ++ [state_that_await_mem_completion] --, new_stall_state_name]
+    
+    -- Given the predecessor states, check each of them if they receive
+    -- a message from another controller (also check if they do something
+    -- like "search" another ctrler)
+    -- If so, return that ctrler & the state that sends the message...
+
+    pure []
+
+  -- The function calling this one should do something with the list
+  -- If it doesn't work, then it should try a previous ctrler state
+
+  -- scratch space for code
+  -- Sth to get the state
+  -- let complete_global_perform_state : Description ←
+  --   get_state_of_name ctrler_to_check state_to_check
+  
+def generic_in_order_stall_tfsm
+( all_ctrlers : List controller_info )
+-- -- first_inst -> second_inst, st -> ld, ld -> ld
+( first_inst_type : InstType)
+( second_inst_type : InstType)
+: Except String ( List controller_info )
+:= do
+  /-
+  1. Find point (a)
+  - Find the send global request for type1
+  - Find the complete global request for type2
+  - backtrace from type 2, to see if stalling the type 1 send ctrler
+  also prevents the type2 inst from reaching it's complete global request point
+  - This also requires checking some added info in the DSL code like specific
+  assigned variable parameters in the ctrler that I'll need to determine.
+  -/
+  let (global_perform_ctrler, global_perform_state_name) ←
+    get_ctrler_states_begin_perform second_inst_type all_ctrlers
+  
+  let begin_perform_ctrler_states : List Description ←
+    get_ctrler_states global_perform_ctrler
+  let global_perform_state : Description ←
+    get_state_of_name begin_perform_ctrler_states global_perform_state_name
+
+  -- Take a look at this ctrler, treat it as though there's an entry
+  -- that's at the send mem request state, and then do this backwards search
+  -- from the instruction we stall on's "complete" mem response state & ctrler
+  -- to see if it's reachable.
+  -- Could work forwards as well...
+
+  let (complete_global_perform_ctrler, complete_global_perform_state_name) ←
+    get_ctrler_states_complete_perform first_inst_type all_ctrlers
+  
+  let complete_perform_ctrler_states : List Description ←
+    get_ctrler_states complete_global_perform_ctrler
+  let complete_global_perform_state : Description ←
+    get_state_of_name complete_perform_ctrler_states global_perform_state_name
+
+  -- Start at this state, see if this ctrler & state is okay to stall at
+  -- by backtracking and seeing if it's reachable
+  -- The simpler way is just to check the ctrler properties, if it
+  -- lets other insts of the desired type go ahead?
+
+  /-
+  2. Find point (b)
+  - Find complete global request for type2
+  - check fwd states/ctrlers if they have the necesary info.
+  - This means checking some added info in the DSL code like specific
+  assigned variable parameters in the ctrler that I'll need to determine.
+  -/
+  return []
+
 -- def more_generic_core_in_order_stall_transform_with_back_trace
 -- -- ( ctrler : controller_info )
 -- ( all_ctrlers : List controller_info )
@@ -1500,291 +1754,3 @@ def more_generic_core_in_order_stall_transform
 -- ( second_inst : InstType)
 -- : Except String ( List controller_info )
 -- := do
---   dbg_trace "##### Reach here?"
---   -- What are the steps?
---   /-
---   1. Generically find the structure that awaits the response from mem.
---   Filter for a ctrler from the list, check
---   -/
---   -- Also, 
---   let get_expected_inst_await_completion_msg_ctrler
---     : controller_info → List String :=
---     match second_inst with
---     | .load => get_ctrler_state_awaiting_mem_load_resp
---     | .store => get_ctrler_state_awaiting_mem_store_resp
---   let ctrlers_that_await_mem_completion
---     : List (controller_info × List String) :=
---     -- use the function on list of ctrlers
---     List.join (
---     all_ctrlers.map ( λ ctrler : controller_info =>
---       let list_states_with_mem_access : List String :=
---         get_expected_inst_await_completion_msg_ctrler ctrler
-
---       -- let ctrler_and_states_that_await_mem_completion
---       if list_states_with_mem_access.length > 0 then
---         [(ctrler, list_states_with_mem_access)]
---       else
---         []
---     ))
---   let (ctrler_that_await_mem_completion, states_that_await_mem_completion)
---     -- Couldn't get it to work with declaring it's type.. keeps expecting ':='
---     -- : (controller_info × (List String))
---     ←
---     match ctrlers_that_await_mem_completion with
---     | [] =>
---       let msg : String :=
---         "ERROR: in 'more_generic_core_in_order_stall_transform\n" ++
---         s!"Found no ctrlers that await InstType:({second_inst.toString}) response"++
---         s!"\nCtrlrs_that_await_mem_completion: ({ctrlers_that_await_mem_completion})"++
---         s!"\nall_ctrlers: ({all_ctrlers})"
---       throw msg
---     | [one] => pure one
---     | _ :: _ =>
---       let msg : String :=
---         "ERROR: in 'more_generic_core_in_order_stall_transform\n" ++
---         s!"Found multiple ctrlers that await InstType:({second_inst.toString}) response\n" ++
---         s!"Ctrlers & Found States: ({ctrlers_that_await_mem_completion})"
---       throw msg
---   dbg_trace "***** await mem completion controller"
---   dbg_trace s!"({ctrler_that_await_mem_completion})"
-    
---   /-
---   2. After finding the ctrler & state(s) that await the mem response,
---   find the ctrler & state(s) that send a mem response
---   -/
---   let get_expected_inst_send_mem_req_ctrler
---     : controller_info → List String :=
---     match first_inst with
---     | .load => get_ctrler_state_globally_performing_load
---     | .store => get_ctrler_state_globally_performing_store
-
---   let ctrlers_that_send_mem_req
---     : List (controller_info × List String) :=
---     -- use the function on list of ctrlers
---     List.join (
---     all_ctrlers.map ( λ ctrler : controller_info =>
---       let list_states_with_send_mem_req : List String :=
---         get_expected_inst_send_mem_req_ctrler ctrler
-
---       if list_states_with_send_mem_req.length > 0 then
---         [ (ctrler, list_states_with_send_mem_req) ]
---       else
---         []
---     ))
---   let (ctrler_that_send_mem_req, states_that_send_mem_req)
---     -- Couldn't get it to work with declaring it's type.. keeps expecting ':='
---     -- : (controller_info × (List String))
---     ←
---     match ctrlers_that_send_mem_req with
---     | [] =>
---       let msg : String :=
---         "ERROR: Unexpected in 'more_generic_core_in_order_stall_transform\n" ++
---         s!"Found no ctrlers that send InstType:({first_inst.toString}) request"
---       throw msg
---     | [one] => pure one
---     | _ :: _ =>
---       let msg : String :=
---         "ERROR: Unexpected in 'more_generic_core_in_order_stall_transform\n" ++
---         s!"Found multiple ctrlers that send InstType:({first_inst.toString}) request\n" ++
---         s!"Ctrlers & Found States: ({ctrlers_that_send_mem_req})"
---       throw msg
---   dbg_trace "***** send_mem_req controller"
---   dbg_trace s!"({ctrler_that_send_mem_req})"
-
---   /-
---   3. Gen the new stall state's name
---   -/
---   -- Get ctrler state sending the mem req
---   let global_perform_state_that_send_mem_req : String ←
---     match states_that_send_mem_req with
---     | [state_name] => pure state_name
---     | [] => 
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found NO states\n" ++
---         s!" that send ({first_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_send_mem_req.name}"
---       throw error_msg
---     | _ => -- "empty list or multiple states that send a load req?"
---       dbg_trace "multiple states that send a load req?"
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states\n" ++
---         s!" that send load requests!" ++
---         s!"\nCtrler: {ctrler_that_send_mem_req.name}" ++
---         s!"\nStates: {states_that_send_mem_req}"
---       throw error_msg
-
---   let new_stall_global_perform_state_name : String :=
---     String.join [ctrler_that_send_mem_req.name, "_stall_",
---       global_perform_state_that_send_mem_req]
-
---   /-
---   4. Find all previous states to the await mem response state
---   that are not yet complete
---   -/
---   let state_that_await_mem_completion : String ←
---     match states_that_await_mem_completion with
---     | [] =>
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found NO states that await mem completion\n" ++
---         s!" that await ({second_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_await_mem_completion.name}"
---       throw error_msg 
---     | [one] => pure one
---     | _ :: _ =>
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states that await mem completion\n" ++
---         s!" that await ({second_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_await_mem_completion.name}" ++
---         s!"\nStates: {states_that_await_mem_completion}"
---       throw error_msg
-
---   let transitions : List Description :=
---     if ctrler_that_await_mem_completion.init_trans.isSome then
---       ctrler_that_await_mem_completion.transition_list.get!
---     else if ctrler_that_await_mem_completion.ctrler_init_trans.isSome then
---       ctrler_that_await_mem_completion.ctrler_trans_list.get!
---     else
---       dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler_that_await_mem_completion})"
---         default
---   let states_predecessor_to_await_mem_resp_state : List String := (
---     get_states_leading_to_given_state (state_that_await_mem_completion, transitions))
---     ++ [state_that_await_mem_completion] --, new_stall_state_name]
-
---   /-
---   Find the "complete" transition/state (where this State Machine finishes...)
---   Perhaps one can think of this as a sub-transaction in a larger transaction...
---   -/
---   let all_states_in_completion_ctrler : List Description := transitions
---   let list_list_completion_states : List (List String) ← (
---     all_states_in_completion_ctrler.mapM λ state : Description =>
---     match state with
---     | Description.state ident stmt =>
---       let list_complete_transitions : List String := get_complete_transition stmt
---       dbg_trace s!"Transitions that use 'complete' keyword: {list_complete_transitions}"
---       -- if there were entries, then get the 'complete' transition's ident
---       match list_complete_transitions with
---       | [] => pure []
---         -- should throw here? Yes, any state machine that "completes" should use the keyword
---         -- Nevermind, don't throw here. throw elsewhere.
---         -- let msg : String :=
---         -- "FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---         -- s!"State Machine ({ctrler_that_await_mem_completion.name}) has no 'complete' transition!\n"++
---         -- s!"Controller: ({ctrler_that_await_mem_completion})"
---         -- throw msg
---       | _ => pure [ident]
---     | _ => pure []
---     )
---   let list_completion_states : (List String) := List.join list_list_completion_states
---   let list_completion_states : (List String) ← match list_completion_states with
---   | [] =>
---     -- should throw here? Yes, any state machine that "completes" should use the keyword
---     -- Nevermind, don't throw here. throw elsewhere.
---     let msg : String :=
---     "FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---     s!"State Machine ({ctrler_that_await_mem_completion.name}) has no 'complete' transition!\n"++
---     s!"Controller: ({ctrler_that_await_mem_completion})"
---     throw msg
---   | _ => pure list_completion_states
-
---   dbg_trace s!"LIST OF COMPLETION STATES: {list_completion_states}"
-
---   /-
---   Get the rest of the states that are "before" this state machine's 'complete' state
---   -/
---   let states_reachable_from_predecessors_not_to_completion_state : List (List ( List String )) ←
---     states_predecessor_to_await_mem_resp_state.mapM (
---       λ state : String => 
---       let prep_traversal_info : state_graph_traversal_info := {
---         visited_states := [],
---         visiting := state,
---         completion_states := list_completion_states,
---         all_states := all_states_in_completion_ctrler
---       }
---       -- find_states_that_don't_lead_to_completion prep_traversal_info
---       match find_states_that_don't_lead_to_completion prep_traversal_info with
---       | .error msg => 
---         let msg' : String :=
---         s!"FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---         s!"ERROR: Searching for reachable states from await_mem_response:\n({msg})"
---         throw msg'
---       | .ok list_of_traversal_paths => pure list_of_traversal_paths
---       )
-
---   dbg_trace s!"REACHABLE PATHS: {states_reachable_from_predecessors_not_to_completion_state}"
-
---   /-
---   i.e. states that are before the await_mem_response state
---   -/
---   let non_completion_path_states :=
---    (List.join (List.join states_reachable_from_predecessors_not_to_completion_state)) ++
---    states_predecessor_to_await_mem_resp_state
---   let unique_non_completion_path_states := List.foldl (
---     λ (unique_states : List String) ( state : String ) =>
---       if unique_states.contains state then
---         unique_states
---       else
---         unique_states.concat state
---     ) [] non_completion_path_states
-  
---   dbg_trace s!"UNIQUE STATES: {unique_non_completion_path_states}"
-
---   let states_to_stall_on : List String := unique_non_completion_path_states.concat new_stall_global_perform_state_name
-
---   -- Build the tree of (curr_state == <state>) |
---   -- Use convert_state_names_to_dsl_or_tree_state_check
---   let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
---     convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
-
---   /-
---   5. Generate the new stall state
---   -/
-
---   /- Consider if original state has a listen-handle -/
---   -- Get the stmts
---   let handle_blks : Option (List HandleBlock) ←
---   get_ctrler_state_handle_blocks ctrler_that_send_mem_req global_perform_state_that_send_mem_req
-
---   let new_stall_state : Description :=
---     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
---     ctrler_that_await_mem_completion.name not_yet_gotten_mem_resp_state_check first_inst
---     handle_blks
---   dbg_trace s!"New stall state: \n{new_stall_state}"
-
---   /-
---   6. Update states that point to the previous perform
---   -/
---   let states_that_transition_to_original_global_perform : List String :=
---     get_states_directly_leading_to_given_state (global_perform_state_that_send_mem_req, ctrler_that_send_mem_req.transition_list)
---   dbg_trace s!"======= STATES directly leading to state {global_perform_state_that_send_mem_req}"
---   dbg_trace states_that_transition_to_original_global_perform
---   dbg_trace s!"======= END States that directly lead to state {global_perform_state_that_send_mem_req}"
-
---   let updated_state_list_transition_to_stall_state : List Description :=
---     update_state_transitions_matching_name_to_replacement_name
---     global_perform_state_that_send_mem_req new_stall_global_perform_state_name
---     states_that_transition_to_original_global_perform ctrler_that_send_mem_req.transition_list
-
---   let new_state_machine_with_stall_state : List Description :=
---     updated_state_list_transition_to_stall_state ++ [new_stall_state]
-  
---   let new_ctrler : controller_info := {
---     name := ctrler_that_send_mem_req.name,
---     controller_descript := ctrler_that_send_mem_req.controller_descript,
---     entry_descript := ctrler_that_send_mem_req.entry_descript,
---     init_trans := ctrler_that_send_mem_req.init_trans,
---     state_vars := ctrler_that_send_mem_req.state_vars,
---     transition_list := new_state_machine_with_stall_state
---   }
-
---   let updated_ctrler_list : List controller_info :=
---     all_ctrlers.map (
---       λ ctrler =>
---         if ctrler.name == ctrler_that_send_mem_req.name then
---           new_ctrler
---         else
---           ctrler
---     )
-  
---   -- dbg_trace s!"The updated ctrler list with the ctrler + stall state: ({updated_ctrler_list})"
-
---   return updated_ctrler_list
