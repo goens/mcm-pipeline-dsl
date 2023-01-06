@@ -987,15 +987,33 @@ def stmt_has_when (stmt : Pipeline.Statement)
       let ctrler_info_list : (List ctrler_and_message_info) := List.join ctrler_info_list_list
       pure ctrler_info_list
     
+    | .block stmts =>
+      let list_list_ctrler_msg_info : List (List ctrler_and_message_info) ←
+        stmts.mapM stmt_has_when
+      let list_ctrler_msg_info : (List ctrler_and_message_info) :=
+        List.join list_list_ctrler_msg_info
+      pure list_ctrler_msg_info
+    | .stray_expr _ =>
+      pure []
+    | .complete (String.mk _) => pure []
+    | .reset (String.mk _) => pure []
+    | .transition (String.mk _) => pure []
+    | .await (some _) _ =>
+      -- should try to check this case?
+      -- if the state the await checks?
+      -- If we implement a backwards check
+      -- that checks stmts backwards, we can just check the
+      -- transition destination state
+      pure []
+    | .stall _ => 
+      -- we don't use this right now
+      let msg : String := "Error: not using stall stmt yet."
+      throw msg
+    | .return_stmt _ =>
+      let msg : String := "Error: not using return stmt yet."
+      throw msg
+      
 --     missing cases:
--- (Statement.stall _)
--- (Statement.return_stmt _)
--- (Statement.block _)
--- (Statement.stray_expr _)
--- (Statement.complete (String.mk _))
--- (Statement.reset (String.mk _))
--- (Statement.transition (String.mk _))
--- (Statement.await (some _) _)
 -- (Statement.listen_handle _ _)
 -- (Statement.conditional_stmt _)
 -- (Statement.variable_assignment _ _)
