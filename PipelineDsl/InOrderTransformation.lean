@@ -1694,7 +1694,7 @@ def backtrack_check_reachablility
   -- let complete_global_perform_state : Description ←
   --   get_state_of_name ctrler_to_check state_to_check
   
-def generic_in_order_stall_tfsm
+def simple_in_order_stall_tfsm
 ( all_ctrlers : List controller_info )
 -- -- first_inst -> second_inst, st -> ld, ld -> ld
 ( first_inst_type : InstType)
@@ -1754,3 +1754,26 @@ def generic_in_order_stall_tfsm
 -- ( second_inst : InstType)
 -- : Except String ( List controller_info )
 -- := do
+
+def generic_in_order_stall_tfsm
+( all_ctrlers : List controller_info )
+-- -- first_inst -> second_inst, st -> ld, ld -> ld
+( first_inst_type : InstType)
+( second_inst_type : InstType)
+: Except String ( List controller_info )
+:= do
+  /-
+  1. Find starting point of insts in the uarch
+  -/
+  /-
+  2. Set 2 insts. Use this as the base state
+  -/
+  /-
+  3. We'd also need to track variables for entries or ctrlers
+  How do we track variables?
+  A list for each possible variable type?
+  And we use instances of this?
+  So {Ctrler entry, ctrler entry variables}.
+  And a ctrler can have N number of these entries...
+  -/
+  return []
