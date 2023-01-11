@@ -1768,12 +1768,37 @@ def generic_in_order_stall_tfsm
   /-
   2. Set 2 insts. Use this as the base state
   -/
-  /-
+  /- sth to setup a struct for "global" info of all ctrlers
   3. We'd also need to track variables for entries or ctrlers
   How do we track variables?
   A list for each possible variable type?
   And we use instances of this?
   So {Ctrler entry, ctrler entry variables}.
   And a ctrler can have N number of these entries...
+  -/
+
+  /-
+  4. Take the 2 instruction types, and do a back track
+  from the send mem request state and receive mem response
+  state to get all relevant state & ctrler paths
+  -/
+
+  /-
+  5. Go fwd from the inst src, progressing inst2 until
+  it reaches "send", only progress inst1 where necessary.
+  If inst1 reaches "receive", then terminate as false.
+  (inst2 is already ordered w.r.t. inst1)
+  If inst2 reaches "send", use this state (and all states
+  where inst1 is progressed & hasn't reached "receive" as
+  a system state to check if inst1 can still reach "receive")
+  -/
+
+  /-
+  6. Starting from the state found from the previous step,
+  check if inst1 can reach "receive" while inst2 is on it's
+  "send" state, if inst2 needs to be moved then stalling this 
+  state/ctrler creates deadlock, and we go back 1 ctrler &
+  it's corresponding state from this ctrler, and do the same
+  check.
   -/
   return []
