@@ -23,7 +23,7 @@ def InEqRel.toString : InEqRel → String
 | .LEq => "<="  
 | .GT => "<"
 | .GEq => "<="  
-| .Eq => "="
+| .Eq => "=="
 instance : ToString InEqRel where toString := InEqRel.toString
 
 def NatToString (nat : Nat) : String := toString nat
@@ -73,8 +73,8 @@ inductive QueueInfo
 --> boolean >, <, >=, <=, !=, ==
 --  && ||
 --> ∃ some other inst?
-inductive APICondition
-| Search : APICondition
+-- inductive APICondition
+-- | Search : APICondition
 
 abbrev AwaitTermStmt := Pipeline.Statement
 abbrev CondExpr := Pipeline.Expr
