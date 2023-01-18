@@ -18,6 +18,7 @@ inductive InEqRel
 | GT : InEqRel
 | GEq : InEqRel
 | Eq : InEqRel
+deriving Inhabited
 def InEqRel.toString : InEqRel → String
 | .LT => "<"
 | .LEq => "<="  
@@ -31,6 +32,7 @@ def NatToString (nat : Nat) : String := toString nat
 inductive Inequality
 | ValueIneq : VarName → InEqRel → Nat → Inequality
 | VarIneq : VarName → InEqRel → VarName → Inequality
+deriving Inhabited
 def Inequality.toString : Inequality → String
 | ValueIneq var_name in_eq nat => var_name ++ in_eq.toString ++ (NatToString nat)
 | VarIneq var_name1 in_eq var_name2 => var_name1 ++ in_eq.toString ++ var_name2
@@ -40,6 +42,7 @@ inductive BoolValue
 | True : BoolValue
 | False : BoolValue
 | TrueOrFalse : BoolValue
+deriving Inhabited
 def BoolValue.toString : BoolValue → String
 | .True => "True"
 | .False => "False"
@@ -49,6 +52,7 @@ instance : ToString BoolValue where toString := BoolValue.toString
 abbrev InequalitiesOrBool := Sum (List Inequality) BoolValue
 inductive ConstraintInfo
 | mk : VarName → InequalitiesOrBool → ConstraintInfo
+deriving Inhabited
 
 -- NOTE: Simple thing for now.
 -- Better to encode relevant positions..
@@ -57,16 +61,19 @@ inductive FIFOPosition
 | NotHead : FIFOPosition
 | Head : FIFOPosition
 | HeadOrNotHead : FIFOPosition -- probably some nicer way to write this
+deriving Inhabited
 
 inductive UnorderedEntry
 | Inactive : UnorderedEntry
 | Active : UnorderedEntry
+deriving Inhabited
 
 -- Queue info
 inductive QueueInfo
 | FIFOQueue : FIFOPosition → QueueInfo
 | UnorderedQueue : UnorderedEntry → QueueInfo
 | None : QueueInfo
+deriving Inhabited
 
 --TODO: Define Predicate
 -- Should consist of any conditions
@@ -81,17 +88,30 @@ abbrev CondExpr := Pipeline.Expr
 inductive Condition
 | DSLExpr : CondExpr → Condition
 | APICondition : AwaitTermStmt → Condition
-
-abbrev Predicate := List Condition
-inductive TransitionType
-| Transition : Predicate → StateName → TransitionType
-| Reset : Predicate → StateName → TransitionType
-| Completion : Predicate → StateName → TransitionType
+deriving Inhabited
 
 abbrev MessageName := String
 abbrev CtrlerName := String
 inductive Message
 | mk : MessageName → CtrlerName → Message
+deriving Inhabited
+
+abbrev Messages := List Message
+abbrev Effects := List Pipeline.Statement
+abbrev StateName := String
+abbrev Predicate := List Condition
+inductive TransitionType
+| Transition : TransitionType
+| Reset : TransitionType
+| Completion : TransitionType
+deriving Inhabited
+structure Transition where
+predicate : Predicate
+dest_state : StateName
+messages : Messages
+effects : Effects
+trans_type : TransitionType
+deriving Inhabited
 
 /-
 1. describe the nodes' contents
@@ -116,14 +136,20 @@ inductive Message
 - ctrler this belongs to
 --> get from a func?
 -/
-abbrev StateName := String
+-- abbrev StateName := String
 -- abbrev CtrlerName := String
 abbrev Stmts := List Pipeline.Statement
 abbrev VarDef := Pipeline.TypedIdentifier
 abbrev VarList := List VarDef
-abbrev Messages := List Message
-abbrev Transitions := List TransitionType
-inductive CDFGNode
-| mk: StateName → CtrlerName → VarList → Stmts → Transitions → Messages → QueueInfo → CDFGNode
+-- abbrev Messages := List Message
+abbrev Transitions := List Transition
+structure CDFGNode where
+current_state : StateName
+ctrler_name : CtrlerName
+vars : VarList
+transitions : Transitions
+queue_info : QueueInfo
+constraint_info : ConstraintInfo
+deriving Inhabited
 
 -- def CDFGNode.
