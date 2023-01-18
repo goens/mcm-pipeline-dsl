@@ -111,6 +111,8 @@ dest_state : StateName
 messages : Messages
 effects : Effects
 trans_type : TransitionType
+queue_info : QueueInfo
+constraint_info : ConstraintInfo -- Would come from state updates?
 deriving Inhabited
 
 /-
@@ -148,8 +150,6 @@ current_state : StateName
 ctrler_name : CtrlerName
 vars : VarList
 transitions : Transitions
-queue_info : QueueInfo
-constraint_info : ConstraintInfo
 deriving Inhabited
 
 -- def CDFGNode.
