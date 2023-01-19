@@ -921,3 +921,42 @@ partial def find_when_stmt_from_transition
   default
 
   when_stmt
+
+def get_ctrler_state_vars
+(ctrler : controller_info)
+: Except String (List TypedIdentifier)
+:= do
+  if ctrler.ctrler_state_vars.isSome then
+    pure ctrler.ctrler_state_vars.get!
+  else if ctrler.state_vars.isSome then
+    pure ctrler.state_vars.get!
+  else
+    let msg : String := s!"Error: Ctrler doesn't have state vars? ({ctrler})"
+    throw msg
+
+def get_ctrler_states
+(ctrler : controller_info)
+: Except String (List Pipeline.Description)
+:= do
+  if ctrler.ctrler_trans_list.isSome then
+    pure ctrler.ctrler_trans_list.get!
+  else if ctrler.transition_list.isSome then
+    pure ctrler.transition_list.get!
+  else
+    let msg : String := s!"Error: Ctrler doesn't have states? ({ctrler})"
+    throw msg
+
+def get_state_name_stmts
+(state : Pipeline.Description)
+: Except String (String × (List Pipeline.Statement))
+:= do
+  match state with
+  | .state identifier stmt =>
+    match stmt with
+    | .block lst_stmt => pure (identifier, lst_stmt)
+    | _ =>
+      let msg : String := s!"Error: Description .state doesn't have a stmt block ({state})"
+      throw msg
+  | _ =>
+    let msg : String := s!"Error: Was not passed a Description .state object ({state})"
+    throw msg
