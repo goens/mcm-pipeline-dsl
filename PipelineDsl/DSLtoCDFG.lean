@@ -82,6 +82,51 @@ def UpdateTransitionPredicate (transition : Transition) (condition : Condition)
   constraint_info := transition.constraint_info
 }
 
+def UpdateCompleteTransitionsListsDestType
+(transitions_lists : TransitionsLists)
+(dest_identifier : String)
+(trans_type : TransitionType)
+: TransitionsLists
+:=
+  let updated_transitions_dest : Transitions := transitions_lists.incomplete_transitions.map (
+    λ trans => UpdateTransitionDest trans dest_identifier)
+  let updated_transitions_type : Transitions := updated_transitions_dest.map (
+    λ trans => UpdateTransitionType trans trans_type)
+  let updated_transitions_list : TransitionsLists := {
+    incomplete_transitions := []
+    complete_transitions :=
+      transitions_lists.complete_transitions.append updated_transitions_type
+  }
+  updated_transitions_list
+
+def UpdateIncompleteTransitionsLists
+(transitions_lists : TransitionsLists)
+(incomplete_transitions : Transitions)
+: TransitionsLists
+:= {
+  incomplete_transitions := incomplete_transitions
+  complete_transitions := transitions_lists.complete_transitions
+}
+
+def PrepareIfExprCondAndStmts
+(incomplete_transitions : Transitions)
+(condition_expr : Pipeline.Expr)
+(cond_stmt : Pipeline.Statement)
+: TransitionsLists × (List Pipeline.Statement)
+:=
+  let transitions_with_added_cond : Transitions :=
+  incomplete_transitions.map ( λ transition =>
+      UpdateTransitionPredicate transition (Condition.DSLExpr condition_expr) );
+  let stmt_list : List Pipeline.Statement :=
+    match cond_stmt with
+    | .block lst_stmt => lst_stmt
+    | _ => [cond_stmt]
+  let transitions_list_with_added_cond : TransitionsLists := {
+    incomplete_transitions := transitions_with_added_cond
+    complete_transitions := []
+  }
+  (transitions_list_with_added_cond, stmt_list)
+
 def StmtsToTransitions
 (all_transitions : TransitionsLists)
 (stmts : List Pipeline.Statement)
@@ -111,58 +156,85 @@ def StmtsToTransitions
   let final_transitions_lists : TransitionsLists :=
     List.foldl (
       λ (transitions_lists : TransitionsLists) (stmt : Pipeline.Statement) =>
-      let transitions := transitions_lists.incomplete_transitions
+      -- let transitions := transitions_lists.incomplete_transitions
       -- let transition := match transitions with
       -- | [one] => one
       -- | _ => throw s!"Expecting just 1 transition? ({transitions})"
 
       -- if stmt is a branching path stmt, prepare that branch
       let transition_after_stmt := 
-      match stmt with
-      | .transition dest_identifier =>
-        -- update all transitions so far with the dest ident
-        let updated_transitions_dest : Transitions := transitions.map (
-          λ trans => UpdateTransitionDest trans dest_identifier)
-        let updated_transitions_type : Transitions := transitions.map (
-          λ trans => UpdateTransitionType trans TransitionType.Transition)
-        let updated_transitions_list : TransitionsLists := {
-          incomplete_transitions := []
-          complete_transitions :=
-            transitions_lists.complete_transitions.append updated_transitions_type
-        }
-        updated_transitions_list
-      | .conditional_stmt conditional =>
-        match conditional with
-        | .if_statement condition_expr cond_stmt =>
-          -- add condition to a new transition?
-          -- if it has a transition, add it to a list of completed transitions
-          -- if it has no transition, I somehow need to continue with
-          --   this new transition and original
-          --   Should be doable with a map, just update both of the transitions
-          let transitions_with_cond : Transitions :=
-          transitions.map (
-            λ transition =>
-              let new_transition_with_cond := 
-                UpdateTransitionPredicate transition (Condition.DSLExpr condition_expr)
-              new_transition_with_cond
-          );
-          let stmt_list : List Pipeline.Statement :=
-            match cond_stmt with
-            | .block lst_stmt => lst_stmt
-            | _ => [cond_stmt]
-          let transitions_list_with_cond : TransitionsLists := {
-            incomplete_transitions := transitions_with_cond
-            complete_transitions := all_transitions.complete_transitions
-          }
-          let list_trans := StmtsToTransitions transitions_list_with_cond stmt_list
-            -- check if any trans has it's dest_name added..
-          let updated_transitions_lists : TransitionsLists := {
-            -- Append, it's either new ones with if stmt code, or empty if there was a transition
-            incomplete_transitions := transitions ++ list_trans.incomplete_transitions,
-            -- Just update, since it's either the same, or has new ones from the if stmt
-            complete_transitions := list_trans.complete_transitions
-          }
-          updated_transitions_lists
+        match stmt with
+        | .transition dest_identifier =>
+          -- update all transitions with the dest ident
+          let updated_transitions_list : TransitionsLists := (UpdateCompleteTransitionsListsDestType
+            transitions_lists dest_identifier TransitionType.Transition)
+          updated_transitions_list
+        | .reset dest_identifier =>
+          let updated_transitions_list : TransitionsLists := (UpdateCompleteTransitionsListsDestType
+            transitions_lists dest_identifier TransitionType.Reset)
+          updated_transitions_list
+        | .complete dest_identifier =>
+          let updated_transitions_list : TransitionsLists := (UpdateCompleteTransitionsListsDestType
+            transitions_lists dest_identifier TransitionType.Completion)
+          updated_transitions_list
+        | .conditional_stmt conditional =>
+          match conditional with
+          | .if_statement condition_expr cond_stmt =>
+            -- add condition to a new transition?
+            -- if it has a transition, add it to a list of completed transitions
+            -- if it has no transition, I somehow need to continue with
+            --   this new transition and original
+            --   Should be doable with a map, just update both of the transitions
+            let (transitions_list_with_added_cond, stmt_list) :=
+              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions condition_expr cond_stmt
+            let list_trans := StmtsToTransitions transitions_list_with_added_cond stmt_list
+              -- check if any trans has it's dest_name added..
+            let updated_transitions_lists : TransitionsLists := {
+              -- Append any new incomplete transition paths
+              incomplete_transitions := transitions_lists.incomplete_transitions ++
+                list_trans.incomplete_transitions,
+              -- Append new completed transitions
+              complete_transitions := transitions_lists.complete_transitions ++ list_trans.complete_transitions
+            }
+            updated_transitions_lists
+          | .if_else_statement cond_expr if_true_stmts else_stmts =>
+            -- Repeat cond but here.
+            let (if_true_transitions_list_with_added_cond, if_true_stmt_list) :=
+              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions cond_expr if_true_stmts
+            let if_true_list_trans := StmtsToTransitions if_true_transitions_list_with_added_cond if_true_stmt_list
+
+            -- similar case, duplicated for the else case
+            let negated_else_cond : Pipeline.Expr := Pipeline.Expr.some_term (
+              Pipeline.Term.negation (Pipeline.Term.expr cond_expr))
+            let (if_false_transitions_list_with_added_cond, if_false_stmt_list) :=
+              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions negated_else_cond else_stmts
+            let if_false_list_trans := StmtsToTransitions if_false_transitions_list_with_added_cond if_false_stmt_list
+
+            let added_branches_transitions_lists : TransitionsLists := {
+              -- Append, it's either new ones with if stmt code, or empty if there was a transition
+              incomplete_transitions := if_true_list_trans.incomplete_transitions ++
+                if_false_list_trans.incomplete_transitions,
+              -- Just update, since it's either the same, or has new ones from the if stmt
+              complete_transitions := transitions_lists.complete_transitions ++
+                if_true_list_trans.complete_transitions ++ if_false_list_trans.complete_transitions
+            }
+            added_branches_transitions_lists
+        /-
+        -- TODO: Finish handling the rest of the stmt cases
+        (Pipeline.Statement.block _)
+        (Pipeline.Statement.stray_expr _)
+        (Pipeline.Statement.when _ _ _)
+        (Pipeline.Statement.await (some _) _)
+        (Pipeline.Statement.await none _)
+        (Pipeline.Statement.listen_handle _ _)
+        (Pipeline.Statement.variable_assignment _ _)
+        (Pipeline.Statement.value_declaration _ _)
+        (Pipeline.Statement.variable_declaration _)
+        (Pipeline.Statement.labelled_statement _ _)
+        -- these are not really used.
+        (Pipeline.Statement.stall _)
+        (Pipeline.Statement.return_stmt _)
+        -/
 
       transition_after_stmt
     ) (all_transitions) (stmts)
