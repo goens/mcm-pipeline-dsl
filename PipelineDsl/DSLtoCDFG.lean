@@ -47,6 +47,7 @@ def test_list := [1,2]
 structure TransitionsLists where
 incomplete_transitions : Transitions
 complete_transitions : Transitions
+deriving Inhabited
 
 def UpdateTransitionDest (transition : Transition) (dest : String)
 : Transition
@@ -55,6 +56,7 @@ def UpdateTransitionDest (transition : Transition) (dest : String)
   dest_state := dest
   messages := transition.messages
   effects := transition.effects
+  stmts := transition.stmts
   trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
@@ -66,17 +68,43 @@ def UpdateTransitionType (transition : Transition) (trans_type : TransitionType)
   dest_state := transition.dest_state
   messages := transition.messages
   effects := transition.effects
+  stmts := transition.stmts
   trans_type := trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
 }
-def UpdateTransitionPredicate (transition : Transition) (condition : Condition)
+def AppendTransitionPredicate (transition : Transition) (condition : Condition)
 : Transition
 := {
   predicate := transition.predicate ++ [condition]
   dest_state := transition.dest_state
   messages := transition.messages
   effects := transition.effects
+  stmts := transition.stmts
+  trans_type := transition.trans_type
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info
+}
+def AppendTransitionStmt (transition : Transition) (stmt : Pipeline.Statement)
+: Transition
+:= {
+  predicate := transition.predicate
+  dest_state := transition.dest_state
+  messages := transition.messages
+  effects := transition.effects
+  stmts := transition.stmts.concat stmt
+  trans_type := transition.trans_type
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info
+}
+def AppendTransitionEffect (transition : Transition) (effect : Pipeline.Statement)
+: Transition
+:= {
+  predicate := transition.predicate
+  dest_state := transition.dest_state
+  messages := transition.messages
+  effects := transition.effects.concat effect
+  stmts := transition.stmts
   trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
@@ -112,23 +140,66 @@ def PrepareIfExprCondAndStmts
 (incomplete_transitions : Transitions)
 (condition_expr : Pipeline.Expr)
 (cond_stmt : Pipeline.Statement)
-: TransitionsLists × (List Pipeline.Statement)
+: Transitions × (List Pipeline.Statement)
 :=
   let transitions_with_added_cond : Transitions :=
   incomplete_transitions.map ( λ transition =>
-      UpdateTransitionPredicate transition (Condition.DSLExpr condition_expr) );
+      AppendTransitionPredicate transition (Condition.DSLExpr condition_expr) );
   let stmt_list : List Pipeline.Statement :=
     match cond_stmt with
     | .block lst_stmt => lst_stmt
     | _ => [cond_stmt]
-  let transitions_list_with_added_cond : TransitionsLists := {
-    incomplete_transitions := transitions_with_added_cond
-    complete_transitions := []
-  }
-  (transitions_list_with_added_cond, stmt_list)
+  (transitions_with_added_cond , stmt_list)
+
+def PrepareAwaitWhenCondAndStmts
+(incomplete_transitions : Transitions)
+(await : AwaitStmt)
+(when's_stmt : Pipeline.Statement)
+: Transitions × (List Pipeline.Statement)
+:=
+  let transitions_with_added_cond : Transitions :=
+  incomplete_transitions.map ( λ transition =>
+      AppendTransitionPredicate transition (Condition.AwaitCondition await) );
+  let stmt_list : List Pipeline.Statement :=
+    match when's_stmt with
+    | .block lst_stmt => lst_stmt
+    | _ => [when's_stmt]
+  (transitions_with_added_cond , stmt_list)
+
+def PrepareHandleCondAndStmts
+(incomplete_transitions : Transitions)
+(handle_blk : Pipeline.HandleBlock)
+(handle_stmt : Pipeline.Statement)
+: Transitions × (List Pipeline.Statement)
+:=
+  let transitions_with_added_cond : Transitions :=
+  incomplete_transitions.map ( λ transition =>
+      AppendTransitionPredicate transition (Condition.HandleCondition handle_blk) );
+  let stmt_list : List Pipeline.Statement :=
+    match handle_stmt with
+    | .block lst_stmt => lst_stmt
+    | _ => [handle_stmt]
+  (transitions_with_added_cond , stmt_list)
+
+def EmptyTransitionsLists : TransitionsLists :=
+{incomplete_transitions := [], complete_transitions := []}
+
+def AppendTransitionMessages (transition : Transition) (message : Message)
+: Transition
+:= {
+  predicate := transition.predicate
+  dest_state := transition.dest_state
+  messages := transition.messages.concat message
+  effects := transition.effects
+  stmts := transition.stmts
+  trans_type := transition.trans_type
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info
+}
 
 def StmtsToTransitions
-(all_transitions : TransitionsLists)
+-- (all_transitions : TransitionsLists)
+(incomplete_transitions : Transitions)
 (stmts : List Pipeline.Statement)
 : /- Except String -/ (TransitionsLists)
 := --do
@@ -219,25 +290,151 @@ def StmtsToTransitions
                 if_true_list_trans.complete_transitions ++ if_false_list_trans.complete_transitions
             }
             added_branches_transitions_lists
+        | .block lst_stmt =>
+          -- recurse to get incomplete stmts & complete stmts
+          let transitions : TransitionsLists := StmtsToTransitions transitions_lists.incomplete_transitions lst_stmt
+          transitions
+        | .await none when_stmts =>
+          -- this just receives a message
+          -- record the when messages here as guards
+          -- Map the list of when stmts to transitions
+          let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
+            -- should be when stmt
+            match when_stmt with
+            | .when ctrler_msg_name args when's_stmt =>
+              let (trans_with_await_when, stmt_list) :=
+                PrepareAwaitWhenCondAndStmts
+                transitions_lists.incomplete_transitions
+                (Pipeline.Statement.await (none) [when_stmt]) when's_stmt
+              let trans_lists : TransitionsLists := StmtsToTransitions trans_with_await_when stmt_list
+              trans_lists
+            -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
+            | _ =>
+              dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+              default -- Need to figure out how to throw here
+            )
+          let updated_transitions_lists : TransitionsLists :=
+            List.foldl (λ accum_transitions_lists when_trans_lists => 
+              { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
+                complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
+            ) (EmptyTransitionsLists) all_when_trans_lists
+          updated_transitions_lists
+        | .when _ _ _ =>
+          dbg_trace "Shouldn't see a when by itself. Figure out how to throw in dsl to cdfg translation"
+          default
+        | .await (some api_term) when_stmts =>
+          let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
+            -- should be when stmt
+            match when_stmt with
+            | .when ctrler_msg_name args when's_stmt =>
+              let (trans_with_await_when, stmt_list) :=
+                PrepareAwaitWhenCondAndStmts
+                transitions_lists.incomplete_transitions
+                (Pipeline.Statement.await (api_term) [when_stmt]) when's_stmt
+              let trans_lists : TransitionsLists := StmtsToTransitions trans_with_await_when stmt_list
+              trans_lists
+            -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
+            | _ =>
+              dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+              default -- Need to figure out how to throw here
+            )
+          let updated_transitions_lists : TransitionsLists :=
+            List.foldl (λ accum_transitions_lists when_trans_lists => 
+              { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
+                complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
+            ) (EmptyTransitionsLists) all_when_trans_lists
+          updated_transitions_lists
+        | .stray_expr expr =>
+          -- stray expr is func call or message
+          -- TODO Handle accordingly!
+          match expr with
+          | Pipeline.Expr.some_term term =>
+            match term with
+            | Pipeline.Term.function_call qual_name lst_expr =>
+              -- append transition message
+              let updated_incomplete_transitions := transitions_lists.incomplete_transitions.map (
+                λ transition =>
+                  AppendTransitionMessages transition (Message.mk term)
+              )
+              let updated_transitions := {
+                incomplete_transitions := updated_incomplete_transitions,
+                complete_transitions := transitions_lists.complete_transitions
+              }
+              updated_transitions
+            | _ =>
+              dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+              default -- Figure out how to throw
+          | _ =>
+            dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+            default -- Figure out how to throw
+        | .listen_handle stmt lst_handle =>
+          let body_transition_lists : TransitionsLists := StmtsToTransitions transitions_lists.incomplete_transitions [stmt]
+          -- each handle block is a separate transition
+          let handle_blks_transitions : List TransitionsLists :=
+            lst_handle.map (
+              λ handle_blk =>
+                match handle_blk with
+                | .mk ctrler_msg_name args handle_stmt =>
+                  let ( transitions_with_handle_predicate, lst_stmts ) : Transitions × (List Pipeline.Statement) :=
+                    PrepareHandleCondAndStmts transitions_lists.incomplete_transitions handle_blk handle_stmt
+                  let transitions_lists : TransitionsLists := StmtsToTransitions transitions_with_handle_predicate lst_stmts
+                  transitions_lists
+            )
+          let updated_transitions_lists : TransitionsLists :=
+            -- foldl to combine all the transitions
+            List.foldl (λ (accumulated_transitions_lists) (input_transitions_lists) =>
+              {
+                incomplete_transitions := accumulated_transitions_lists.incomplete_transitions ++ input_transitions_lists.incomplete_transitions,
+                complete_transitions := accumulated_transitions_lists.complete_transitions ++ input_transitions_lists.complete_transitions
+              }
+            ) (body_transition_lists) (handle_blks_transitions)
+          updated_transitions_lists
+        | .value_declaration _ _ =>
+          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+            λ transition =>
+              AppendTransitionStmt transition stmt
+          )
+          let lists : TransitionsLists :=
+          { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+          lists
+        | .variable_declaration _ =>
+          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+            λ transition =>
+              AppendTransitionStmt transition stmt
+          )
+          let lists : TransitionsLists :=
+          { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+          lists
+        | .variable_assignment _ _ =>
+          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+            λ transition =>
+              AppendTransitionStmt transition stmt
+          )
+          let transitions_with_effect : Transitions := transitions_with_stmt.map (
+            λ transition =>
+              AppendTransitionEffect transition stmt
+          )
+          -- TODO: Try to do some basic constrait checking,
+          -- if we can find variable assignments to literals
+          -- like true/false that would be useful to start with.
+          -- Can do a basic check on RHS => some_expr, expr, term, Const, num_lit or str_lit
+          -- and just assume the type is right
+          ({incomplete_transitions := transitions_with_effect,
+            complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
+        | .labelled_statement _ stmt' =>
+          StmtsToTransitions transitions_lists.incomplete_transitions [stmt']
         /-
-        -- TODO: Finish handling the rest of the stmt cases
-        (Pipeline.Statement.block _)
-        (Pipeline.Statement.stray_expr _)
-        (Pipeline.Statement.when _ _ _)
-        (Pipeline.Statement.await (some _) _)
-        (Pipeline.Statement.await none _)
-        (Pipeline.Statement.listen_handle _ _)
-        (Pipeline.Statement.variable_assignment _ _)
-        (Pipeline.Statement.value_declaration _ _)
-        (Pipeline.Statement.variable_declaration _)
-        (Pipeline.Statement.labelled_statement _ _)
-        -- these are not really used.
-        (Pipeline.Statement.stall _)
-        (Pipeline.Statement.return_stmt _)
+        -- these cases are not really used. skip!
         -/
+        | .stall _ =>
+          transitions_lists
+        | .return_stmt _ =>
+          transitions_lists
 
       transition_after_stmt
-    ) (all_transitions) (stmts)
+    )
+    ({incomplete_transitions := incomplete_transitions, complete_transitions := []} : TransitionsLists)
+    (stmts)
   final_transitions_lists
   -- return []
 

@@ -83,21 +83,24 @@ deriving Inhabited
 -- inductive APICondition
 -- | Search : APICondition
 
-abbrev AwaitTermStmt := Pipeline.Statement
+abbrev AwaitStmt := Pipeline.Statement
 abbrev CondExpr := Pipeline.Expr
 inductive Condition
 | DSLExpr : CondExpr → Condition
-| APICondition : AwaitTermStmt → Condition
+| APICondition : AwaitStmt → Condition
+| AwaitCondition : AwaitStmt → Condition
+| HandleCondition : Pipeline.HandleBlock → Condition
 deriving Inhabited
 
-abbrev MessageName := String
+-- abbrev MessageName := String
 abbrev CtrlerName := String
 inductive Message
-| mk : MessageName → CtrlerName → Message
+| mk : Pipeline.Term → Message
 deriving Inhabited
 
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
+abbrev Stmts := List Pipeline.Statement
 abbrev StateName := String
 abbrev Predicate := List Condition
 inductive TransitionType
@@ -110,6 +113,7 @@ predicate : Predicate
 dest_state : StateName
 messages : Messages
 effects : Effects
+stmts : Stmts
 trans_type : TransitionType
 queue_info : QueueInfo
 constraint_info : ConstraintInfo -- Would come from state updates?
@@ -140,7 +144,7 @@ deriving Inhabited
 -/
 -- abbrev StateName := String
 -- abbrev CtrlerName := String
-abbrev Stmts := List Pipeline.Statement
+-- abbrev Stmts := List Pipeline.Statement
 abbrev VarDef := Pipeline.TypedIdentifier
 abbrev VarList := List VarDef
 -- abbrev Messages := List Message
