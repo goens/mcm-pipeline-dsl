@@ -16,33 +16,10 @@ structure StateTranslationInfo where
 State : Pipeline.Description
 Ctrler : controller_info
 
-def StateToCDFGNode
-(StateTransInfo : StateTranslationInfo)
-: Except String (CDFGNode)
-:= do
-  let queue_type : String := get_ctrler_elem_ordering StateTransInfo.Ctrler
-  -- Do a queue type check like this, assign type
-  -- accordingly, i.e. if is_head is required?
-  -- Hm, but this depends on previous state,
-  -- so I can't assign each one directly, since it
-  -- depends on if the previous state requires Head or not
-  -- But this is not important right now.
-  -- A simple implementation is enough for now.
-  -- let queue_info : QueueInfo :=
-  --   if queue_type == "FIFO" then
-  --     QueueInfo.FIFOQueue 
-
-  return default
-
 structure CtrlerTranslationInfo where
 ctrler : controller_info
 allCtrlers : List controller_info
 
-def test := List.foldl (λ int1 int2 => int1+int2) 0 [1,2]
-#eval test
-
-def test_list := [1,2]
--- def thing := List.foldl (λ int1 int2 => int1 + int2 + ) 0 [1,2]
 
 structure TransitionsLists where
 incomplete_transitions : IncompleteTransitions
