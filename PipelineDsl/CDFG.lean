@@ -186,17 +186,17 @@ let stmts : String := (stmtsToString transition.stmts)
 let constraint : String := (constraintInfoToString transition.constraint_info)
 -- let transition_type : String := t
 let str : String :=
-"== Transition =="++
-s!"Predicate: {predicate}" ++
-s!"Src State: ("++ transition.orig_state ++ ")" ++
-s!"Dest State: ("++ transition.dest_state ++ ")" ++
-s!"Messages: ({messages})" ++
-s!"Effects: ({effects})" ++
-s!"Stmts: ({stmts})" ++
-s!"Transition Type: ({transition.trans_type})" ++
-s!"Queue Info: ({transition.queue_info})" ++
-s!"Constraint Info: ({constraint})" ++
-"== End Transition =="
+"== Transition ==\n"++
+s!"Predicate: {predicate}" ++ "\n" ++
+s!"Src State: ("++ transition.orig_state ++ ")" ++ "\n" ++
+s!"Dest State: ("++ transition.dest_state ++ ")" ++ "\n" ++
+s!"Messages: ({messages})" ++ "\n" ++
+s!"Effects: ({effects})" ++ "\n" ++
+s!"Stmts: ({stmts})" ++ "\n" ++
+s!"Transition Type: ({transition.trans_type})" ++ "\n" ++
+s!"Queue Info: ({transition.queue_info})" ++ "\n" ++
+s!"Constraint Info: ({constraint})" ++ "\n" ++
+"== End Transition ==\n"
 str
 instance : ToString Transition where toString := Transition.toString
 
@@ -248,12 +248,12 @@ deriving Inhabited
 def Node.toString (cdfg_node: Node) : String :=
 let vars : String := ", ".intercalate (List.map TidentoString cdfg_node.vars)
 let str : String :=
-"<< CDFG Node >>" ++
-"Current State: ("++cdfg_node.current_state++")" ++
-s!"Ctrler Name: ({cdfg_node.ctrler_name})" ++
-s!"Vars: ({vars})" ++ 
-s!"Transitions: ({cdfg_node.transitions})"  ++
-"<< End CDFG Node >>"
+"<< CDFG Node >>\n" ++
+"Current State: ("++cdfg_node.current_state++")" ++ "\n" ++
+s!"Ctrler Name: ({cdfg_node.ctrler_name})" ++ "\n" ++
+s!"Vars: ({vars})" ++  "\n" ++
+s!"Transitions: ({cdfg_node.transitions})"  ++ "\n" ++
+"<< End CDFG Node >>\n"
 str
 instance : ToString Node where toString := Node.toString
 
