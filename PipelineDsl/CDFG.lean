@@ -110,6 +110,7 @@ inductive TransitionType
 deriving Inhabited
 structure Transition where
 predicate : Predicate
+orig_state : StateName
 dest_state : StateName
 messages : Messages
 effects : Effects
@@ -149,11 +150,52 @@ abbrev VarDef := Pipeline.TypedIdentifier
 abbrev VarList := List VarDef
 -- abbrev Messages := List Message
 abbrev Transitions := List Transition
+
+/-
+  AG: why call this CDFGNode and not Node? If you hover it you will see its fully
+  quallified name is CDFG.CDFGNode, which seems a bit redundant. On the other hand
+  I would probably put this in the Pipeline namespace (as in Pipeline.CDFG.Node)
+-/
 structure CDFGNode where
 current_state : StateName
 ctrler_name : CtrlerName
 vars : VarList
 transitions : Transitions
 deriving Inhabited
+
+/- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
+  i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
+  be a list and assume there has to be exactly one node with the name of the destination. We should
+  improve this design later though to ensure this is the case.
+ -/
+structure Graph where
+  nodes : List CDFGNode
+
+abbrev GraphElement := CDFGNode ⊕ Transition
+
+-- traversal of graph
+private partial def graphMapAux (gr : Graph) (f : GraphElement → α) (unvisited visited : List GraphElement) (partialRes : List α) : List α :=
+  match unvisited with
+    | [] => partialRes
+    | elem::rest =>
+      match elem with
+        | .inl node =>
+           let newVisited := elem::visited
+           let newPartialRes := f elem::partialRes
+           let newUnvisited := rest ++ (node.transitions.map .inr)
+           graphMapAux gr f newUnvisited newVisited newPartialRes
+        | .inr transition =>
+            let newVisited := elem::visited
+            let newPartialRes := f elem::partialRes
+            let dest? := gr.nodes.find? (λ node => node.current_state == transition.dest_state)
+            let newUnvisited :=  match dest? with
+              | none => rest
+              | some dest => (.inl dest)::rest
+            graphMapAux gr f newUnvisited newVisited newPartialRes
+
+def Graph.map (gr : Graph) (f : GraphElement → α) (headIdx := 0) : List α :=
+  match gr.nodes[headIdx]? with
+    | none => []
+    | some head => graphMapAux gr f [.inl head] [] []
 
 -- def CDFGNode.
