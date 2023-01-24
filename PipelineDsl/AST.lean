@@ -222,6 +222,7 @@ instance : ToString Statement where toString := statementToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : ToString Description where toString := descriptionToString
 instance : ToString TypedIdentifier where toString := typedIdentifierToString
+instance : ToString HandleBlock where toString := handleBlockToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
 instance : Inhabited AST where default := AST.structure_descriptions []
