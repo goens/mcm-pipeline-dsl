@@ -108,6 +108,15 @@ inductive TransitionType
 | Reset : TransitionType
 | Completion : TransitionType
 deriving Inhabited
+structure IncompleteTransition where
+predicate : Predicate
+orig_state : StateName
+messages : Messages
+effects : Effects
+stmts : Stmts
+queue_info : QueueInfo
+constraint_info : List ConstraintInfo -- Would come from state updates?
+deriving Inhabited
 structure Transition where
 predicate : Predicate
 orig_state : StateName
@@ -117,7 +126,7 @@ effects : Effects
 stmts : Stmts
 trans_type : TransitionType
 queue_info : QueueInfo
-constraint_info : ConstraintInfo -- Would come from state updates?
+constraint_info : List ConstraintInfo -- Would come from state updates?
 deriving Inhabited
 
 /-
@@ -149,6 +158,7 @@ deriving Inhabited
 abbrev VarDef := Pipeline.TypedIdentifier
 abbrev VarList := List VarDef
 -- abbrev Messages := List Message
+abbrev IncompleteTransitions := List IncompleteTransition
 abbrev Transitions := List Transition
 
 /-

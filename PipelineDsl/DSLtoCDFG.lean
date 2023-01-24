@@ -35,8 +35,8 @@ def StateToCDFGNode
   return default
 
 structure CtrlerTranslationInfo where
-Ctrler : controller_info
-AllCtrlers : List controller_info
+ctrler : controller_info
+allCtrlers : List controller_info
 
 def test := List.foldl (λ int1 int2 => int1+int2) 0 [1,2]
 #eval test
@@ -45,27 +45,16 @@ def test_list := [1,2]
 -- def thing := List.foldl (λ int1 int2 => int1 + int2 + ) 0 [1,2]
 
 structure TransitionsLists where
-incomplete_transitions : Transitions
+incomplete_transitions : IncompleteTransitions
 complete_transitions : Transitions
 deriving Inhabited
 
-def UpdateTransitionDest (transition : Transition) (dest : String)
+def UpdateTransitionDest (transition : IncompleteTransition) (dest : String) (trans_type : TransitionType)
 : Transition
 := {
   predicate := transition.predicate -- ++ [(Condition.DSLExpr condition_expr)]
+  orig_state := transition.orig_state
   dest_state := dest
-  messages := transition.messages
-  effects := transition.effects
-  stmts := transition.stmts
-  trans_type := transition.trans_type
-  queue_info := transition.queue_info
-  constraint_info := transition.constraint_info
-}
-def UpdateTransitionType (transition : Transition) (trans_type : TransitionType)
-: Transition
-:= {
-  predicate := transition.predicate -- ++ [(Condition.DSLExpr condition_expr)]
-  dest_state := transition.dest_state
   messages := transition.messages
   effects := transition.effects
   stmts := transition.stmts
@@ -73,41 +62,49 @@ def UpdateTransitionType (transition : Transition) (trans_type : TransitionType)
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
 }
-def AppendTransitionPredicate (transition : Transition) (condition : Condition)
-: Transition
+def AppendTransitionPredicate (transition : IncompleteTransition) (condition : Condition)
+: IncompleteTransition
 := {
   predicate := transition.predicate ++ [condition]
-  dest_state := transition.dest_state
+  orig_state := transition.orig_state
   messages := transition.messages
   effects := transition.effects
   stmts := transition.stmts
-  trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
 }
-def AppendTransitionStmt (transition : Transition) (stmt : Pipeline.Statement)
-: Transition
+def AppendTransitionStmt (transition : IncompleteTransition) (stmt : Pipeline.Statement)
+: IncompleteTransition
 := {
   predicate := transition.predicate
-  dest_state := transition.dest_state
+  orig_state := transition.orig_state
   messages := transition.messages
   effects := transition.effects
   stmts := transition.stmts.concat stmt
-  trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
 }
-def AppendTransitionEffect (transition : Transition) (effect : Pipeline.Statement)
-: Transition
+def AppendTransitionEffect (transition : IncompleteTransition) (effect : Pipeline.Statement)
+: IncompleteTransition
 := {
   predicate := transition.predicate
-  dest_state := transition.dest_state
+  orig_state := transition.orig_state
   messages := transition.messages
   effects := transition.effects.concat effect
   stmts := transition.stmts
-  trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+}
+def AppendTransitionConstraint (transition : IncompleteTransition) (constraint : ConstraintInfo)
+: IncompleteTransition
+:= {
+  predicate := transition.predicate
+  orig_state := transition.orig_state
+  messages := transition.messages
+  effects := transition.effects
+  stmts := transition.stmts
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info.concat constraint
 }
 
 def UpdateCompleteTransitionsListsDestType
@@ -117,19 +114,17 @@ def UpdateCompleteTransitionsListsDestType
 : TransitionsLists
 :=
   let updated_transitions_dest : Transitions := transitions_lists.incomplete_transitions.map (
-    λ trans => UpdateTransitionDest trans dest_identifier)
-  let updated_transitions_type : Transitions := updated_transitions_dest.map (
-    λ trans => UpdateTransitionType trans trans_type)
+    λ trans => UpdateTransitionDest trans dest_identifier trans_type)
   let updated_transitions_list : TransitionsLists := {
     incomplete_transitions := []
     complete_transitions :=
-      transitions_lists.complete_transitions.append updated_transitions_type
+      transitions_lists.complete_transitions.append updated_transitions_dest
   }
   updated_transitions_list
 
 def UpdateIncompleteTransitionsLists
 (transitions_lists : TransitionsLists)
-(incomplete_transitions : Transitions)
+(incomplete_transitions : IncompleteTransitions)
 : TransitionsLists
 := {
   incomplete_transitions := incomplete_transitions
@@ -137,12 +132,12 @@ def UpdateIncompleteTransitionsLists
 }
 
 def PrepareIfExprCondAndStmts
-(incomplete_transitions : Transitions)
+(incomplete_transitions : IncompleteTransitions)
 (condition_expr : Pipeline.Expr)
 (cond_stmt : Pipeline.Statement)
-: Transitions × (List Pipeline.Statement)
+: IncompleteTransitions × (List Pipeline.Statement)
 :=
-  let transitions_with_added_cond : Transitions :=
+  let transitions_with_added_cond : IncompleteTransitions :=
   incomplete_transitions.map ( λ transition =>
       AppendTransitionPredicate transition (Condition.DSLExpr condition_expr) );
   let stmt_list : List Pipeline.Statement :=
@@ -152,12 +147,12 @@ def PrepareIfExprCondAndStmts
   (transitions_with_added_cond , stmt_list)
 
 def PrepareAwaitWhenCondAndStmts
-(incomplete_transitions : Transitions)
+(incomplete_transitions : IncompleteTransitions)
 (await : AwaitStmt)
 (when's_stmt : Pipeline.Statement)
-: Transitions × (List Pipeline.Statement)
+: IncompleteTransitions × (List Pipeline.Statement)
 :=
-  let transitions_with_added_cond : Transitions :=
+  let transitions_with_added_cond : IncompleteTransitions :=
   incomplete_transitions.map ( λ transition =>
       AppendTransitionPredicate transition (Condition.AwaitCondition await) );
   let stmt_list : List Pipeline.Statement :=
@@ -167,12 +162,12 @@ def PrepareAwaitWhenCondAndStmts
   (transitions_with_added_cond , stmt_list)
 
 def PrepareHandleCondAndStmts
-(incomplete_transitions : Transitions)
+(incomplete_transitions : IncompleteTransitions)
 (handle_blk : Pipeline.HandleBlock)
 (handle_stmt : Pipeline.Statement)
-: Transitions × (List Pipeline.Statement)
+: IncompleteTransitions × (List Pipeline.Statement)
 :=
-  let transitions_with_added_cond : Transitions :=
+  let transitions_with_added_cond : IncompleteTransitions :=
   incomplete_transitions.map ( λ transition =>
       AppendTransitionPredicate transition (Condition.HandleCondition handle_blk) );
   let stmt_list : List Pipeline.Statement :=
@@ -184,23 +179,22 @@ def PrepareHandleCondAndStmts
 def EmptyTransitionsLists : TransitionsLists :=
 {incomplete_transitions := [], complete_transitions := []}
 
-def AppendTransitionMessages (transition : Transition) (message : Message)
-: Transition
+def AppendTransitionMessages (transition : IncompleteTransition) (message : Message)
+: IncompleteTransition
 := {
   predicate := transition.predicate
-  dest_state := transition.dest_state
+  orig_state := transition.orig_state
   messages := transition.messages.concat message
   effects := transition.effects
   stmts := transition.stmts
-  trans_type := transition.trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
 }
 
-def StmtsToTransitions
+partial def StmtsToTransitions
 -- Add ctrlers after merge, to get ctrler state vars
--- (ctrlers : List controller_info)
-(incomplete_transitions : Transitions)
+(ctrler : controller_info)
+(incomplete_transitions : IncompleteTransitions)
 (stmts : List Pipeline.Statement)
 : /- Except String -/ (TransitionsLists)
 := --do
@@ -259,7 +253,7 @@ def StmtsToTransitions
             --   Should be doable with a map, just update both of the transitions
             let (transitions_list_with_added_cond, stmt_list) :=
               PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions condition_expr cond_stmt
-            let list_trans := StmtsToTransitions transitions_list_with_added_cond stmt_list
+            let list_trans := StmtsToTransitions ctrler transitions_list_with_added_cond stmt_list
               -- check if any trans has it's dest_name added..
             let updated_transitions_lists : TransitionsLists := {
               -- Append any new incomplete transition paths
@@ -273,14 +267,14 @@ def StmtsToTransitions
             -- Repeat cond but here.
             let (if_true_transitions_list_with_added_cond, if_true_stmt_list) :=
               PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions cond_expr if_true_stmts
-            let if_true_list_trans := StmtsToTransitions if_true_transitions_list_with_added_cond if_true_stmt_list
+            let if_true_list_trans := StmtsToTransitions ctrler if_true_transitions_list_with_added_cond if_true_stmt_list
 
             -- similar case, duplicated for the else case
             let negated_else_cond : Pipeline.Expr := Pipeline.Expr.some_term (
               Pipeline.Term.negation (Pipeline.Term.expr cond_expr))
             let (if_false_transitions_list_with_added_cond, if_false_stmt_list) :=
               PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions negated_else_cond else_stmts
-            let if_false_list_trans := StmtsToTransitions if_false_transitions_list_with_added_cond if_false_stmt_list
+            let if_false_list_trans := StmtsToTransitions ctrler if_false_transitions_list_with_added_cond if_false_stmt_list
 
             let added_branches_transitions_lists : TransitionsLists := {
               -- Append, it's either new ones with if stmt code, or empty if there was a transition
@@ -293,7 +287,7 @@ def StmtsToTransitions
             added_branches_transitions_lists
         | .block lst_stmt =>
           -- recurse to get incomplete stmts & complete stmts
-          let transitions : TransitionsLists := StmtsToTransitions transitions_lists.incomplete_transitions lst_stmt
+          let transitions : TransitionsLists := StmtsToTransitions ctrler transitions_lists.incomplete_transitions lst_stmt
           transitions
         | .await none when_stmts =>
           -- this just receives a message
@@ -302,12 +296,12 @@ def StmtsToTransitions
           let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
             -- should be when stmt
             match when_stmt with
-            | .when ctrler_msg_name args when's_stmt =>
+            | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
               let (trans_with_await_when, stmt_list) :=
                 PrepareAwaitWhenCondAndStmts
                 transitions_lists.incomplete_transitions
                 (Pipeline.Statement.await (none) [when_stmt]) when's_stmt
-              let trans_lists : TransitionsLists := StmtsToTransitions trans_with_await_when stmt_list
+              let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
               trans_lists
             -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
             | _ =>
@@ -327,12 +321,12 @@ def StmtsToTransitions
           let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
             -- should be when stmt
             match when_stmt with
-            | .when ctrler_msg_name args when's_stmt =>
+            | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
               let (trans_with_await_when, stmt_list) :=
                 PrepareAwaitWhenCondAndStmts
                 transitions_lists.incomplete_transitions
                 (Pipeline.Statement.await (api_term) [when_stmt]) when's_stmt
-              let trans_lists : TransitionsLists := StmtsToTransitions trans_with_await_when stmt_list
+              let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
               trans_lists
             -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
             | _ =>
@@ -351,7 +345,7 @@ def StmtsToTransitions
           match expr with
           | Pipeline.Expr.some_term term =>
             match term with
-            | Pipeline.Term.function_call qual_name lst_expr =>
+            | Pipeline.Term.function_call /- qual_name -/ _ /- lst_expr -/ _ =>
               -- append transition message
               let updated_incomplete_transitions := transitions_lists.incomplete_transitions.map (
                 λ transition =>
@@ -369,16 +363,16 @@ def StmtsToTransitions
             dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
             default -- Figure out how to throw
         | .listen_handle stmt lst_handle =>
-          let body_transition_lists : TransitionsLists := StmtsToTransitions transitions_lists.incomplete_transitions [stmt]
+          let body_transition_lists : TransitionsLists := StmtsToTransitions ctrler transitions_lists.incomplete_transitions [stmt]
           -- each handle block is a separate transition
           let handle_blks_transitions : List TransitionsLists :=
             lst_handle.map (
               λ handle_blk =>
                 match handle_blk with
-                | .mk ctrler_msg_name args handle_stmt =>
-                  let ( transitions_with_handle_predicate, lst_stmts ) : Transitions × (List Pipeline.Statement) :=
+                | .mk /- ctrler_msg_name -/ _ /- args -/ _ handle_stmt =>
+                  let ( transitions_with_handle_predicate, lst_stmts ) : IncompleteTransitions × (List Pipeline.Statement) :=
                     PrepareHandleCondAndStmts transitions_lists.incomplete_transitions handle_blk handle_stmt
-                  let transitions_lists : TransitionsLists := StmtsToTransitions transitions_with_handle_predicate lst_stmts
+                  let transitions_lists : TransitionsLists := StmtsToTransitions ctrler transitions_with_handle_predicate lst_stmts
                   transitions_lists
             )
           let updated_transitions_lists : TransitionsLists :=
@@ -391,7 +385,7 @@ def StmtsToTransitions
             ) (body_transition_lists) (handle_blks_transitions)
           updated_transitions_lists
         | .value_declaration _ _ =>
-          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+          let transitions_with_stmt : IncompleteTransitions := transitions_lists.incomplete_transitions.map (
             λ transition =>
               AppendTransitionStmt transition stmt
           )
@@ -399,7 +393,7 @@ def StmtsToTransitions
           { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
           lists
         | .variable_declaration _ =>
-          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+          let transitions_with_stmt : IncompleteTransitions := transitions_lists.incomplete_transitions.map (
             λ transition =>
               AppendTransitionStmt transition stmt
           )
@@ -407,11 +401,11 @@ def StmtsToTransitions
           { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
           lists
         | .variable_assignment qual_name expr =>
-          let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
+          let transitions_with_stmt : IncompleteTransitions := transitions_lists.incomplete_transitions.map (
             λ transition =>
               AppendTransitionStmt transition stmt
           )
-          let transitions_with_effect : Transitions := transitions_with_stmt.map (
+          let transitions_with_effect : IncompleteTransitions := transitions_with_stmt.map (
             λ transition =>
               AppendTransitionEffect transition stmt
           )
@@ -423,21 +417,56 @@ def StmtsToTransitions
 
           -- finish later after merge
 
-          -- let var_ := match qual_name with
-          --   | .mk list_ident => list_ident
-          -- let base_var := var_[0]!
-          -- -- check if base_var is in ctrler vars
-          -- let if_lit : ConstraintInfo := match expr with
-          --   | .some_term term =>
-          --     match term with
-          --     | .const const_ =>
-          --       match const_ with
-          --       | .str_lit str =>  -- return an "equals" constraint
-          --       | .num_lit nat =>  -- return a boolean constraint if str is "true" or "false"
-          ({incomplete_transitions := transitions_with_effect,
-            complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
+          let var_ : List String := match qual_name with
+            | .mk list_ident => list_ident
+          let base_var : String := var_[0]!
+          -- check if base_var is in ctrler vars
+          let ctrler_vars_except : Except String (List Pipeline.TypedIdentifier) :=
+            get_ctrler_state_vars ctrler
+          let ctrler_vars : List Pipeline.TypedIdentifier := match ctrler_vars_except with
+            | .ok ctrler_vars => ctrler_vars
+            | .error msg =>
+              dbg_trace s!"Error, ({msg})" -- throw later
+              default
+          let base_is_in_ctrler_var : List Pipeline.TypedIdentifier := List.join (
+          ctrler_vars.map (λ ctrler_var =>
+            match ctrler_var with
+            | .mk /- type_name -/ _ ident =>
+              if ident == base_var then [ctrler_var]
+              else []
+            ))
+          if base_is_in_ctrler_var.length > 0 then
+            let constraint_if_lit : Option ConstraintInfo := match expr with
+              | .some_term term =>
+                match term with
+                | .const const_ =>
+                  match const_ with
+                  | .str_lit str =>  -- return a boolean constraint if str is "true" or "false"
+                    if str == "true" then
+                      some (ConstraintInfo.mk base_var (Sum.inr BoolValue.True))
+                    else if str == "false" then
+                      some ( ConstraintInfo.mk base_var (Sum.inr BoolValue.False) )
+                    else
+                      dbg_trace "Constraint assign: What other string literal? Null?"
+                      none
+                  | .num_lit nat =>  -- return an "equals" constraint
+                    some ( ConstraintInfo.mk base_var (Sum.inl [(Inequality.ValueIneq base_var InEqRel.Eq nat )]) )
+                | _ => none
+              | _ => none
+            let transitions_with_constraint : IncompleteTransitions := match constraint_if_lit with
+              | .some constraint_info =>
+                transitions_with_effect.map (
+                  λ transition =>
+                    AppendTransitionConstraint transition constraint_info
+                )
+              | .none => transitions_with_effect
+            ({incomplete_transitions := transitions_with_constraint,
+              complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
+          else
+            ({incomplete_transitions := transitions_with_effect,
+              complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
         | .labelled_statement _ stmt' =>
-          StmtsToTransitions transitions_lists.incomplete_transitions [stmt']
+          StmtsToTransitions ctrler transitions_lists.incomplete_transitions [stmt']
         /-
         -- these cases are not really used. skip!
         -/
@@ -454,9 +483,10 @@ def StmtsToTransitions
   -- return []
 
 def mapStateToCDFGNode
-(state : Pipeline.Description)
-: Except String (List CDFGNode)
+(state_ctrler : Pipeline.Description × controller_info)
+: Except String (CDFGNode)
 := do
+  let (state, ctrler) : Pipeline.Description × controller_info := state_ctrler
   -- Take state fill in fields, and
   -- do searches to get stmts
   -- up to transitions & messages
@@ -467,54 +497,47 @@ def mapStateToCDFGNode
   -- Every if conditional & await is a
   -- "branch" point where we consider stmts
   -- for a specific transition.
+  let ordering_type : String := get_ctrler_elem_ordering ctrler
+  let queue_info : QueueInfo :=
+    if ordering_type == "FIFO" then
+      QueueInfo.FIFOQueue FIFOPosition.Inactive
+    else if ordering_type == "Unordered" then
+      QueueInfo.UnorderedQueue UnorderedEntry.Inactive
+    else
+      QueueInfo.None
+  let incomplete_transition : IncompleteTransition := {
+    predicate := []
+    orig_state := state_name
+    messages := []
+    effects := []
+    stmts := []
+    queue_info := queue_info
+    constraint_info := []
+  }
 
-  return []
+  let transitions_lists : TransitionsLists :=
+    StmtsToTransitions ctrler [incomplete_transition] stmts
+
+  let vars : List Pipeline.TypedIdentifier ← get_ctrler_state_vars ctrler
+  let node : CDFGNode := {
+    current_state := state_name
+    ctrler_name := ctrler.name
+    vars := vars
+    transitions := transitions_lists.complete_transitions
+  }
+
+  return node
 
 def CtrlersToCDFG
-(CtrlerTransInfo : CtrlerTranslationInfo)
+-- (CtrlerTransInfo : CtrlerTranslationInfo)
+(ctrler : controller_info)
 : Except String (List CDFGNode)
 := do
-  -- Take a ctrler, check type
-  -- Gen FIFO info if needed
-  -- 
-  -- 
-  -- Take ctrler info's description, check for a line that
-  -- has queue info
-
--- inductive CDFGNode
--- | mk: StateName → CtrlerName → VarList → Stmts → Transitions →
--- Messages → QueueInfo → CDFGNode
-  let queue_type : String := get_ctrler_elem_ordering CtrlerTransInfo.Ctrler
-  let ctrler_name : String := CtrlerTransInfo.Ctrler.name
-  let var_list : List Pipeline.TypedIdentifier ←
-    get_ctrler_state_vars CtrlerTransInfo.Ctrler
-
-  -- Iterate through states to assign node info
-  -- This is important for both queue_info and
-  -- State value updates or constraints on variables
-  -- TODO: So, start writing my fold!
-  -- Use First arg α as visited list
-  -- Use second arg List β as nodes to visit
-  -- Start from source node (init state)
-  -- Populate state with state of previous state
-    -- i.e. FIFO info, Var state
-  -- 
-  -- For a state, iterate through it's stmts,
-  -- stmts up to a transition are added to a
-  -- transition's effects
-  -- If / Await are added as guards
-  -- Can leave queue info for now
-  -- 
-  -- Later, I could do a second pass that attempts
-  -- to resolve var state that changes based on
-  -- exprs that assign it
-  --
-  -- Then is there anything that needs to be done sequentially?
-  -- let cdfg_graph : List CDFGNode :=
-  --   List.foldl 
   let ctrler_states : List Pipeline.Description ←
-    get_ctrler_states CtrlerTransInfo.Ctrler
-  let cdfg_graph : List CDFGNode :=
+    get_ctrler_states ctrler
+  let cdfg_graph : List CDFGNode ←
+    (ctrler_states.zip (List.replicate ctrler_states.length ctrler)).mapM
+      mapStateToCDFGNode
     -- TODO: We can probably do the translation per
     -- state, if we don't cumulatively check the
     -- constrained values
@@ -525,9 +548,8 @@ def CtrlersToCDFG
     -- regardless, the message should go to another state,
     -- it it doesn't, then it's hard to track if there's been
     -- any update...
-    []
 
-  return []
+  return cdfg_graph
 
 def DSLtoCDFG
 (ctrlers : List controller_info)
@@ -546,9 +568,10 @@ Do I need to iterate through states?
 -- I don't think so, information is readily available from
 -- the DSL ctrler and states
 -/
-  -- let cdfg_nodes := ctrlers.map CtrlersToCDFG
+  let cdfg_nodes_list : List (List CDFGNode) ← ctrlers.mapM CtrlersToCDFG
+  let cdfg_nodes : List CDFGNode := List.join cdfg_nodes_list
 
-  return []
+  return cdfg_nodes
 
 -- TODO: Function to identify post-"receive" states
 -- TODO: We can include a field in the CDFGNode type for
