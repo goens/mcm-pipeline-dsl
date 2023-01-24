@@ -86,12 +86,6 @@ def main (args : List String): IO Unit := do
     ctrlers.map ast0048_generate_controller_murphi_record
   println! s!"ctrler records: \n{murphi_records}"
 
-  let cdfg_nodes : Except String (List CDFG.Node) :=
-    DSLtoCDFG ctrlers
-  dbg_trace "== CDFG GRAPH =="
-  dbg_trace s!"CDFG Graph: {cdfg_nodes}"
-  dbg_trace "== End CDFG GRAPH =="
-
   -- println! s!"=== ctrlers with both loads & memory access ==="
   -- let ctrlers_that_do_load_and_mem_access :=
   --   find_load_begin_perform_info ctrlers
@@ -224,6 +218,12 @@ def main (args : List String): IO Unit := do
   -- and just run translation / transformation on those controllers
   -- But we still supply the list of all controllers for
   -- the translation and transformation steps
+
+  let cdfg_nodes : Except String (List CDFG.Node) :=
+    DSLtoCDFG ctrlers
+  dbg_trace "== CDFG GRAPH =="
+  dbg_trace s!"CDFG Graph: {cdfg_nodes}"
+  dbg_trace "== End CDFG GRAPH =="
 
   println! s!"===== Transform Testing Concluding ====="
 
