@@ -239,13 +239,13 @@ abbrev Transitions := List Transition
 -/
 def TidentoString (tident : Pipeline.TypedIdentifier) : String := toString tident
 
-structure CDFGNode where
+structure Node where
 current_state : StateName
 ctrler_name : CtrlerName
 vars : VarList
 transitions : Transitions
 deriving Inhabited
-def CDFGNode.toString (cdfg_node: CDFGNode) : String :=
+def Node.toString (cdfg_node: Node) : String :=
 let vars : String := ", ".intercalate (List.map TidentoString cdfg_node.vars)
 let str : String :=
 "<< CDFG Node >>" ++
@@ -255,7 +255,7 @@ s!"Vars: ({vars})" ++
 s!"Transitions: ({cdfg_node.transitions})"  ++
 "<< End CDFG Node >>"
 str
-instance : ToString CDFGNode where toString := CDFGNode.toString
+instance : ToString Node where toString := Node.toString
 
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
@@ -263,9 +263,9 @@ instance : ToString CDFGNode where toString := CDFGNode.toString
   improve this design later though to ensure this is the case.
  -/
 structure Graph where
-  nodes : List CDFGNode
+  nodes : List Node
 
-abbrev GraphElement := CDFGNode ⊕ Transition
+abbrev GraphElement := Node ⊕ Transition
 
 -- traversal of graph
 private partial def graphMapAux (gr : Graph) (f : GraphElement → α) (unvisited visited : List GraphElement) (partialRes : List α) : List α :=
@@ -292,4 +292,4 @@ def Graph.map (gr : Graph) (f : GraphElement → α) (headIdx := 0) : List α :=
     | none => []
     | some head => graphMapAux gr f [.inl head] [] []
 
--- def CDFGNode.
+-- def Node.

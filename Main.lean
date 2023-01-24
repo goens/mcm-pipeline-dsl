@@ -10,6 +10,9 @@ import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
+import PipelineDsl.CDFG
+import PipelineDsl.DSLtoCDFG
+
 open Lean Pipeline
 
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -82,6 +85,12 @@ def main (args : List String): IO Unit := do
   let murphi_records : List ctrler_decl_entry_decl_const_decl :=
     ctrlers.map ast0048_generate_controller_murphi_record
   println! s!"ctrler records: \n{murphi_records}"
+
+  let cdfg_nodes : Except String (List CDFG.Node) :=
+    DSLtoCDFG ctrlers
+  dbg_trace "== CDFG GRAPH =="
+  dbg_trace s!"CDFG Graph: {cdfg_nodes}"
+  dbg_trace "== End CDFG GRAPH =="
 
   -- println! s!"=== ctrlers with both loads & memory access ==="
   -- let ctrlers_that_do_load_and_mem_access :=

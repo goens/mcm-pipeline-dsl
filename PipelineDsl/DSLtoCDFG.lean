@@ -459,9 +459,9 @@ partial def StmtsToTransitions
   final_transitions_lists
   -- return []
 
-def mapStateToCDFGNode
+def mapStateToNode
 (state_ctrler : Pipeline.Description × controller_info)
-: Except String (CDFGNode)
+: Except String (Node)
 := do
   let (state, ctrler) : Pipeline.Description × controller_info := state_ctrler
   -- Take state fill in fields, and
@@ -496,7 +496,7 @@ def mapStateToCDFGNode
     StmtsToTransitions ctrler [incomplete_transition] stmts
 
   let vars : List Pipeline.TypedIdentifier ← get_ctrler_state_vars ctrler
-  let node : CDFGNode := {
+  let node : Node := {
     current_state := state_name
     ctrler_name := ctrler.name
     vars := vars
@@ -508,13 +508,13 @@ def mapStateToCDFGNode
 def CtrlersToCDFG
 -- (CtrlerTransInfo : CtrlerTranslationInfo)
 (ctrler : controller_info)
-: Except String (List CDFGNode)
+: Except String (List Node)
 := do
   let ctrler_states : List Pipeline.Description ←
     get_ctrler_states ctrler
-  let cdfg_graph : List CDFGNode ←
+  let cdfg_graph : List Node ←
     (ctrler_states.zip (List.replicate ctrler_states.length ctrler)).mapM
-      mapStateToCDFGNode
+      mapStateToNode
     -- TODO: We can probably do the translation per
     -- state, if we don't cumulatively check the
     -- constrained values
@@ -530,7 +530,7 @@ def CtrlersToCDFG
 
 def DSLtoCDFG
 (ctrlers : List controller_info)
-: Except String (List CDFGNode)
+: Except String (List Node)
 := do
 /-
 Take the DSL ctrler info objs, convert to Graph
@@ -545,11 +545,11 @@ Do I need to iterate through states?
 -- I don't think so, information is readily available from
 -- the DSL ctrler and states
 -/
-  let cdfg_nodes_list : List (List CDFGNode) ← ctrlers.mapM CtrlersToCDFG
-  let cdfg_nodes : List CDFGNode := List.join cdfg_nodes_list
+  let cdfg_nodes_list : List (List Node) ← ctrlers.mapM CtrlersToCDFG
+  let cdfg_nodes : List Node := List.join cdfg_nodes_list
 
   return cdfg_nodes
 
 -- TODO: Function to identify post-"receive" states
--- TODO: We can include a field in the CDFGNode type for
+-- TODO: We can include a field in the Node type for
 -- marking a state is a "receive state" or "send state"
