@@ -53,6 +53,11 @@ abbrev InequalitiesOrBool := Sum (List Inequality) BoolValue
 inductive ConstraintInfo
 | mk : VarName → InequalitiesOrBool → ConstraintInfo
 deriving Inhabited
+def ineq_or_bool_toString (ineq_or_bool : InequalitiesOrBool) : String :=
+  toString ineq_or_bool
+def ConstraintInfo.toString : ConstraintInfo → String
+| .mk var_name inequalities_or_bool => var_name ++ " : " ++ (ineq_or_bool_toString inequalities_or_bool)
+instance : ToString ConstraintInfo where toString := ConstraintInfo.toString
 
 -- NOTE: Simple thing for now.
 -- Better to encode relevant positions..
@@ -62,11 +67,21 @@ inductive FIFOPosition
 | Head : FIFOPosition
 | HeadOrNotHead : FIFOPosition -- probably some nicer way to write this
 deriving Inhabited
+def FIFOPosition.toString : FIFOPosition → String
+| .Inactive => "Inactive"
+| .NotHead => "NotHead"
+| .Head => "Head"
+| .HeadOrNotHead => "HeadOrNotHead"
+instance : ToString FIFOPosition where toString := FIFOPosition.toString
 
 inductive UnorderedEntry
 | Inactive : UnorderedEntry
 | Active : UnorderedEntry
 deriving Inhabited
+def UnorderedEntry.toString : UnorderedEntry → String
+| .Inactive => "Inactive"
+| .Active => "Active"
+instance : ToString UnorderedEntry where toString := UnorderedEntry.toString
 
 -- Queue info
 inductive QueueInfo
@@ -74,6 +89,11 @@ inductive QueueInfo
 | UnorderedQueue : UnorderedEntry → QueueInfo
 | None : QueueInfo
 deriving Inhabited
+def QueueInfo.toString : QueueInfo → String
+| .FIFOQueue pos => s!"FIFOQueue: ({pos})"
+| .UnorderedQueue entry => s!"UnorderedQueue: ({entry})"
+| .None => "None"
+instance : ToString QueueInfo where toString := QueueInfo.toString
 
 --TODO: Define Predicate
 -- Should consist of any conditions
@@ -91,12 +111,21 @@ inductive Condition
 | AwaitCondition : AwaitStmt → Condition
 | HandleCondition : Pipeline.HandleBlock → Condition
 deriving Inhabited
+def Condition.toString : Condition → String
+| .DSLExpr cond_expr => s!"DSLExpr: ({cond_expr})"
+| .APICondition await_stmt => s!"APICondition: ({await_stmt})"
+| .AwaitCondition await_stmt => s!"AwaitCondition: ({await_stmt})"
+| .HandleCondition handle_blk => s!"HandleCondition: ({handle_blk})"
+instance : ToString Condition where toString := Condition.toString
 
 -- abbrev MessageName := String
 abbrev CtrlerName := String
 inductive Message
 | mk : Pipeline.Term → Message
 deriving Inhabited
+def Message.toString : Message → String
+| .mk term => s!"Message Term: ({term})"
+instance : ToString Message where toString := Message.toString
 
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
@@ -108,6 +137,11 @@ inductive TransitionType
 | Reset : TransitionType
 | Completion : TransitionType
 deriving Inhabited
+def TransitionType.toString : TransitionType → String
+| .Transition => "Transition"
+| .Reset => "Reset"
+| .Completion => "Completion"
+instance : ToString TransitionType where toString := TransitionType.toString
 structure IncompleteTransition where
 predicate : Predicate
 orig_state : StateName
@@ -128,6 +162,43 @@ trans_type : TransitionType
 queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
 deriving Inhabited
+
+def predicateToString (predicate : Predicate) : String :=
+", ".intercalate (predicate.map (λ pred => toString pred))
+
+def messagesToString (messages : Messages) : String :=
+", ".intercalate (messages.map (λ message => toString message))
+
+def effectsToString (effects : Effects) : String :=
+", ".intercalate (effects.map (λ effect => toString effect))
+
+def stmtsToString (effects : Effects) : String :=
+", ".intercalate (effects.map (λ effect => toString effect))
+
+def constraintInfoToString (constraint_info_list : List ConstraintInfo) : String :=
+", ".intercalate (constraint_info_list.map (λ constraint => toString constraint))
+
+def Transition.toString (transition : Transition) : String :=
+let predicate : String := (predicateToString transition.predicate)
+let messages : String := (messagesToString transition.messages)
+let effects : String := (effectsToString transition.effects)
+let stmts : String := (stmtsToString transition.stmts)
+let constraint : String := (constraintInfoToString transition.constraint_info)
+-- let transition_type : String := t
+let str : String :=
+"== Transition =="++
+s!"Predicate: {predicate}" ++
+s!"Src State: ("++ transition.orig_state ++ ")" ++
+s!"Dest State: ("++ transition.dest_state ++ ")" ++
+s!"Messages: ({messages})" ++
+s!"Effects: ({effects})" ++
+s!"Stmts: ({stmts})" ++
+s!"Transition Type: ({transition.trans_type})" ++
+s!"Queue Info: ({transition.queue_info})" ++
+s!"Constraint Info: ({constraint})" ++
+"== End Transition =="
+str
+instance : ToString Transition where toString := Transition.toString
 
 /-
 1. describe the nodes' contents
@@ -166,12 +237,25 @@ abbrev Transitions := List Transition
   quallified name is CDFG.CDFGNode, which seems a bit redundant. On the other hand
   I would probably put this in the Pipeline namespace (as in Pipeline.CDFG.Node)
 -/
+def TidentoString (tident : Pipeline.TypedIdentifier) : String := toString tident
+
 structure CDFGNode where
 current_state : StateName
 ctrler_name : CtrlerName
 vars : VarList
 transitions : Transitions
 deriving Inhabited
+def CDFGNode.toString (cdfg_node: CDFGNode) : String :=
+let vars : String := ", ".intercalate (List.map TidentoString cdfg_node.vars)
+let str : String :=
+"<< CDFG Node >>" ++
+"Current State: ("++cdfg_node.current_state++")" ++
+s!"Ctrler Name: ({cdfg_node.ctrler_name})" ++
+s!"Vars: ({vars})" ++ 
+s!"Transitions: ({cdfg_node.transitions})"  ++
+"<< End CDFG Node >>"
+str
+instance : ToString CDFGNode where toString := CDFGNode.toString
 
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
