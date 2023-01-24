@@ -248,7 +248,7 @@ partial def StmtsToTransitions
 
             -- similar case, duplicated for the else case
             let negated_else_cond : Pipeline.Expr := Pipeline.Expr.some_term (
-              Pipeline.Term.negation (Pipeline.Term.expr cond_expr))
+              Pipeline.Term.logical_negation (Pipeline.Term.expr cond_expr))
             let (if_false_transitions_list_with_added_cond, if_false_stmt_list) :=
               PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions negated_else_cond else_stmts
             let if_false_list_trans := StmtsToTransitions ctrler if_false_transitions_list_with_added_cond if_false_stmt_list
