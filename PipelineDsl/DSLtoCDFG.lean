@@ -198,7 +198,8 @@ def AppendTransitionMessages (transition : Transition) (message : Message)
 }
 
 def StmtsToTransitions
--- (all_transitions : TransitionsLists)
+-- Add ctrlers after merge, to get ctrler state vars
+-- (ctrlers : List controller_info)
 (incomplete_transitions : Transitions)
 (stmts : List Pipeline.Statement)
 : /- Except String -/ (TransitionsLists)
@@ -405,7 +406,7 @@ def StmtsToTransitions
           let lists : TransitionsLists :=
           { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
           lists
-        | .variable_assignment _ _ =>
+        | .variable_assignment qual_name expr =>
           let transitions_with_stmt : Transitions := transitions_lists.incomplete_transitions.map (
             λ transition =>
               AppendTransitionStmt transition stmt
@@ -419,6 +420,20 @@ def StmtsToTransitions
           -- like true/false that would be useful to start with.
           -- Can do a basic check on RHS => some_expr, expr, term, Const, num_lit or str_lit
           -- and just assume the type is right
+
+          -- finish later after merge
+
+          -- let var_ := match qual_name with
+          --   | .mk list_ident => list_ident
+          -- let base_var := var_[0]!
+          -- -- check if base_var is in ctrler vars
+          -- let if_lit : ConstraintInfo := match expr with
+          --   | .some_term term =>
+          --     match term with
+          --     | .const const_ =>
+          --       match const_ with
+          --       | .str_lit str =>  -- return an "equals" constraint
+          --       | .num_lit nat =>  -- return a boolean constraint if str is "true" or "false"
           ({incomplete_transitions := transitions_with_effect,
             complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
         | .labelled_statement _ stmt' =>
