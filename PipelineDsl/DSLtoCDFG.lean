@@ -512,8 +512,18 @@ def CtrlersToCDFG
 := do
   let ctrler_states : List Pipeline.Description ←
     get_ctrler_states ctrler
+  let init_state_name : String ←
+    get_ctrler_init_state_name ctrler
+  let ctrler_states_without_init : List Pipeline.Description :=
+    ctrler_states.filter (λ state =>
+      match state with
+      | .state state_name /- stmt -/ _ =>
+        state_name != init_state_name
+      | _ => false
+    )
+
   let cdfg_graph : List Node ←
-    (ctrler_states.zip (List.replicate ctrler_states.length ctrler)).mapM
+    (ctrler_states_without_init.zip (List.replicate ctrler_states_without_init.length ctrler)).mapM
       mapStateToNode
     -- TODO: We can probably do the translation per
     -- state, if we don't cumulatively check the
