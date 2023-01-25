@@ -13,6 +13,10 @@ deriving Inhabited, BEq
 -- | store : InstType
 -- deriving Inhabited, BEq
 
+def memory_interface : String := "memory_interface"
+def load_completed : String := "load_completed"
+def store_completed : String := "store_completed"
+
 def load : InstType := InstType.load
 def store : InstType := InstType.store
 
@@ -959,4 +963,16 @@ def get_state_name_stmts
       throw msg
   | _ =>
     let msg : String := s!"Error: Was not passed a Description .state object ({state})"
+    throw msg
+
+def get_ctrler_init_state_name
+(ctrler : controller_info)
+: Except String (String)
+:= do
+  if ctrler.init_trans.isSome then
+    pure ctrler.init_trans.get!
+  else if ctrler.ctrler_init_trans.isSome then
+    pure ctrler.ctrler_init_trans.get!
+  else
+    let msg : String := s!"Error: Ctrler doesn't have init state? ({ctrler})"
     throw msg
