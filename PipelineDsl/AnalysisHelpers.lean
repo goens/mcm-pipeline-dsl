@@ -926,6 +926,26 @@ partial def find_when_stmt_from_transition
 
   when_stmt
 
+partial def find_when_stmt_from_stmts
+(stmts : List Pipeline.Statement)
+(msg_name : Identifier)
+(src_ctrler_name : Identifier)
+: Bool
+:=
+  let when_with_matching_func_and_src_ctrler_name :=
+    let when_blk :=
+    recursive_await_when_stmt_search stmts msg_name src_ctrler_name
+    when_blk
+  let when_stmt :=
+    match when_with_matching_func_and_src_ctrler_name with
+    | [/-one_stmt-/ _] => true -- one_stmt
+    | _::_ =>
+      -- NOTE: Constrain this to make it easier to parse
+      false
+    | [] =>
+      false
+  when_stmt
+
 def get_ctrler_state_vars
 (ctrler : controller_info)
 : Except String (List TypedIdentifier)
