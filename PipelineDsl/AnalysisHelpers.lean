@@ -813,7 +813,6 @@ def get_when_stmt_src_ctrler
       s!"Instead got this stmt: ({when_stmt})"
     throw msg
 
-
 partial def recursive_await_when_stmt_search
 (lst_stmts : List Pipeline.Statement)
 (func_name : Identifier)
@@ -996,3 +995,11 @@ def get_ctrler_init_state_name
   else
     let msg : String := s!"Error: Ctrler doesn't have init state? ({ctrler})"
     throw msg
+
+def get_max_from_nat_list (lst : List Nat) : Nat :=
+  match lst with
+  | [] => 0
+  | h::t =>
+    let other : Nat := (get_max_from_nat_list t)
+    if h > other then h else other
+#eval get_max_from_nat_list [10]
