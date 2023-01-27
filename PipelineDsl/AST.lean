@@ -9,6 +9,7 @@ namespace Pipeline
 inductive Direction
  | Previous
  | Next
+ deriving BEq
 
 def indent : Nat → String
   | Nat.zero => ""
@@ -22,6 +23,7 @@ inductive AST
 
 inductive TypedIdentifier
  | mk : TIden → Identifier → TypedIdentifier
+ deriving BEq
 
 inductive Description
 -- constructors have the same signature, but will use different keywords
