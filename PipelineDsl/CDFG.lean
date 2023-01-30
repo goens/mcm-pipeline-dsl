@@ -287,6 +287,37 @@ instance : ToString Node where toString := Node.toString
 structure Graph where
   nodes : List Node
 
+def Graph.node_from_name? : Graph → StateName → (Option Node)
+| graph, state_name =>
+  let current_node? : Option Node := graph.nodes.find? (λ node =>
+    node.current_state == state_name)
+  current_node?
+
+
+-- Work in progress. wanted to use with
+-- Graph.unique_msg'd_states_by_node for a simple functor
+def Graph.node_mapM {m : Type u → Type v} [Monad m] {α : Type u}
+(graph : Graph) (state_name : StateName) (func : Node → m α)
+: (Except String (m α)) := do
+  let current_node? : Option Node := graph.node_from_name? state_name
+  if let some current_node := current_node? then
+    pure (func current_node)
+  else
+    (throw "Error: No node with name: ({start})")
+
+def Graph.node_map : Graph → StateName → (Node → (α : Type)) → Except String α
+| graph, state_name, func => do
+  let current_node? : Option Node := graph.node_from_name? state_name
+  if let some current_node := current_node? then
+    pure $ func current_node
+  else
+    throw "Error: No node with name: ({start})"
+
+def Graph.toString : Graph → String
+| graph =>
+  let nodes : String := ", ".intercalate (graph.nodes.map (λ node => node.toString))
+  nodes
+
 abbrev GraphElement := Node ⊕ Transition
 
 -- traversal of graph
