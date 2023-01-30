@@ -110,7 +110,7 @@ inductive Condition
 | APICondition : AwaitStmt → Condition
 | AwaitCondition : AwaitStmt → Condition
 | HandleCondition : Pipeline.HandleBlock → Condition
-deriving Inhabited
+deriving Inhabited-- TODO:, BEq
 def Condition.toString : Condition → String
 | .DSLExpr cond_expr => s!"DSLExpr: ({cond_expr})"
 | .APICondition await_stmt => s!"APICondition: ({await_stmt})"
@@ -127,6 +127,27 @@ def Message.toString : Message → String
 | .mk term => s!"Message Term: ({term})"
 instance : ToString Message where toString := Message.toString
 
+def Message.idents : Message → Except String (List Identifier)
+| .mk term =>
+  match term with
+  | .function_call qual_name /- exprs -/ _ =>
+    match qual_name with
+    | .mk idents =>
+      pure idents
+  | _ => throw "Message is not a function call"
+
+abbrev MessageName := String
+def Message.dest_ctrler : Message → Except String CtrlerName
+| msg => do
+  match (← msg.idents)[0]? with
+  | some dest_ctrler => pure dest_ctrler
+  | none => throw "Message does not have a destination controller"
+def Message.name : Message → Except String MessageName
+| msg => do
+  match (← msg.idents)[1]? with
+  | some dest_ctrler => pure dest_ctrler
+  | none => throw "Message does not have a name"
+
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
 abbrev Stmts := List Pipeline.Statement
@@ -136,7 +157,7 @@ inductive TransitionType
 | Transition : TransitionType
 | Reset : TransitionType
 | Completion : TransitionType
-deriving Inhabited
+deriving Inhabited, BEq
 def TransitionType.toString : TransitionType → String
 | .Transition => "Transition"
 | .Reset => "Reset"
@@ -162,6 +183,7 @@ trans_type : TransitionType
 queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
 deriving Inhabited
+instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
 
 def predicateToString (predicate : Predicate) : String :=
 ", ".intercalate (predicate.map (λ pred => toString pred))
@@ -244,7 +266,7 @@ current_state : StateName
 ctrler_name : CtrlerName
 vars : VarList
 transitions : Transitions
-deriving Inhabited
+deriving Inhabited, BEq
 def Node.toString (cdfg_node: Node) : String :=
 let vars : String := ", ".intercalate (List.map TidentoString cdfg_node.vars)
 let str : String :=

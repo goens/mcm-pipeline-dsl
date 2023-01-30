@@ -555,6 +555,8 @@ Do I need to iterate through states?
 -- I don't think so, information is readily available from
 -- the DSL ctrler and states
 -/
+
+  -- TODO: change List Node -> Graph
   let cdfg_nodes_list : List (List Node) ← ctrlers.mapM CtrlersToCDFG
   let cdfg_nodes : List Node := List.join cdfg_nodes_list
 
