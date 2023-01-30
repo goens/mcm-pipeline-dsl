@@ -17,6 +17,10 @@ def memory_interface : String := "memory_interface"
 def load_completed : String := "load_completed"
 def store_completed : String := "store_completed"
 
+def InstType.completion_msg_name : InstType → String
+| .load => load_completed
+| .store => store_completed
+
 def load : InstType := InstType.load
 def store : InstType := InstType.store
 
