@@ -2,7 +2,8 @@
 import PipelineDsl.AST
 import PipelineDsl.CDFG
 
-/-
+
+/--/
 1. Take a CDFG Graph and find states after the receive state
 2. Use post receive states to find pre-receive states
 3. Identify unique states between the two that remains until the inst is committed
@@ -28,6 +29,30 @@ def Pipeline.QualifiedName.msg_name (qual_name : Pipeline.QualifiedName) : Excep
     match lst_ident[1]? with
     | some ident => pure ident
     | none => throw "QualifiedName: Couldn't get 1st element of list of identifiers"
+
+def Pipeline.Statement.when_ctrler_msg_names (stmt : Pipeline.Statement)
+: Except String (CtrlerName × MsgName) :=
+  match stmt with
+  | .when qual_name /- args -/ _ /- stmt -/ _ =>
+    let src_ctrler : Except String CtrlerName := qual_name.ctrler_name
+    let msg_name : Except String MsgName := qual_name.msg_name
+    match src_ctrler with
+    | .ok src_ctrler' =>
+      match msg_name with
+      | .ok msg_name' => pure (src_ctrler', msg_name')
+      | .error msg => throw s!"Couldn't check when msg_name: ({msg})"
+    | .error msg => throw s!"Couldn't check when src_ctrler_name: ({msg})"
+  | _ => throw "Statement: Not a when statement"
+  
+def Pipeline.Statement.await_when_ctrler_name_msg_name (stmt : Pipeline.Statement)
+: Except String (CtrlerName × MsgName) :=
+  match stmt with
+  | .await (none) lst_stmts =>
+    match lst_stmts with
+    | [] => throw "Await: No statements in await"
+    | [stmt] => stmt.when_ctrler_msg_names
+    | _ :: _ => throw "Await: More than one statement in await"
+  | _ => throw "Statement: Not an await statement"
 
 def Pipeline.Statement.is_await_when_global_response (stmt : Pipeline.Statement) (inst_to_check_completion : InstType)
 : Except String Bool := do
@@ -164,6 +189,37 @@ def CDFG.Node.unique_trans'd_states : Node → (List StateName)
   
   transitioned_to_states
 
+def CDFG.Condition.is_awaits_on_msg_from_nodes (condition : Condition) (nodes : List Node) : Except String Bool := do
+  match condition with
+  | .AwaitCondition await_stmt =>
+    let (ctrler_name, msg_name) : CtrlerName × MsgName := (← await_stmt.await_when_ctrler_name_msg_name)
+    let nodes_of_ctrler := nodes.filter (·.ctrler_name == ctrler_name)
+    let nodes_of_ctrler's_transitions := List.join (nodes_of_ctrler.map (·.transitions))
+    -- let nodes_of_ctrler's_transitions := List.join (nodes_of_ctrler.map (·.transitions.filter (·.messages.any (·.name == msg_name))))
+    let transitions_that_send_msg ← 
+      nodes_of_ctrler's_transitions.filterM (·.messages.anyM (
+        let this_msg := ·.name
+        match this_msg with
+        | .ok msg => pure (msg == msg_name)
+        | .error msg => throw msg)
+        )
+    pure (transitions_that_send_msg.length > 0)
+  | _ => pure false
+
+def CDFG.Node.unique_trans'd_states_not_pred_on : Node → List Node → Except String (List StateName)
+| node, nodes => do
+  let transitions : Transitions := node.transitions.filter (·.trans_type == .Transition)
+
+  let transitions_not_pred_on_input_nodes := (←
+    transitions.filterM (·.predicate.anyM (·.is_awaits_on_msg_from_nodes nodes)))
+
+  let transitioned_to_states : List StateName := transitions_not_pred_on_input_nodes.map (·.dest_state)
+  -- Filter out states pred on provided states
+
+  -- match predicate with message belonging to a node from the post receive states
+  
+  pure transitioned_to_states
+
 def CDFG.Graph.unique_msg'd_states_by_node : Graph → StateName → Except String (List StateName)
 | graph, state_name => do
   -- Could try to get this one line implementation working,
@@ -189,6 +245,11 @@ def CDFG.Graph.unique_transition'd_states_by_node : Graph → StateName → Exce
 def CDFG.Graph.unique_transition'd_states_by_node' : Graph → StateName → Except String (List StateName)
 | graph, state_name => do
   graph.node_map state_name (·.unique_trans'd_states)
+
+-- TODO: transitioned to, and not predicated on states of an input list
+def CDFG.Graph.unique_transition'd_states_by_node_not_pred_on : Graph → StateName → List Node → Except String (List StateName)
+| graph, state_name, nodes => do
+  ← graph.node_mapM state_name (·.unique_trans'd_states_not_pred_on nodes)
 
 def CDFG.Graph.all_msg'd_trans'd_states : Graph → Except String (List StateName)
 | graph => do
@@ -276,6 +337,8 @@ partial def CDFG.Graph.findNodesReachableByTransitionAndMessage (start : String)
     let unique_msg'd_states : List String := msg'd_states.eraseDups
     let unique_transitioned_to_states : List String := transitioned_to_states.eraseDups
   
+  -- Remove the unique_msg'd_states from the list of reachable nodes!
+  -- This is because they're also technically pre-receive nodes as well...
     let reachable_nodes_by_message : (List Node) :=  (←
       unique_msg'd_states.mapM (λ state_name => graph.findNodesReachableByTransitionAndMessage state_name)).join
     let reachable_nodes_by_message_without_await_states : List Node :=
@@ -290,24 +353,25 @@ partial def CDFG.Graph.findNodesReachableByTransitionAndMessage (start : String)
   else
     throw "Node not found"
 
-partial def CDFG.Graph.findNodesReachableByTransitionAndMessageNotInList (start : String) (graph : Graph) (don't_visit : List String)
+partial def CDFG.Graph.preReceiveStates
+(start : StateName) (graph : Graph) (don't_visit : List StateName) (post_receive_nodes : List Node)
 : Except String (List Node) := do
   let msg'd_states : List StateName ← graph.unique_msg'd_states_by_node start
-  let transitioned_to_states : List StateName ← graph.unique_transition'd_states_by_node start
+  let transitioned_to_states_not_pred_on_post_receive : List StateName
+    ← graph.unique_transition'd_states_by_node_not_pred_on start post_receive_nodes
 
-  -- TODO AZ: Remove the unique_msg'd_states from the list of reachable nodes!
-  -- This is because they're also technically pre-receive nodes as well...
+  -- if transition is predicated on a message from a post_receive_state then don't do the traversal
   let unique_msg'd_states : List String := msg'd_states.eraseDups
-  let unique_transitioned_to_states : List String := transitioned_to_states.eraseDups
+  let unique_transitioned_to_states : List String := transitioned_to_states_not_pred_on_post_receive.eraseDups
   let next_unique_states_to_visit : List String := unique_msg'd_states ++ unique_transitioned_to_states
   let next_states_to_visit : List String := next_unique_states_to_visit.filter (λ state => !(don't_visit.contains state))
   
   let reachable_nodes : List Node := (←
-    next_states_to_visit.mapM (graph.findNodesReachableByTransitionAndMessage ·) ).join
+    next_states_to_visit.mapM (graph.preReceiveStates · don't_visit post_receive_nodes) ).join
 
   pure reachable_nodes.eraseDups
 
-def getPostReceiveStates (graph : Graph) (inst_to_check_completion : InstType)
+def find_point_b (graph : Graph) (inst_to_check_completion : InstType)
 : Except String (List CDFG.Node) := do
   let receive_states_and_transitions : List Node ←
     graph.getReceiveStates inst_to_check_completion
@@ -369,7 +433,8 @@ def getPostReceiveStates (graph : Graph) (inst_to_check_completion : InstType)
   let post_receive_states : (List Node) ←
     match receive_state_to_search_from with
     | .ok node =>
-      pure (graph.findNodesReachableByTransitionAndMessage node.current_state)
+      let post_receive : List Node ← (graph.findNodesReachableByTransitionAndMessage node.current_state)
+      pure (post_receive.concat node)
     | .error msg => throw msg
 
   /- Use post-'receive' states, find all pre-'receive' states -/
@@ -385,10 +450,14 @@ def getPostReceiveStates (graph : Graph) (inst_to_check_completion : InstType)
         -- traverse post-receive states
         -- Check if transition fwd requires msg from post-receive state? This could work
         -- AZ TODO: Update the function do work like this signature suggests..
-        pure (graph.findNodesReachableByTransitionAndMessageWithoutNeedingPostReceiveMessagesAlsoNotInList node.current_state [receive_node.current_state] post_receive_states)
+        pure (graph.preReceiveStates node.current_state [receive_node.current_state] post_receive_states)
       | .error msg => throw msg
     | .error msg => throw msg
-  -- pre_receive_states
+
+  -- remove common states from post-receive states
+
+  -- TODO: How do i really check if states or variable updates are consistent
+  -- until the instruction is complete from all ctrlers?
 
   /- Look at the state sets per ctrler, check for (1) states unique to post-'receive' -/
   /- and (2) Variable Constraints that are unique to post-'receive' -/
@@ -397,3 +466,9 @@ def getPostReceiveStates (graph : Graph) (inst_to_check_completion : InstType)
   /- Return the Ctrler/State/Variable to stall on info -/
 
   return []
+
+
+def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) :=
+  -- find the state that sends the global perform msg
+  -- check if the ctrler is inserted to in PO order (check is_head and insert)
+  -- if not, back track to the previous ctrler to repeat
