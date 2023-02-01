@@ -13,13 +13,21 @@ deriving Inhabited, BEq
 -- | store : InstType
 -- deriving Inhabited, BEq
 
-def memory_interface : String := "memory_interface"
-def load_completed : String := "load_completed"
-def store_completed : String := "store_completed"
+abbrev MsgName := String
+abbrev CtrlerName := String
+def memory_interface : CtrlerName := "memory_interface"
+def load_completed : MsgName := "load_completed"
+def load_perform : MsgName := "send_load_request"
+def store_completed : MsgName := "store_completed"
+def store_perform : MsgName := "send_store_request"
 
 def InstType.completion_msg_name : InstType → String
 | .load => load_completed
 | .store => store_completed
+
+def InstType.perform_msg_name : InstType → String
+| .load => load_perform
+| .store => store_perform
 
 def load : InstType := InstType.load
 def store : InstType := InstType.store
