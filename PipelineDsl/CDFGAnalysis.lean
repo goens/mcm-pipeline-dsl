@@ -3,7 +3,7 @@ import PipelineDsl.AST
 import PipelineDsl.CDFG
 
 
-/--/
+/-
 1. Take a CDFG Graph and find states after the receive state
 2. Use post receive states to find pre-receive states
 3. Identify unique states between the two that remains until the inst is committed
@@ -468,7 +468,9 @@ def find_point_b (graph : Graph) (inst_to_check_completion : InstType)
   return []
 
 
-def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) :=
+def find_stall_point_heuristic (graph : Graph) (inst_type : InstType)
+: Except String Node :=
   -- find the state that sends the global perform msg
   -- check if the ctrler is inserted to in PO order (check is_head and insert)
   -- if not, back track to the previous ctrler to repeat
+  pure default
