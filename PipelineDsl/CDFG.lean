@@ -119,7 +119,7 @@ def Condition.toString : Condition → String
 instance : ToString Condition where toString := Condition.toString
 
 -- abbrev MessageName := String
-abbrev CtrlerName := String
+-- abbrev CtrlerName := String
 inductive Message
 | mk : Pipeline.Term → Message
 deriving Inhabited
@@ -142,11 +142,21 @@ def Message.dest_ctrler : Message → Except String CtrlerName
   match (← msg.idents)[0]? with
   | some dest_ctrler => pure dest_ctrler
   | none => throw "Message does not have a destination controller"
-def Message.name : Message → Except String MessageName
+def Message.name : Message → Except String MsgName
 | msg => do
   match (← msg.idents)[1]? with
   | some dest_ctrler => pure dest_ctrler
   | none => throw "Message does not have a name"
+def Message.is_name_equals : Message → MsgName → Except String Bool
+| msg, msg_name => do
+  pure ((← msg.name) == msg_name)
+
+def Message.is_global_perform_of_type : Message → InstType → Except String Bool
+| ctrler_msg, inst_type => do
+  pure (
+    ((← ctrler_msg.name) == inst_type.perform_msg_name) &&
+    ((← ctrler_msg.dest_ctrler) == memory_interface)
+    )
 
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
@@ -184,6 +194,9 @@ queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
 deriving Inhabited
 instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
+
+def Transition.is_transition_to_state_name (transition : Transition) (state_name : StateName) : Bool :=
+transition.dest_state == state_name && transition.trans_type == .Transition
 
 def predicateToString (predicate : Predicate) : String :=
 ", ".intercalate (predicate.map (λ pred => toString pred))
