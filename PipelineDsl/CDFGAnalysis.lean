@@ -22,7 +22,7 @@ def Pipeline.QualifiedName.ctrler_name (qual_name : Pipeline.QualifiedName) : Ex
     | some ident => pure ident
     | none => throw "QualifiedName: Couldn't get 0th element of list of identifiers"
 
-abbrev MsgName := String
+-- abbrev MsgName := String
 def Pipeline.QualifiedName.msg_name (qual_name : Pipeline.QualifiedName) : Except String MsgName := do
   match qual_name with
   | .mk lst_ident =>
@@ -83,6 +83,28 @@ def Pipeline.Statement.is_await_when_global_response (stmt : Pipeline.Statement)
       pure false
   | _ => pure false
   
+def CDFG.Node.has_transition_or_complete_with_msg_name (node : Node) (msg_name : MsgName) : Except String Bool := do
+  let transition_or_complete_trans := node.transitions.filter (·.trans_type != .Reset)
+  transition_or_complete_trans.anyM (·.messages.anyM (·.is_name_equals msg_name))
+
+def Pipeline.Statement.await_when's_sending_node (stmt : Pipeline.Statement) (graph : Graph)
+: Except String (Node) := do
+  let (ctrler_name, msg_name) := ← stmt.await_when_ctrler_name_msg_name
+  -- TODO:
+  -- Filter graph nodes by ctrler_name
+  let ctrler_nodes := graph.nodes.filter (·.ctrler_name == ctrler_name)
+  -- Filter ctrler_nodes by ones that have transitions w/ message w/ msg_name
+  let msg_nodes ← ctrler_nodes.filterM (·.has_transition_or_complete_with_msg_name msg_name)
+  -- If more than one node, or 0, throw error
+  match msg_nodes with
+  | [node] => pure node
+  | _ => throw s!"Statement: More than one node in ctrler: ({ctrler_name}) with msg: ({msg_name})"
+
+def CDFG.Condition.await_pred's_sending_node (condition : Condition) (graph : Graph)
+: Except String Node := do
+  match condition with
+  | .AwaitCondition await_stmt => await_stmt.await_when's_sending_node graph
+  | _ => throw "Condition: Not an await condition"
 
 def CDFG.Condition.is_await_global_response (condition : Condition) (inst_to_check_completion : InstType)
 : Except String Bool := do
@@ -305,8 +327,18 @@ def get_max_from_tuple_nat_list (lst : List (Node × Nat)) : (Node × Nat) :=
     let (n', nat') := (get_max_from_tuple_nat_list t)
     if (nat) >= nat' then (n,nat) else (n',nat')
 
+def get_min_from_tuple_nat_list (lst : List (Node × Nat)) : (Node × Nat) :=
+  match lst with
+  | h::[] => h
+  | h::t =>
+    let (n, nat) := h
+    let (n', nat') := (get_min_from_tuple_nat_list t)
+    if (nat) <= nat' then (n,nat) else (n',nat')
+  | [] => (default,0)
+
 #eval get_max_from_tuple_nat_list [(default,2),(default,1)]
 #check List.find?
+#eval get_min_from_tuple_nat_list [(default,2),(default,1)]
 -- AZ NOTE: This ignores states that "await" a message since they're pre-receive
 partial def CDFG.Graph.findNodesReachableByTransitionAndMessage (start : String) (graph : Graph)
 : Except String (List Node) := do
@@ -371,88 +403,63 @@ partial def CDFG.Graph.preReceiveStates
 
   pure reachable_nodes.eraseDups
 
-def find_point_b (graph : Graph) (inst_to_check_completion : InstType)
-: Except String (List CDFG.Node) := do
-  let receive_states_and_transitions : List Node ←
-    graph.getReceiveStates inst_to_check_completion
 
-  let receive_state_to_search_from : Except String Node :=
+def CDFG.Graph.earliest_node_by_msg_dist (graph : Graph) (nodes : List Node)
+: Except String Node := do
+  let not_transitioned_or_messaged_state : Node ← graph.findNotTransitionedToState
+  /- Then from here traverse the graph from the start node -/
+  /- Produce Labels for each state of "Message Distance" and "State Distance" -/
+  let labelled_by_msg_distance : (List (StateName × Distance)) ←
+    graph.labelNodesByMessageDistance not_transitioned_or_messaged_state.current_state 0
+  
+  let receive_states_and_transitions_labelled : List (CDFG.Node × Nat) :=
+    nodes.map (λ (node) =>
+      let matching_nodes : List (String × Nat) :=
+        labelled_by_msg_distance.filter (λ (state_name, /- msg_distance -/ _) =>
+          state_name == node.ctrler_name
+        )
+      let msg_distances : List Nat :=
+        matching_nodes.map (λ (/- state_name -/ _, msg_distance) => msg_distance)
+      let max_distance : Nat :=
+        get_max_from_nat_list msg_distances
+      (node, max_distance)
+    )
+    
+  /- Sort by Message Distance. If multiple, sort by state distance -/
+  -- Ignore for now. Just take the first one
+  let (first_receive_node, _) :=
+    get_min_from_tuple_nat_list receive_states_and_transitions_labelled
+
+  pure first_receive_node
+
+def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : InstType)
+: Except String Node := do
+  let receive_states_and_transitions : List Node ←
+    graph.getReceiveStates inst_type
+
+  let receive_state : Node ←
     if receive_states_and_transitions.length == 1 then
       pure receive_states_and_transitions[0]!
     else if receive_states_and_transitions.length > 1 then
-      -- Find the earliest receive state
-      -- Fewest (1) messages traversed is the "first"
-      /- Try to progress by starting from the head node... -/
-      /- Get list of all states which have a transition pointing to it -/
-      -- i.e. transition dests
-      /- And all states which have a message sent to them -/
-      -- i.e. match message name and dest_ctrler to dest_ctrler's state
-      /- Then filter the Nodes, if they're not in the list of transitioned to & messaged states -/
-      let not_transitioned_or_messaged_state : Except String Node := graph.findNotTransitionedToState
-      let node_name : Except String Node :=
-        match not_transitioned_or_messaged_state with
-        | .ok node => 
-          /- Then from here traverse the graph from the start node -/
-          /- Produce Labels for each state of "Message Distance" and "State Distance" -/
-          let labelled_by_msg_distance : Except String (List (StateName × Distance)) :=
-            graph.labelNodesByMessageDistance node.current_state 0
-          
-          let nodes_and_msg_dist : Except String (Node) :=
-            match labelled_by_msg_distance with
-            | .ok names_labels =>
-              let receive_states_and_transitions_labelled : List (CDFG.Node × Nat) :=
-                receive_states_and_transitions.map (λ (node) =>
-                  let matching_nodes : List (String × Nat) :=
-                    names_labels.filter (λ (state_name, /- msg_distance -/ _) =>
-                      state_name == node.ctrler_name
-                    )
-                  let msg_distances : List Nat :=
-                    matching_nodes.map (λ (/- state_name -/ _, msg_distance) => msg_distance)
-                  let max_distance : Nat :=
-                    get_max_from_nat_list msg_distances
-                  (node, max_distance)
-                )
-                
-              let (first_receive_node, _) :=
-                get_max_from_tuple_nat_list receive_states_and_transitions_labelled
-              
-              pure (first_receive_node)
-            | .error msg => throw msg
-          nodes_and_msg_dist
-        | .error msg => throw msg
-
-
-      /- Sort by Message Distance. If multiple, sort by state distance -/
-      -- Ignore for now. Just take the first one
-      node_name
+      graph.earliest_node_by_msg_dist receive_states_and_transitions
     else
       -- If none found, error!
       throw "Error: No receive state found"
 
+def find_point_b (graph : Graph) (inst_to_check_completion : InstType)
+: Except String (List CDFG.Node) := do
+  let receive_state_to_search_from : Node ←
+    graph.global_receive_node_of_inst_type inst_to_check_completion
+
   /- Use res, find all post-'receive' states -/
-  let post_receive_states : (List Node) ←
-    match receive_state_to_search_from with
-    | .ok node =>
-      let post_receive : List Node ← (graph.findNodesReachableByTransitionAndMessage node.current_state)
-      pure (post_receive.concat node)
-    | .error msg => throw msg
+  let post_receive_states : (List Node) :=
+      (← (graph.findNodesReachableByTransitionAndMessage receive_state_to_search_from.current_state)).concat receive_state_to_search_from
 
   /- Use post-'receive' states, find all pre-'receive' states -/
   -- let pre_receive_states : (List Node) :=
-  let not_transitioned_or_messaged_state : Except String Node := graph.findNotTransitionedToState
+  let not_transitioned_or_messaged_state : Node ← graph.findNotTransitionedToState
   let pre_receive_states : (List Node) ← 
-    match not_transitioned_or_messaged_state with
-    | .ok node =>
-      match receive_state_to_search_from with
-      | .ok receive_node =>
-        -- TODO Make sure the function doesn't reach post-receive states
-        -- Need to find a way to use the transitions' guard to not
-        -- traverse post-receive states
-        -- Check if transition fwd requires msg from post-receive state? This could work
-        -- AZ TODO: Update the function do work like this signature suggests..
-        pure (graph.preReceiveStates node.current_state [receive_node.current_state] post_receive_states)
-      | .error msg => throw msg
-    | .error msg => throw msg
+        (graph.preReceiveStates not_transitioned_or_messaged_state.current_state [receive_state_to_search_from.current_state] post_receive_states)
 
   -- remove common states from post-receive states
 
@@ -466,11 +473,99 @@ def find_point_b (graph : Graph) (inst_to_check_completion : InstType)
   /- Return the Ctrler/State/Variable to stall on info -/
 
   return []
+-- #eval [[2],[1]].filter (·.any (· > 1))
+def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType)
+: Except String Node := do
+  let global_perform_nodes : List Node :=
+    (← graph.nodes.filterM (·.transitions.anyM (·.messages.anyM (·.is_global_perform_of_type inst_type))))
+  if global_perform_nodes.length == 1 then
+    pure global_perform_nodes[0]!
+  else if global_perform_nodes.length > 1 then
+    -- Label by msg distance, take shortest one
+    graph.earliest_node_by_msg_dist global_perform_nodes
+  else
+    throw "Error: No global perform node found"
 
+def CDFG.Graph.nodes_transitioning_to_node (graph : Graph) (node : Node)
+: (List Node) :=
+  graph.nodes.filter (·.transitions.any (·.is_transition_to_state_name node.ctrler_name))
 
-def find_stall_point_heuristic (graph : Graph) (inst_type : InstType)
-: Except String Node :=
-  -- find the state that sends the global perform msg
-  -- check if the ctrler is inserted to in PO order (check is_head and insert)
+partial def CDFG.Graph.first_msging_ctrler_node_from_node (graph : Graph) (node : Node) (visited : List Node)
+: Except String Node := do
+  -- 1. Recursive back track through nodes until we find one not transitioned to
+  -- get nodes transitioning to this one
+  let nodes_transitioning_to_node : List Node := graph.nodes_transitioning_to_node node
+  match nodes_transitioning_to_node with
+  | [] => do
+    -- finished search, and can call fn to get other ctrler msging this one
+    -- get when predicates, find msg from other ctrler
+    let basic_transitions := node.transitions.filter (·.trans_type == .Transition)
+    let await_predicates := List.join $ basic_transitions.map (·.predicate.filter (match · with | .AwaitCondition _ => true | _ => false))
+    -- match await_predicate to sending ctrler node
+    -- return the node
+    match await_predicates with
+    | [] => do
+      throw "Error: No await predicate found"
+    | _ => do
+      -- the first message pass to the node is the "first" message that starts this ctrler's state machine
+      -- assuming I'm adding to the predicate list in the order of the stmts
+      let await_pred := await_predicates[0]!
+      await_pred.await_pred's_sending_node graph
+  | _ => do
+   -- if nodes_transitioning_to_node.length > 0 then
+    -- recursive search
+    -- shouldn't be any cycles in graph, but just in case...
+    -- TODO
+    let nodes_not_visited : List Node := nodes_transitioning_to_node.filter (!visited.contains ·)
+    let first_msging_ctrler_node_list ← nodes_not_visited.mapM (graph.first_msging_ctrler_node_from_node · (visited.append nodes_not_visited))
+    -- check to confirm all paths lead to the same node
+    match first_msging_ctrler_node_list with
+    | [] => throw "Error: No first msging ctrler node found"
+    | _ => do
+      let all_same_node := first_msging_ctrler_node_list.all (· == first_msging_ctrler_node_list[0]!)
+      match all_same_node with
+      | true => pure first_msging_ctrler_node_list[0]!
+      | false => throw "Error: Not all paths lead to the same node"
+
+def CDFG.Node.is_msg_in_order (node : Node) (graph : Graph) (ctrlers : List controller_info)
+: Except String Bool := do
+  -- 1. Check ctrler info
+  -- If just ctrler, return false
+  -- If FIFO, do a recursive check if transitions
+  -- If Unordered queue, check if search on seq_num less than given seq_num (if true then return true, if false ret false)
+  pure default
+
+partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node : Node) (ctrlers : List controller_info)
+: Except String Node := do
+  -- 1. Recursive back track through nodes until we find one not transitioned to, get node that msgs it
+  let msging_node_of_input_node : Node ← graph.first_msging_ctrler_node_from_node node []
+  -- 2. Check transitions predicated on msg from other ctrler
+  let is_node_transition_path_PO : Bool := ← msging_node_of_input_node.is_msg_in_order graph ctrlers
+  -- 3. Do a recursive back track through nodes, checking for transitions that are pred by is_head
+  if is_node_transition_path_PO then
+    pure msging_node_of_input_node
+  else
+    -- recursive search
+    graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
+
+def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers : List controller_info)
+: Except String Node := do
+  -- First, find the first state, which is the state that sends the global perform msg
+  let global_perform_node : Node ← graph.global_perform_node_of_inst_type inst_type
+
+  -- >Second, check if the ctrler is inserted into in PO order (check is_head and insert)
+  -- >Can achieve this by iterating backwards to a node which is not transition'd to, but is
+  -- only messaged to
+  -- >At this node,
+  -- >>check predicate (should be when), find the sender,
+  -- >>>If sender is a FIFO, see if the sender is predicated is_head
+  -- >>>>If it is, then it's ordered. If not, then it's unordered
+  -- >>>If queue is unordered, then see if it's predicated on await self search msg when
+  -- >>>>If it is, then it's ordered. If not, then it's unordered
+  -- >>>If it's a ctrler, then it's unordered
+  let PO_inserted_ctrler_node : Node ← graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
+
   -- if not, back track to the previous ctrler to repeat
+  -- if ordered, return this node
+
   pure default
