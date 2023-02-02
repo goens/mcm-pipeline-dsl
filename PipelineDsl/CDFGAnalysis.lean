@@ -536,27 +536,6 @@ def CDFG.Condition.is_predicated_by_is_head_api (cond : Condition) : Bool :=
     cond_expr.is_contains_is_head_api
   | _ => false
 
-mutual
-partial def CDFG.Node.is_trans_to_state_name_pred_by_is_head (node : Node) (state_name : StateName) (graph : Graph)
-: Bool :=
-  let trans_to_given_state := node.transitions.filter (·.dest_state == state_name)
-  let is_pred_is_head := trans_to_given_state.all (·.predicate.any (·.is_predicated_by_is_head_api))
-  if is_pred_is_head then
-    true
-  else
-    node.is_all_paths_to_node_predicated_is_head graph
-
-partial def CDFG.Node.is_all_paths_to_node_predicated_is_head (node : Node) (graph : Graph)
-: Bool :=
-  -- 1. Get all nodes that transition to this one
-  let nodes_transitioning_to_node : List Node := graph.nodes_transitioning_to_node node
-  -- 2. Check if all paths to this node are predicated is_head
-  match nodes_transitioning_to_node with
-  | [] => false
-  | _ =>
-    nodes_transitioning_to_node.all (·.is_trans_to_state_name_pred_by_is_head node.current_state graph)
-end
-
 -- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
 --   match cond with
 --   | .APICondition await_stmt => -- recursive search for if there's a function call in any term
@@ -573,7 +552,7 @@ partial def CDFG.Node.is_trans_to_state_name_pred_by_provided_cond
   if is_pred_is_head then
     true
   else
-    node.is_all_paths_to_node_predicated_is_head graph
+    node.is_all_paths_to_node_predicated_by_provided_cond graph cond_check
 
 partial def CDFG.Node.is_all_paths_to_node_predicated_by_provided_cond (node : Node) (graph : Graph) (cond_check : Condition → Bool)
 : Bool :=
