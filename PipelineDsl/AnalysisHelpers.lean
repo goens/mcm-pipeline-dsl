@@ -99,6 +99,11 @@ instance : ToString controller_info := ⟨
     "\n=== End Controller ===\n\n"
   ⟩ 
 
+inductive ControllerType
+| FIFO : ControllerType
+| Unordered : ControllerType
+| BasicCtrler : ControllerType
+
 
 def thing : controller_info := default
 #eval thing
@@ -1015,3 +1020,115 @@ def get_max_from_nat_list (lst : List Nat) : Nat :=
     let other : Nat := (get_max_from_nat_list t)
     if h > other then h else other
 #eval get_max_from_nat_list [10]
+
+def get_ctrler_from_ctrlers_list (ctrler_name : CtrlerName) (ctrlers : List controller_info)
+: Except String controller_info := do
+  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
+  match ctrler_match_list with
+  | [ctrler] => pure ctrler
+  | [] =>
+    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+  | _::_ =>
+    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+
+def Pipeline.Statement.stmt_block : Pipeline.Statement → Except String (List Pipeline.Statement)
+| .block stmts => pure stmts
+| _ => throw "Statement is not a block"
+
+def Pipeline.QualifiedName.idents : Pipeline.QualifiedName → List Identifier
+| .mk idents => idents
+
+def Pipeline.QualifiedName.is_ident_ordering : Pipeline.QualifiedName → Except String Bool
+| qual_name =>
+  match qual_name.idents with
+  | [ident] => pure $ ident == "ordering"
+  | [] => throw s!"QualifiedName is empty? ({qual_name})"
+  | _ => pure false
+
+def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
+| expr => do
+  match expr with
+  | .some_term term =>
+    match term with
+    | .var ident' => pure ident'
+    | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
+  | _ => throw "Expr is not 'some_term' (i.e. a var)"
+
+def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (List ControllerType)
+| .variable_assignment qual_name expr => do
+  match ← qual_name.is_ident_ordering with
+  | true => do
+    let var_ident ← expr.var_ident 
+    if var_ident == "FIFO" then
+      pure $ [ ControllerType.FIFO ]
+    else if var_ident == "Unordered" then
+      pure $ [ ControllerType.Unordered ]
+    else
+      throw "Expr.var_ident is not a valid ordering"
+  | false => pure []
+| _ => pure []
+
+def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (ControllerType)
+| stmt => do
+  let blk ← stmt.stmt_block
+  let ordering_list := List.join $ ← blk.mapM (·.var_asgn_ordering)
+  match ordering_list with
+  | [] => throw "No ordering found in stmt block"
+  | [ordering] => pure ordering
+  | _ => throw "Multiple orderings found in stmt block"
+
+def Pipeline.Description.ctrler_type : Pipeline.Description → Except String ControllerType
+| descript => do
+  match descript with
+  | .controller /- identifier -/ _ stmt =>
+    stmt.ordering_from_stmt_block
+  | _ => throw "Description is not a controller: ({descript})"
+
+def controller_info.type : controller_info → Except String ControllerType
+| ctrler =>
+  if ctrler.entry_descript.isSome then
+    ctrler.controller_descript.ctrler_type
+  else
+    pure ControllerType.BasicCtrler
+
+mutual
+partial def Pipeline.Term.is_head_api : Pipeline.Term → Bool
+| term =>
+  match term with
+  | .function_call qual_name _ => qual_name.idents == ["is_head"]
+  | .expr expr' =>
+    expr'.is_contains_is_head_api
+  | _ => false
+
+partial def Pipeline.Expr.is_contains_is_head_api : Pipeline.Expr → Bool
+| expr =>
+  match expr with
+  | .some_term term => term.is_head_api
+  | .binand term1 term2 => term1.is_head_api || term2.is_head_api
+  | _ => false
+end
+
+-- partial def Pipeline.Term.is_search_older_seq_num_success : Pipeline.Term → CtrlerName → Bool
+-- | term, ctrler_name =>
+--   match term with
+--   | .function_call qual_name args =>
+--     let first_arg := match args with
+--     | [] => throw "await-api is empty?"
+--     | h::_ => h
+--     let first_arg_is_older_seq_num_inst :=
+--       match h with
+--       | 
+--     (qual_name.idents == [ctrler_name,"search"]) &&
+--     (entry.instruction.seq_num < instruction.seq_num)
+--   | _ => false
+
+-- def Pipeline.Statement.is_self_search_older_seq_num_success
+-- (stmt : Pipeline.Statement) (ctrler_name : CtrlerName)
+-- : Bool :=
+--   match stmt with
+--   | .await (some term) stmts =>
+--     let term_is_search_api :=
+--       term.is_search_older_seq_num_success ctrler_name
+--   | _ => false
