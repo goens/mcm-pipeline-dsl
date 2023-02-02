@@ -527,13 +527,82 @@ partial def CDFG.Graph.first_msging_ctrler_node_from_node (graph : Graph) (node 
       | true => pure first_msging_ctrler_node_list[0]!
       | false => throw "Error: Not all paths lead to the same node"
 
+def CDFG.Node.ctrler_of_node (node : Node) (ctrlers : List controller_info) : Except String controller_info :=
+  get_ctrler_from_ctrlers_list node.ctrler_name ctrlers
+
+def CDFG.Condition.is_predicated_by_is_head_api (cond : Condition) : Bool :=
+  match cond with
+  | .DSLExpr cond_expr => -- recursive search for if there's a function call in any term
+    cond_expr.is_contains_is_head_api
+  | _ => false
+
+mutual
+partial def CDFG.Node.is_trans_to_state_name_pred_by_is_head (node : Node) (state_name : StateName) (graph : Graph)
+: Bool :=
+  let trans_to_given_state := node.transitions.filter (·.dest_state == state_name)
+  let is_pred_is_head := trans_to_given_state.all (·.predicate.any (·.is_predicated_by_is_head_api))
+  if is_pred_is_head then
+    true
+  else
+    node.is_all_paths_to_node_predicated_is_head graph
+
+partial def CDFG.Node.is_all_paths_to_node_predicated_is_head (node : Node) (graph : Graph)
+: Bool :=
+  -- 1. Get all nodes that transition to this one
+  let nodes_transitioning_to_node : List Node := graph.nodes_transitioning_to_node node
+  -- 2. Check if all paths to this node are predicated is_head
+  match nodes_transitioning_to_node with
+  | [] => false
+  | _ =>
+    nodes_transitioning_to_node.all (·.is_trans_to_state_name_pred_by_is_head node.current_state graph)
+end
+
+-- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
+--   match cond with
+--   | .APICondition await_stmt => -- recursive search for if there's a function call in any term
+--     await_stmt.is_self_search_older_seq_num_success
+--   | _ => false
+
+-- Generalised
+mutual
+partial def CDFG.Node.is_trans_to_state_name_pred_by_provided_cond
+(node : Node) (state_name : StateName) (graph : Graph) (cond_check : Condition → Bool)
+: Bool :=
+  let trans_to_given_state := node.transitions.filter (·.dest_state == state_name)
+  let is_pred_is_head := trans_to_given_state.all (·.predicate.any (cond_check ·))
+  if is_pred_is_head then
+    true
+  else
+    node.is_all_paths_to_node_predicated_is_head graph
+
+partial def CDFG.Node.is_all_paths_to_node_predicated_by_provided_cond (node : Node) (graph : Graph) (cond_check : Condition → Bool)
+: Bool :=
+  -- 1. Get all nodes that transition to this one
+  let nodes_transitioning_to_node : List Node := graph.nodes_transitioning_to_node node
+  -- 2. Check if all paths to this node are predicated is_head
+  match nodes_transitioning_to_node with
+  | [] => false
+  | _ =>
+    nodes_transitioning_to_node.all (·.is_trans_to_state_name_pred_by_provided_cond node.current_state graph cond_check)
+end
+
 def CDFG.Node.is_msg_in_order (node : Node) (graph : Graph) (ctrlers : List controller_info)
 : Except String Bool := do
   -- 1. Check ctrler info
+  let ctrler ← node.ctrler_of_node ctrlers
+  let ctrler_type ← ctrler.type
   -- If just ctrler, return false
   -- If FIFO, do a recursive check if transitions
   -- If Unordered queue, check if search on seq_num less than given seq_num (if true then return true, if false ret false)
-  pure default
+  match ctrler_type with
+  | .BasicCtrler => pure false
+  | .FIFO => -- trace back and see if all transition paths are predicated is_head
+    pure $ node.is_all_paths_to_node_predicated_by_provided_cond graph CDFG.Condition.is_predicated_by_is_head_api
+  | .Unordered => do
+    -- pure $ node.is_all_paths_to_node_predicated_by_provided_cond graph
+    -- NOTE: Skip for now. Not needed for the LSQs right now.
+    -- Would need t owrite something like: is_self_search_older_seq_num_success fn in AnalysisHelpers
+    pure false
 
 partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node : Node) (ctrlers : List controller_info)
 : Except String Node := do
@@ -563,9 +632,8 @@ def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers :
   -- >>>If queue is unordered, then see if it's predicated on await self search msg when
   -- >>>>If it is, then it's ordered. If not, then it's unordered
   -- >>>If it's a ctrler, then it's unordered
-  let PO_inserted_ctrler_node : Node ← graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
 
   -- if not, back track to the previous ctrler to repeat
   -- if ordered, return this node
-
-  pure default
+  -- let PO_inserted_ctrler_node : Node ← graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
+  graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
