@@ -150,6 +150,9 @@ def Message.name : Message → Except String MsgName
 def Message.is_name_equals : Message → MsgName → Except String Bool
 | msg, msg_name => do
   pure ((← msg.name) == msg_name)
+def Message.is_dest_equals : Message → CtrlerName → Except String Bool
+| msg, dest_ctrler => do
+  pure ((← msg.dest_ctrler) == dest_ctrler)
 
 def Message.is_global_perform_of_type : Message → InstType → Except String Bool
 | ctrler_msg, inst_type => do
