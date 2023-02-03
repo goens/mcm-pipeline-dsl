@@ -1132,3 +1132,84 @@ end
 --     let term_is_search_api :=
 --       term.is_search_older_seq_num_success ctrler_name
 --   | _ => false
+
+def controller_info.init_trans_name (ctrler : controller_info) : Except String Identifier :=
+  if ctrler.init_trans.isSome then
+    pure ctrler.init_trans.get!
+  else if ctrler.ctrler_init_trans.isSome then
+    pure ctrler.ctrler_init_trans.get!
+  else
+    throw s!"Error: ctrler doesn't have init_trans ({ctrler})"
+
+def controller_info.state_list (ctrler : controller_info) : Except String (List Pipeline.Description) :=
+  if ctrler.transition_list.isSome then
+    pure ctrler.transition_list.get!
+  else if ctrler.ctrler_trans_list.isSome then
+    pure ctrler.ctrler_trans_list.get!
+  else
+    throw s!"Error: ctrler doesn't have state_list ({ctrler})"
+
+def Pipeline.Description.state_name : Pipeline.Description → Except String Identifier
+| .state ident /- stmt -/ _ => pure ident
+| _ => throw "Error: Description is not a state"
+
+def controller_info.init_trans_descript (ctrler : controller_info) : Except String Pipeline.Description
+:= do
+  let state_list ← ctrler.state_list
+  let init_trans_name ← ctrler.init_trans_name
+  let init_trans ← state_list.filterM (λ state => do pure $ (← state.state_name) == init_trans_name)
+  match init_trans with
+  | [state] => pure state
+  | _ => throw s!"Error: Couldn't find matching init state? ({state_list})"
+
+def Pipeline.Statement.is_variable_assignment : Pipeline.Statement → Bool
+| .variable_assignment _ _ => true
+| _ => false
+
+def Pipeline.Description.state_asgn_stmts : Pipeline.Description → Except String (List Pipeline.Statement)
+| .state /- ident -/ _ stmt => do
+  let block ← stmt.stmt_block
+  let asgn_stmts := block.filter (·.is_variable_assignment)
+  pure asgn_stmts
+| _ => throw "Error: Description is not a state"
+
+def Pipeline.Const.is_lit : Pipeline.Const → Bool
+| .str_lit _ => true
+| .num_lit _ => true
+
+def Pipeline.Term.is_lit : Pipeline.Term → Bool
+| .const const_ => const_.is_lit
+| _ => false
+
+def Pipeline.Expr.is_lit : Pipeline.Expr → Bool
+| .some_term term => term.is_lit
+| _ => false
+
+def Pipeline.Const.is_bool_lit : Pipeline.Const → Bool
+| .str_lit str => if str == "true" || str == "false" then true else false
+| _ => false
+
+def Pipeline.Term.is_bool_lit : Pipeline.Term → Bool
+| .const const_ => const_.is_bool_lit
+| _ => false
+
+def Pipeline.Expr.is_bool_lit : Pipeline.Expr → Bool
+| .some_term term => term.is_bool_lit
+| _ => false
+
+def Pipeline.Const.bool_str : Pipeline.Const → Except String String
+| .str_lit str => if str == "true" || str == "false" then pure str else throw "Error: Const is not a string literal"
+-- | .num_lit _ => -- something
+| _ => throw "Error: Const is not a string literal"
+
+def Pipeline.Term.bool_str : Pipeline.Term → Except String String
+| .const const_ => const_.bool_str
+| _ => throw "Term is not bool literal"
+
+def Pipeline.Statement.is_variable_assignment_to_lit : Pipeline.Statement → Bool
+| .variable_assignment _ expr => expr.is_bool_lit
+| _ => false
+
+def Pipeline.Description.state_asgn_to_lit_stmts : Pipeline.Description → Except String (List Pipeline.Statement)
+| state_descript => do
+  pure $ (← state_descript.state_asgn_stmts).filter (·.is_variable_assignment_to_lit)
