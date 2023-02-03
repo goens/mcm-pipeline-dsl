@@ -479,11 +479,12 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
   -- 3. Group together canonical traces, and check which unique var constraints are consistent 
   -- 4. Consistent var constraints are chosen
   -- 5. Verify consistent var constraint's ctrler will have the inst while younger inst is stalled
-
   -- Check if unique state/variable constraints is present in queue when inst2 reaches the "stall state"
 
   -- Get traversal graphs of both inst1 and inst 2
   -- check if rules of inst2's path mean that inst1 will be at a state of the same ctrler as the unique state
+
+  -- 6. Should be 1, if more, choose any, or choose earliest from the receive-state
 
   /- Return the Ctrler/State/Variable to stall on info -/
 
