@@ -587,18 +587,18 @@ def CDFG.Node.is_msg_in_order (node : Node) (graph : Graph) (ctrlers : List cont
     pure false
 
 def CDFG.Node.is_complete_trans_pred_is_head (node : Node ) (ctrler_name : CtrlerName)
-: Bool :=
+: Except String Bool := do
   let transitions_completes : Transitions := node.transitions.filter (·.trans_type != .Reset)
-  let trans_msging_ctrler := transitions_completes.filter (·.messages.any (·.is_dest_equals ctrler_name))
-  trans_msging_ctrler.all (·.predicate.any CDFG.Condition.is_predicated_by_is_head_api)
+  let trans_msging_ctrler := ← transitions_completes.filterM (·.messages.anyM (·.is_dest_equals ctrler_name))
+  pure $ trans_msging_ctrler.all (·.predicate.any CDFG.Condition.is_predicated_by_is_head_api)
 
 partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node : Node) (ctrlers : List controller_info)
 : Except String Node := do
   -- 1. Recursive back track through nodes until we find one not transitioned to, get node that msgs it
   let msging_node_of_input_node : Node ← graph.first_msging_ctrler_node_from_node node []
   -- 2. Check transitions predicated on msg from other ctrler
-  let is_msging_node_trans_pred_is_head : Bool := msging_node_of_input_node.is_complete_trans_pred_is_head node.ctrler_name
-  let is_node_transition_path_PO : Bool := ← msging_node_of_input_node.is_msg_in_order graph ctrlers
+  let is_msging_node_trans_pred_is_head : Bool ← msging_node_of_input_node.is_complete_trans_pred_is_head node.ctrler_name
+  let is_node_transition_path_PO : Bool ← msging_node_of_input_node.is_msg_in_order graph ctrlers
   -- 3. Do a recursive back track through nodes, checking for transitions that are pred by is_head
   if is_msging_node_trans_pred_is_head || is_node_transition_path_PO then
     pure msging_node_of_input_node
