@@ -446,6 +446,12 @@ def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : Ins
       -- If none found, error!
       throw "Error: No receive state found"
 
+def common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := nodes1.filter (nodes2.contains ·)
+
+def remove_nodes_from_list (nodes : List Node) (nodes_to_remove : List Node) : List Node := nodes.filter (!nodes_to_remove.contains ·)
+
+def remove_common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := remove_nodes_from_list nodes1 (common_nodes nodes1 nodes2)
+
 -- TODO: finish
 def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_completion : InstType)
 : Except String (List CDFG.Node) := do
@@ -463,13 +469,21 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
         (graph.preReceiveStates not_transitioned_or_messaged_state.current_state [receive_state_to_search_from.current_state] post_receive_states)
 
   -- remove common states from post-receive states
-
-  -- TODO: How do i really check if states or variable updates are consistent
-  -- until the instruction is complete from all ctrlers?
+  let pre_receive_states_no_overlap : List Node := remove_common_nodes pre_receive_states post_receive_states
 
   /- Look at the state sets per ctrler, check for (1) states unique to post-'receive' -/
   /- and (2) Variable Constraints that are unique to post-'receive' -/
-  -- let 
+  -- TODO
+  -- 1. Find the pre-receive states' variable constraints, keep in a structure {ctrler_name, variable constraints}
+  -- 2. Traverse post-receive states with this info, return all traces
+  -- 3. Group together canonical traces, and check which unique var constraints are consistent 
+  -- 4. Consistent var constraints are chosen
+  -- 5. Verify consistent var constraint's ctrler will have the inst while younger inst is stalled
+
+  -- Check if unique state/variable constraints is present in queue when inst2 reaches the "stall state"
+
+  -- Get traversal graphs of both inst1 and inst 2
+  -- check if rules of inst2's path mean that inst1 will be at a state of the same ctrler as the unique state
 
   /- Return the Ctrler/State/Variable to stall on info -/
 
@@ -597,6 +611,7 @@ partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node :
   -- 1. Recursive back track through nodes until we find one not transitioned to, get node that msgs it
   let msging_node_of_input_node : Node ← graph.first_msging_ctrler_node_from_node node []
   -- 2. Check transitions predicated on msg from other ctrler
+    -- AZ NOTE: Heuristic should check there's no Unordered queue in the path, and at least 1 ordered FIFO pred by is_head
   let is_msging_node_trans_pred_is_head : Bool ← msging_node_of_input_node.is_complete_trans_pred_is_head node.ctrler_name
   let is_node_transition_path_PO : Bool ← msging_node_of_input_node.is_msg_in_order graph ctrlers
   -- 3. Do a recursive back track through nodes, checking for transitions that are pred by is_head
