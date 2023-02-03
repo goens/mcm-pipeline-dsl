@@ -12,6 +12,17 @@ and see what the cdfg of all ctrler's state machines is.
 -- Open CDFG namespace, use the "nodes"
 open CDFG
 
+-- def Pipeline.Statement.bool_constraint : Pipeline.Statement → Except String ConstraintInfo
+-- | .variable_assignment qual_name expr => do
+--   let str ← expr.bool_str
+--   let base_var ← qual_name.base_var
+--   if str == "true" then
+--     some (ConstraintInfo.mk base_var (Sum.inr BoolValue.True))
+--   else if str == "false" then
+--     some ( ConstraintInfo.mk base_var (Sum.inr BoolValue.False) )
+-- | _ => throw "Error: Expected a variable assignment statement to get a constraint from"
+
+
 structure StateTranslationInfo where
 State : Pipeline.Description
 Ctrler : controller_info
