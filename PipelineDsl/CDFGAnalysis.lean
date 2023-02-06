@@ -452,6 +452,60 @@ def remove_nodes_from_list (nodes : List Node) (nodes_to_remove : List Node) : L
 
 def remove_common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := remove_nodes_from_list nodes1 (common_nodes nodes1 nodes2)
 
+structure CtrlerPathConstraint where
+ctrler : CtrlerName
+path : List Node
+constraints : List ConstraintInfo
+deriving Inhabited
+
+partial def CDFG.Graph.ctrler_trans_paths_and_constraints (start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint)
+: Except String (List CtrlerPathConstraint) := do
+  -- For this, I should get paths of nodes, and constraints
+  --  but just per ctrler
+  -- msgs start new paths
+
+  let current_node? : Option Node := graph.nodes.find? (λ node =>
+    node.current_state == start)
+  if let some current_node :=  current_node? then
+    -- Get messages
+    let transitions := current_node.transitions.filter (·.trans_type != .Reset)
+    let messages := List.join $ transitions.map (·.messages)
+    let current_node_name : String := current_node.current_state
+    let dest_states : List (List String) ← messages.mapM (·.findDestState graph.nodes current_node_name)
+    let msg'd_states : List String := List.join dest_states
+  
+    let unique_msg'd_states : List String := msg'd_states.eraseDups
+  
+    -- TODO: change to start a new path for this ctrler
+    -- Question: should i do anything for overlapping paths?
+  -- Remove the unique_msg'd_states from the list of reachable nodes!
+  -- This is because they're also technically pre-receive nodes as well...
+    let reachable_nodes_by_message : (List Node) :=  (←
+      unique_msg'd_states.mapM (graph.findNodesReachableByTransitionAndMessage ·)).join
+    let reachable_nodes_by_message_without_await_states : List Node :=
+      reachable_nodes_by_message.filter (λ node => !(unique_msg'd_states.contains node.current_state))
+
+    -- TODO: add to path_constraints for the current ctrler,
+    -- Recursive call for each transition
+    -- transitions
+    let transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
+    let transitioned_to_states : List StateName := transitions.map (·.dest_state)
+
+    let unique_transitioned_to_states : List String := transitioned_to_states.eraseDups
+
+    let reachable_nodes_by_transition : List Node := (←
+      unique_transitioned_to_states.mapM (λ state_name => graph.findNodesReachableByTransitionAndMessage state_name)).join
+
+    -- TODO: sth for completion type transitions
+  
+    -- TODO: join and return the paths that exist
+    -- process results
+    let reachable_nodes : List Node :=
+      reachable_nodes_by_message_without_await_states ++ reachable_nodes_by_transition
+    return reachable_nodes.eraseDups
+  else
+    throw "Node not found"
+
 -- TODO: finish
 def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_completion : InstType)
 : Except String (List CDFG.Node) := do
@@ -470,6 +524,10 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
 
   -- remove common states from post-receive states
   let pre_receive_states_no_overlap : List Node := remove_common_nodes pre_receive_states post_receive_states
+
+  -- Redux, Monday, 6/2/23
+  -- Get constraint updates of post-receive, ctrler by ctrler
+  
 
   /- Look at the state sets per ctrler, check for (1) states unique to post-'receive' -/
   /- and (2) Variable Constraints that are unique to post-'receive' -/
