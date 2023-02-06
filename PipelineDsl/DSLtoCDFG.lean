@@ -516,6 +516,20 @@ def mapStateToNode
 
   return node
 
+def CDFG.Node.update_transitions : Node → List Transition → Node
+| node, transitions => {
+  current_state := node.current_state
+  ctrler_name := node.ctrler_name
+  vars := node.vars
+  transitions := transitions
+}
+
+def CDFG.Node.prepend_constraints (node : Node) (constraints : List ConstraintInfo) : Node :=
+  -- add constraints to transitions
+  -- match nodes w/ init state's dest
+  let transitions_with_constraints := node.transitions.map (·.prepend_constraints constraints)
+  node.update_transitions transitions_with_constraints
+
 def CtrlersToCDFG
 -- (CtrlerTransInfo : CtrlerTranslationInfo)
 (ctrler : controller_info)
@@ -536,6 +550,24 @@ def CtrlersToCDFG
   let cdfg_graph : List Node ←
     (ctrler_states_without_init.zip (List.replicate ctrler_states_without_init.length ctrler)).mapM
       mapStateToNode
+  
+  let ctrler_init_state ← ctrler.init_trans_descript
+
+  let init_stmts ← ctrler_init_state.stmts_without_transition
+
+  let transitions := StmtsToTransitions ctrler [ (IncompleteTransition.new_of_name "Don't use this") ] init_stmts
+  let constraints := ← match transitions.incomplete_transitions with
+    | [incomplete] => pure incomplete.constraint_info
+    | h :: _ => pure h.constraint_info
+    | _ => throw "No transitions found in init state"
+
+  let first_state_name ← ctrler_init_state.state_name
+  let graph_with_init_node_constraints : List Node ← cdfg_graph.mapM ( λ node => do
+    if node.current_state == first_state_name then
+      pure $ node.prepend_constraints constraints
+    else
+      pure node)
+
     -- TODO: We can probably do the translation per
     -- state, if we don't cumulatively check the
     -- constrained values
@@ -547,7 +579,7 @@ def CtrlersToCDFG
     -- it it doesn't, then it's hard to track if there's been
     -- any update...
 
-  return cdfg_graph
+  return graph_with_init_node_constraints
 
 def DSLtoCDFG
 (ctrlers : List controller_info)

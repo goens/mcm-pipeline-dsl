@@ -238,6 +238,30 @@ s!"Constraint Info: ({constraint})" ++ "\n" ++
 str
 instance : ToString Transition where toString := Transition.toString
 
+def IncompleteTransition.new_of_name : StateName → IncompleteTransition
+| state_name =>
+  { predicate := [],
+    orig_state := state_name
+    messages := [],
+    effects := [],
+    stmts := [],
+    queue_info := .None,
+    constraint_info := []
+  }
+
+def Transition.prepend_constraints : Transition → List ConstraintInfo → Transition
+| trans, constraints => {
+  predicate := trans.predicate
+  orig_state := trans.orig_state
+  dest_state := trans.dest_state
+  messages := trans.messages
+  effects := trans.effects
+  stmts := trans.stmts
+  trans_type := trans.trans_type
+  queue_info := trans.queue_info
+  constraint_info := constraints ++ trans.constraint_info
+}
+
 /-
 1. describe the nodes' contents
 - transitions / resets / completions

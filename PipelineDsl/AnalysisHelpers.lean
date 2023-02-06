@@ -13,6 +13,7 @@ deriving Inhabited, BEq
 -- | store : InstType
 -- deriving Inhabited, BEq
 
+abbrev StateName := String
 abbrev MsgName := String
 abbrev CtrlerName := String
 def memory_interface : CtrlerName := "memory_interface"
@@ -1161,6 +1162,52 @@ def controller_info.init_trans_descript (ctrler : controller_info) : Except Stri
   match init_trans with
   | [state] => pure state
   | _ => throw s!"Error: Couldn't find matching init state? ({state_list})"
+
+def Pipeline.Statement.is_transition : Pipeline.Statement → Bool
+| .transition _ => true
+| _ => false
+
+def Pipeline.Description.stmts_without_transition : Pipeline.Description → Except String (List Pipeline.Statement)
+| .state /- ident -/ _ stmt => do
+  let stmts ← stmt.stmt_block
+  let stmts_without_transition := stmts.filter (!·.is_transition)
+  pure stmts_without_transition
+| _ => throw "Error: Description is not a state"
+
+-- def controller_info.init_trans_descript_without_trans (ctrler : controller_info) : Except String Pipeline.Description
+-- := do
+--   let 
+
+def Pipeline.Statement.init_trans_dest (stmt : Pipeline.Statement) : List Identifier
+:= match stmt with
+| .transition ident => [ident]
+| _ => []
+
+def Pipeline.Statement.block_init_trans_dest (stmt : Pipeline.Statement) : Except String (Identifier)
+:= do
+  let stmts ← stmt.stmt_block
+  let init_trans_dests := List.join $ stmts.map (·.init_trans_dest)
+  match init_trans_dests with
+  | [dest_name] => pure dest_name
+  | _ => throw s!"Error: either 0 or more than 1 transition ({init_trans_dests}) in the stmt ({stmt})"
+
+def Pipeline.Description.top_level_dest_name : Pipeline.Description → Except String Identifier
+| .state /- ident -/ _ stmt => do
+  stmt.block_init_trans_dest
+| _ => throw "Error: Description is not a state"
+  
+
+def controller_info.init_trans_dest (ctrler : controller_info)
+: Except String StateName
+:= do
+  let state_list ← ctrler.state_list
+  let init_trans_name ← ctrler.init_trans_name
+  let init_trans ← state_list.filterM (λ state => do pure $ (← state.state_name) == init_trans_name)
+  let state ← 
+    match init_trans with
+    | [state] => pure state
+    | _ => throw s!"Error: Couldn't find matching init state? ({state_list})"
+  state.top_level_dest_name
 
 def Pipeline.Statement.is_variable_assignment : Pipeline.Statement → Bool
 | .variable_assignment _ _ => true
