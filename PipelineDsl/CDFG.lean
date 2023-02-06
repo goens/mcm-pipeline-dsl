@@ -343,7 +343,7 @@ def Graph.node_mapM {m : Type u → Type v} [Monad m] {α : Type u}
   if let some current_node := current_node? then
     pure (func current_node)
   else
-    (throw "Error: No node with name: ({start})")
+    (throw s!"Error: No node with name: ({state_name})")
 
 def Graph.node_map : Graph → StateName → (Node → (α : Type)) → Except String α
 | graph, state_name, func => do
@@ -351,7 +351,7 @@ def Graph.node_map : Graph → StateName → (Node → (α : Type)) → Except S
   if let some current_node := current_node? then
     pure $ func current_node
   else
-    throw "Error: No node with name: ({start})"
+    throw s!"Error: No node with name: ({state_name})"
 
 def Graph.toString : Graph → String
 | graph =>
