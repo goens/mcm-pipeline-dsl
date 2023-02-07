@@ -122,7 +122,7 @@ instance : ToString Condition where toString := Condition.toString
 -- abbrev CtrlerName := String
 inductive Message
 | mk : Pipeline.Term → Message
-deriving Inhabited
+deriving Inhabited, BEq
 def Message.toString : Message → String
 | .mk term => s!"Message Term: ({term})"
 instance : ToString Message where toString := Message.toString
