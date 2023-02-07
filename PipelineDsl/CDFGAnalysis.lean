@@ -458,7 +458,17 @@ path : List Node
 constraints : List ConstraintInfo
 deriving Inhabited
 
-partial def CDFG.Graph.ctrler_trans_paths_and_constraints (start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint)
+def CtrlerPathConstraint.new_path_of_ctrler : CtrlerName → CtrlerPathConstraint
+| ctrler_name => {ctrler := ctrler_name, path := [], constraints := []}
+
+#eval [1,2].zipWith (λ x y => (x, y)) [3,4]
+#eval List.replicate 3 "1"
+
+def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β) :=
+  list.zipWith (λ x y => (x, y)) (List.replicate list.length thing)
+
+partial def CDFG.Graph.ctrler_trans_paths_and_constraints
+(start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint) (msg_trans_should_await : Message)
 : Except String (List CtrlerPathConstraint) := do
   -- For this, I should get paths of nodes, and constraints
   --  but just per ctrler
@@ -471,19 +481,26 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints (start : StateName) (g
     let transitions := current_node.transitions.filter (·.trans_type != .Reset)
     let messages := List.join $ transitions.map (·.messages)
     let current_node_name : String := current_node.current_state
-    let dest_states : List (List String) ← messages.mapM (·.findDestState graph.nodes current_node_name)
-    let msg'd_states : List String := List.join dest_states
+    let dest_states : List (List (StateName × Message)) ← messages.mapM (λ msg => do
+      let msg'd_states : List String := (← msg.findDestState graph.nodes current_node_name)
+      pure $ ZipWithList msg'd_states msg)
+    let msg'd_states : List ( StateName × Message ) := List.join dest_states
   
-    let unique_msg'd_states : List String := msg'd_states.eraseDups
+    let unique_msg'd_states : List ( String × Message ) := msg'd_states.eraseDups
   
     -- TODO: change to start a new path for this ctrler
     -- Question: should i do anything for overlapping paths?
   -- Remove the unique_msg'd_states from the list of reachable nodes!
   -- This is because they're also technically pre-receive nodes as well...
-    let reachable_nodes_by_message : (List Node) :=  (←
-      unique_msg'd_states.mapM (graph.findNodesReachableByTransitionAndMessage ·)).join
-    let reachable_nodes_by_message_without_await_states : List Node :=
-      reachable_nodes_by_message.filter (λ node => !(unique_msg'd_states.contains node.current_state))
+
+    -- do the new path search
+    -- TODO: make this match to node, and try to take transitions which await one of the messages that are sent
+    -- TODO, 07-02-2023: Use the updated StateName × Message pair for the new paths.
+    let paths_from_msg'd_states := List.join $ ← unique_msg'd_states.mapM (λ node_name => do
+      graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler node_name))
+
+    -- TODO: get the transition constraints from just those transitions that
+    -- await on the msg 
 
     -- TODO: add to path_constraints for the current ctrler,
     -- Recursive call for each transition
