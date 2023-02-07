@@ -60,6 +60,7 @@ inductive Term
 | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
 | expr : Expr → Term
 | relative_entry : Direction → List Expr → Term
+deriving BEq
 
 inductive Const
 | num_lit : Nat → Const
