@@ -461,14 +461,70 @@ deriving Inhabited
 def CtrlerPathConstraint.new_path_of_ctrler : CtrlerName → CtrlerPathConstraint
 | ctrler_name => {ctrler := ctrler_name, path := [], constraints := []}
 
-#eval [1,2].zipWith (λ x y => (x, y)) [3,4]
-#eval List.replicate 3 "1"
+def CtrlerPathConstraint.add_constraints : CtrlerPathConstraint → List ConstraintInfo → CtrlerPathConstraint
+| ctrler_path_constraint, constraints => {ctrler := ctrler_path_constraint.ctrler, path := ctrler_path_constraint.path, constraints := ctrler_path_constraint.constraints ++ constraints}
+
+def CtrlerPathConstraint.add_path_node : CtrlerPathConstraint → Node → CtrlerPathConstraint
+| ctrler_path_constraint, node => {ctrler := ctrler_path_constraint.ctrler, path := ctrler_path_constraint.path ++ [node], constraints := ctrler_path_constraint.constraints}
+
+def CtrlerPathConstraint.add_constraints_and_path_node : CtrlerPathConstraint → List ConstraintInfo → Node → CtrlerPathConstraint
+| ctrler_path_constraint, constraints, node =>
+  (ctrler_path_constraint.add_constraints constraints).add_path_node node
 
 def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β) :=
   list.zipWith (λ x y => (x, y)) (List.replicate list.length thing)
 
+-- def Pipeline.QualifiedName.idents : QualifiedName → List Identifier
+-- | qual_name => match qual_name with
+--   | .mk idents => idents
+
+def Pipeline.QualifiedName.first : QualifiedName → Except String Identifier
+| qual_name => do
+  match qual_name.idents with
+  | [] => throw "Error: QualifiedName has no idents"
+  | [ident] => pure ident
+  | ident :: _ => pure ident
+
+-- #eval List.get 4 [1, 2, 3]
+def Pipeline.QualifiedName.second : QualifiedName → Except String Identifier
+| qual_name => do
+  match qual_name.idents with
+  | [] => throw "Error: QualifiedName has no idents"
+  | [_] => throw "Error: QualifiedName has only one ident"
+  | _ :: second :: _ => pure second
+
+partial def Pipeline.Statement.matches_msg (stmt : Statement) (msg : Message) : Except String Bool := do
+  match stmt with
+  | .await (Option.none) stmts => do
+    let when_stmt := ← match stmts with
+      | [when_stmt] => pure when_stmt
+      | _ => throw "Error: Await statement should have one statement"
+    when_stmt.matches_msg msg
+  | .when qual_name /- idents -/ _ /- stmt -/ _ => do
+    let ctrler_name_matches := ( ← qual_name.first ) == ( ← msg.dest_ctrler )
+    let msg_name_matches := ( ← qual_name.second ) == ( ← msg.name )
+    pure (ctrler_name_matches && msg_name_matches)
+  | _ => pure false
+
+def CDFG.Condition.is_await_on_msg (condition : Condition) (msg : Message) : Except String Bool := do
+  match condition with
+  | .AwaitCondition await_stmt => do
+    await_stmt.matches_msg msg
+  | _ => pure false
+  pure default
+
+def CDFG.Transitions.transitions_awaiting_on_msg : Transitions → Message → Except String Transitions
+| transitions, msg => do
+  transitions.filterM (·.predicate.anyM (·.is_await_on_msg msg))
+
+def CDFG.Transitions.transitions_awaiting_on_option_msg : Transitions → Option Message → Except String Transitions
+| transitions, some msg => transitions.transitions_awaiting_on_msg msg
+| transitions, none => pure transitions
+
+#eval [[1,2],[1,3]].map (λ x => x.map (λ y => if [[1,2],[1,3]].all (λ z => z.contains y ) then y else 0 ))
+
 partial def CDFG.Graph.ctrler_trans_paths_and_constraints
-(start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint) (msg_trans_should_await : Message)
+(start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint) (msg_trans_should_await : Option Message)
 : Except String (List CtrlerPathConstraint) := do
   -- For this, I should get paths of nodes, and constraints
   --  but just per ctrler
@@ -478,26 +534,22 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     node.current_state == start)
   if let some current_node :=  current_node? then
     -- Get messages
-    let transitions := current_node.transitions.filter (·.trans_type != .Reset)
-    let messages := List.join $ transitions.map (·.messages)
+    let trans_transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
+    let complete_transitions := current_node.transitions.filter (·.trans_type == .Completion)
+    let trans_compl_transitions := trans_transitions ++ complete_transitions
+    let msg'd_trans_compl_transitions := ← trans_compl_transitions.transitions_awaiting_on_option_msg msg_trans_should_await
+
+    let messages := List.join $ msg'd_trans_compl_transitions.map (·.messages)
     let current_node_name : String := current_node.current_state
     let dest_states : List (List (StateName × Message)) ← messages.mapM (λ msg => do
       let msg'd_states : List String := (← msg.findDestState graph.nodes current_node_name)
       pure $ ZipWithList msg'd_states msg)
     let msg'd_states : List ( StateName × Message ) := List.join dest_states
   
-    let unique_msg'd_states : List ( String × Message ) := msg'd_states.eraseDups
-  
-    -- TODO: change to start a new path for this ctrler
-    -- Question: should i do anything for overlapping paths?
-  -- Remove the unique_msg'd_states from the list of reachable nodes!
-  -- This is because they're also technically pre-receive nodes as well...
+    let unique_msg'd_states : List ( StateName × Message ) := msg'd_states.eraseDups
 
-    -- do the new path search
-    -- TODO: make this match to node, and try to take transitions which await one of the messages that are sent
-    -- TODO, 07-02-2023: Use the updated StateName × Message pair for the new paths.
-    let paths_from_msg'd_states := List.join $ ← unique_msg'd_states.mapM (λ node_name => do
-      graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler node_name))
+    let paths_from_msg'd_states : List CtrlerPathConstraint := List.join $ ← unique_msg'd_states.mapM (λ (node_name, msg) => do
+      graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler node_name) (Option.some msg))
 
     -- TODO: get the transition constraints from just those transitions that
     -- await on the msg 
@@ -505,21 +557,27 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     -- TODO: add to path_constraints for the current ctrler,
     -- Recursive call for each transition
     -- transitions
-    let transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
-    let transitioned_to_states : List StateName := transitions.map (·.dest_state)
 
-    let unique_transitioned_to_states : List String := transitioned_to_states.eraseDups
+    let transitions_of_interest := ← trans_transitions.transitions_awaiting_on_option_msg msg_trans_should_await
+    let transitioned_to_states : List StateName := transitions_of_interest.map (·.dest_state)
+    -- group by dest_state × transitions
+    let trans_to_dest_state : List (StateName × Transitions) := transitioned_to_states.map (λ state_name => (state_name, transitions_of_interest.filter (·.dest_state == state_name)))
+    let dest_state_and_common_constraints : List (StateName × (List ConstraintInfo) ) :=
+      trans_to_dest_state.map (λ (state_name, trans_to_same_state) =>
+        -- Get constraints common to all transitions.
+        -- Should probably later also predicate paths based on inst
+        (state_name, List.join (trans_to_same_state.map (·.constraint_info.filter (λ constraint => trans_to_same_state.all (·.constraint_info.any (· == constraint) ) ) ) ) ) )
 
-    let reachable_nodes_by_transition : List Node := (←
-      unique_transitioned_to_states.mapM (λ state_name => graph.findNodesReachableByTransitionAndMessage state_name)).join
+    let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
+      dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
+        let node ← graph.node_from_name! state_name  
+        graph.ctrler_trans_paths_and_constraints state_name (path_constraints.add_constraints_and_path_node common_constraints node) none 
+        )
 
     -- TODO: sth for completion type transitions
-  
     -- TODO: join and return the paths that exist
     -- process results
-    let reachable_nodes : List Node :=
-      reachable_nodes_by_message_without_await_states ++ reachable_nodes_by_transition
-    return reachable_nodes.eraseDups
+    return paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
   else
     throw "Node not found"
 
