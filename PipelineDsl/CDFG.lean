@@ -18,7 +18,7 @@ inductive InEqRel
 | GT : InEqRel
 | GEq : InEqRel
 | Eq : InEqRel
-deriving Inhabited
+deriving Inhabited, BEq
 def InEqRel.toString : InEqRel → String
 | .LT => "<"
 | .LEq => "<="  
@@ -32,7 +32,7 @@ def NatToString (nat : Nat) : String := toString nat
 inductive Inequality
 | ValueIneq : VarName → InEqRel → Nat → Inequality
 | VarIneq : VarName → InEqRel → VarName → Inequality
-deriving Inhabited
+deriving Inhabited, BEq
 def Inequality.toString : Inequality → String
 | ValueIneq var_name in_eq nat => var_name ++ in_eq.toString ++ (NatToString nat)
 | VarIneq var_name1 in_eq var_name2 => var_name1 ++ in_eq.toString ++ var_name2
@@ -42,7 +42,7 @@ inductive BoolValue
 | True : BoolValue
 | False : BoolValue
 | TrueOrFalse : BoolValue
-deriving Inhabited
+deriving Inhabited, BEq
 def BoolValue.toString : BoolValue → String
 | .True => "True"
 | .False => "False"
@@ -50,9 +50,15 @@ def BoolValue.toString : BoolValue → String
 instance : ToString BoolValue where toString := BoolValue.toString
 
 abbrev InequalitiesOrBool := Sum (List Inequality) BoolValue
+instance : BEq InequalitiesOrBool where beq := λ ib1 ib2 =>
+  match ib1, ib2 with
+  | Sum.inl ineqs1, Sum.inl ineqs2 => ineqs1 == ineqs2
+  | Sum.inr bool1, Sum.inr bool2 => bool1 == bool2
+  | _, _ => false
+
 inductive ConstraintInfo
 | mk : VarName → InequalitiesOrBool → ConstraintInfo
-deriving Inhabited
+deriving Inhabited, BEq
 def ineq_or_bool_toString (ineq_or_bool : InequalitiesOrBool) : String :=
   toString ineq_or_bool
 def ConstraintInfo.toString : ConstraintInfo → String
@@ -333,6 +339,13 @@ def Graph.node_from_name? : Graph → StateName → (Option Node)
     node.current_state == state_name)
   current_node?
 
+def Graph.node_from_name! : Graph → StateName → Except String Node
+| graph, state_name =>
+  let current_node! : List Node := graph.nodes.filter (λ node =>
+    node.current_state == state_name)
+  match current_node! with
+  | [node] => pure node
+  | _ => throw s!"Error: No node with name: ({state_name})"
 
 -- Work in progress. wanted to use with
 -- Graph.unique_msg'd_states_by_node for a simple functor
