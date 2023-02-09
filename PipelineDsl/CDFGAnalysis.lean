@@ -521,6 +521,7 @@ def CDFG.Transitions.transitions_awaiting_on_option_msg : Transitions → Option
 | transitions, some msg => transitions.transitions_awaiting_on_msg msg
 | transitions, none => pure transitions
 
+#eval [2,1,2,3].reverse.eraseDups.reverse
 #eval [[1,2],[1,3]].map (λ x => List.join $ x.map (λ y => if [[1,2],[1,3]].all (λ z => z.contains y ) then [ y ] else [] ))
 
 partial def CDFG.Graph.ctrler_trans_paths_and_constraints
@@ -566,9 +567,9 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
       trans_to_dest_state.map (λ (state_name, trans_to_same_state) =>
         -- Get constraints common to all transitions.
         -- Should probably later also predicate paths based on inst
-        -- TODO: Bug here, kinda like the #eval example, can get multiple constraints repeated
-        -- Need to find another way to get the common constraints
-        (state_name, List.join (trans_to_same_state.map (·.constraint_info.filter (λ constraint => trans_to_same_state.all (·.constraint_info.any (· == constraint) ) ) ) ) ) )
+        let common_constraints := List.join (trans_to_same_state.map (·.constraint_info.filter (λ constraint => trans_to_same_state.all (·.constraint_info.any (· == constraint) ) ) ) ) 
+        let no_dup_common_constraints := common_constraints.reverse.eraseDups.reverse
+        (state_name, no_dup_common_constraints))
 
     let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
       dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
