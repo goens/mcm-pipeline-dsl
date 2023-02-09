@@ -170,7 +170,7 @@ def Message.is_global_perform_of_type : Message → InstType → Except String B
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
 abbrev Stmts := List Pipeline.Statement
-abbrev StateName := String
+-- abbrev StateName := String
 abbrev Predicate := List Condition
 inductive TransitionType
 | Transition : TransitionType
@@ -399,3 +399,11 @@ def Graph.map (gr : Graph) (f : GraphElement → α) (headIdx := 0) : List α :=
     | some head => graphMapAux gr f [.inl head] [] []
 
 -- def Node.
+
+def ConstraintToBool (constraint : ConstraintInfo) : Except String Pipeline.Expr := do
+  match constraint with
+    | .mk var_name ineq_or_bool => do
+      let bool_str := ← match ineq_or_bool with
+        | .inr bool => pure bool.toString
+        | .inl _ => throw "We don't handle inequalities yet."
+      pure $ Pipeline.Expr.equal (Pipeline.Term.var var_name) (Pipeline.Term.const (Pipeline.Const.str_lit bool_str))
