@@ -2,6 +2,7 @@
 import PipelineDsl.AST
 import PipelineDsl.CDFG
 
+import PipelineDsl.DSLtoCDFG
 
 /-
 1. Take a CDFG Graph and find states after the receive state
@@ -719,6 +720,7 @@ def PostReceivePathsUniqueConstraints : List CtrlerPathConstraint → List Ctrle
   pure non_empty_unique_post_constraints
 
 -- TODO: finish
+-- One of the Main funcs.
 def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_completion : InstType)
 : Except String (CtrlerStateExpr) := do
   let receive_state_to_search_from : Node ←
@@ -926,7 +928,7 @@ partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node :
     graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
 
 def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers : List controller_info)
-: Except String Node := do
+: Except String CtrlerState := do
   -- First, find the first state, which is the state that sends the global perform msg
   let global_perform_node : Node ← graph.global_perform_node_of_inst_type inst_type
 
@@ -944,4 +946,21 @@ def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers :
   -- if not, back track to the previous ctrler to repeat
   -- if ordered, return this node
   -- let PO_inserted_ctrler_node : Node ← graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
-  graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
+  let stall_node ← graph.PO_inserted_ctrler_node_from_node global_perform_node ctrlers
+  pure ({ctrler := stall_node.ctrler_name, state := stall_node.current_state} : CtrlerState)
+
+-- import Pipeline.DSLtoCDFG
+
+def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_type : InstType) (inst_to_stall_on_type : InstType)
+: Except String (List controller_info) := do
+  let graph_nodes ← DSLtoCDFG ctrlers
+  let graph := {nodes := graph_nodes}
+  let stall_point ← find_stall_point_heuristic graph inst_to_stall_on_type ctrlers
+  let ctrler_state_to_stall_on ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_type
+
+  let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type 
+
+  let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
+  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
+
+  pure updated_ctrlers
