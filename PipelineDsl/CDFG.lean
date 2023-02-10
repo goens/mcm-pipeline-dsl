@@ -152,7 +152,7 @@ def Message.name : Message → Except String MsgName
 | msg => do
   match (← msg.idents)[1]? with
   | some dest_ctrler => pure dest_ctrler
-  | none => throw "Message does not have a name"
+  | none => throw s!"Message ({msg}) does not have a name"
 def Message.is_name_equals : Message → MsgName → Except String Bool
 | msg, msg_name => do
   pure ((← msg.name) == msg_name)
@@ -205,6 +205,7 @@ deriving Inhabited
 instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
 
 def Transition.is_transition_to_state_name (transition : Transition) (state_name : StateName) : Bool :=
+-- dbg_trace s!"Trans from {transition.orig_state} to {transition.dest_state}, type: ({transition.trans_type}), desired state: {state_name}"
 transition.dest_state == state_name && transition.trans_type == .Transition
 
 def predicateToString (predicate : Predicate) : String :=
@@ -333,6 +334,12 @@ instance : ToString Node where toString := Node.toString
 structure Graph where
   nodes : List Node
 
+def Graph.toString : Graph → String
+| graph =>
+  let nodes : String := ",\n".intercalate (graph.nodes.map (λ node => node.toString))
+  nodes
+instance : ToString Graph where toString := Graph.toString
+
 def Graph.node_from_name? : Graph → StateName → (Option Node)
 | graph, state_name =>
   let current_node? : Option Node := graph.nodes.find? (λ node =>
@@ -345,7 +352,7 @@ def Graph.node_from_name! : Graph → StateName → Except String Node
     node.current_state == state_name)
   match current_node! with
   | [node] => pure node
-  | _ => throw s!"Error: No node with name: ({state_name})"
+  | _ => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph})"
 
 -- Work in progress. wanted to use with
 -- Graph.unique_msg'd_states_by_node for a simple functor
@@ -356,7 +363,7 @@ def Graph.node_mapM {m : Type u → Type v} [Monad m] {α : Type u}
   if let some current_node := current_node? then
     pure (func current_node)
   else
-    (throw s!"Error: No node with name: ({state_name})")
+    (throw s!"Error: (Graph node mapM) No node with name: ({state_name})")
 
 def Graph.node_map : Graph → StateName → (Node → (α : Type)) → Except String α
 | graph, state_name, func => do
@@ -364,12 +371,7 @@ def Graph.node_map : Graph → StateName → (Node → (α : Type)) → Except S
   if let some current_node := current_node? then
     pure $ func current_node
   else
-    throw s!"Error: No node with name: ({state_name})"
-
-def Graph.toString : Graph → String
-| graph =>
-  let nodes : String := ", ".intercalate (graph.nodes.map (λ node => node.toString))
-  nodes
+    throw s!"Error: (Graph node map) No node with name: ({state_name})"
 
 abbrev GraphElement := Node ⊕ Transition
 

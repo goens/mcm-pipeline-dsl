@@ -333,17 +333,28 @@ partial def StmtsToTransitions
           match expr with
           | Pipeline.Expr.some_term term =>
             match term with
-            | Pipeline.Term.function_call /- qual_name -/ _ /- lst_expr -/ _ =>
+            | Pipeline.Term.function_call /- qual_name -/ qual_name /- lst_expr -/ _ =>
               -- append transition message
-              let updated_incomplete_transitions := transitions_lists.incomplete_transitions.map (
-                λ transition =>
-                  AppendTransitionMessages transition (Message.mk term)
-              )
-              let updated_transitions := {
-                incomplete_transitions := updated_incomplete_transitions,
-                complete_transitions := transitions_lists.complete_transitions
-              }
-              updated_transitions
+              if qual_name.idents.length == 2 then
+                let updated_incomplete_transitions := transitions_lists.incomplete_transitions.map (
+                  λ transition =>
+                    AppendTransitionMessages transition (Message.mk term)
+                )
+                let updated_transitions := {
+                  incomplete_transitions := updated_incomplete_transitions,
+                  complete_transitions := transitions_lists.complete_transitions
+                }
+                updated_transitions
+              else
+                -- TODO: In the case of idents == 1, handle any specific
+                -- function calls or APIs
+                let transitions_with_stmt : IncompleteTransitions := transitions_lists.incomplete_transitions.map (
+                  λ transition =>
+                    AppendTransitionStmt transition stmt
+                )
+                let lists : TransitionsLists :=
+                { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+                lists
             | _ =>
               dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
               default -- Figure out how to throw

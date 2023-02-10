@@ -1057,28 +1057,46 @@ def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
     | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
   | _ => throw "Expr is not 'some_term' (i.e. a var)"
 
-def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (List ControllerType)
-| .variable_assignment qual_name expr => do
-  match ← qual_name.is_ident_ordering with
-  | true => do
-    let var_ident ← expr.var_ident 
-    if var_ident == "FIFO" then
-      pure $ [ ControllerType.FIFO ]
-    else if var_ident == "Unordered" then
-      pure $ [ ControllerType.Unordered ]
-    else
-      throw "Expr.var_ident is not a valid ordering"
-  | false => pure []
-| _ => pure []
+def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
+| .mk type' identifier => (type', identifier)
+
+def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
+| typed_ident =>
+  let (type', ident) := typed_ident.type_ident
+  if (type' == "element_ordering") && (ident == "ordering") then
+    true
+  else
+    false
+
+def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (ControllerType)
+| stmt => do
+  match stmt with
+  | .value_declaration typed_ident expr => do
+    -- let (type', ident) := typed_ident.type_ident
+    match typed_ident.is_ident_ordering with
+    | true => do
+      let var_ident ← expr.var_ident 
+      if var_ident == "FIFO" then
+        pure $ ControllerType.FIFO
+      else if var_ident == "Unordered" then
+        pure $ ControllerType.Unordered
+      else
+        throw "Expr.var_ident is not a valid ordering"
+    | false => throw "Statement's LHS isn't Ordering"
+  | _ =>
+    let msg := s!"Statement is not a variable assignment: ({stmt})"
+    throw msg
 
 def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (ControllerType)
 | stmt => do
   let blk ← stmt.stmt_block
-  let ordering_list := List.join $ ← blk.mapM (·.var_asgn_ordering)
-  match ordering_list with
-  | [] => throw "No ordering found in stmt block"
-  | [ordering] => pure ordering
-  | _ => throw "Multiple orderings found in stmt block"
+  let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
+  let ordering_asgn ←
+    match ordering_list with
+    | [] => throw "No ordering found in stmt block"
+    | [ordering] => pure ordering
+    | _ => throw "Multiple orderings found in stmt block"
+  ordering_asgn.var_asgn_ordering
 
 def Pipeline.Description.ctrler_type : Pipeline.Description → Except String ControllerType
 | descript => do
@@ -1752,3 +1770,10 @@ def UpdateCtrlerWithNode
   ctrlers.mapM (λ ctrler => do
     if ctrler.name == ctrler_name then (AddNodeAndUpdateCtrler ctrler new_state_name new_state old_state_name)
     else pure ctrler) 
+
+def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Identifier × List Pipeline.Expr) 
+| term => do
+  match term with
+  | .function_call qual_name arg_exprs => do
+    pure (qual_name.idents , arg_exprs)
+  | _ => throw s!"Expected function call, but got {term}"
