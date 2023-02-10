@@ -1261,234 +1261,494 @@ def Pipeline.Description.state_asgn_to_lit_stmts : Pipeline.Description → Exce
 | state_descript => do
   pure $ (← state_descript.state_asgn_stmts).filter (·.is_variable_assignment_to_lit)
 
+def get_ctrler_state_handle_blocks
+-- (ctrlers : List controller_info)
+(ctrler : controller_info)
+(state_name : String)
+: Except String (Option (List HandleBlock))
+:= do
+  let transitions : List Description :=
+    if ctrler.init_trans.isSome then
+      ctrler.transition_list.get!
+    else if ctrler.ctrler_init_trans.isSome then
+      ctrler.ctrler_trans_list.get!
+    else
+      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler})"
+        default
+  let list_state_matching_name : List Description :=
+  transitions.filter (λ state : Description =>
+    match state with
+    | .state name _ =>
+      if name == state_name then true
+      else false
+    | _ => false
+    )
+  let state_matching_name : Description ←
+    match list_state_matching_name with
+    | [matching_state] => pure matching_state
+    | _ =>
+      let msg : String :=
+        "While trying to match a state with a name:" ++
+        "Found either multiple or no states\n" ++
+        s!"List contents: ({list_state_matching_name})"
+      throw msg
+
+  -- TODO: Get the stmt block, get the stmts from the block
+  -- Call the get_listen_handle_blks_from_stmts function
+  -- Check if there was anything, if there is use Option.some...
+  let state_stmt_blk : Pipeline.Statement ←
+  match state_matching_name with
+  | .state _ stmt => pure stmt
+  | _ =>
+    let msg : String := "Shouldn't have something besides .state type ..."
+    throw msg
+  
+  let state_stmts : List Pipeline.Statement ←
+  match state_stmt_blk with
+  | .block stmts => pure stmts
+  | _ =>
+    let msg : String :=
+      "Error opening stmt from state: state should have had a block statement?\n" ++
+      s!"State stmt: ({state_stmt_blk})"
+    throw msg
+  
+  let handle_blks : List HandleBlock ←
+    get_listen_handle_blks_from_stmts state_stmts
+
+  if handle_blks.isEmpty then
+    return Option.none
+  else
+    return Option.some handle_blks
+
+def gen_stall_dsl_state
+  (new_stall_state_name : String)
+  (original_state_name : String)
+  (ctrler_name : String)
+  (state_check_or_tree : Pipeline.Expr)
+  (stall_on_inst_type : InstType)
+  (original_state's_handleblks : Option ( List HandleBlock ))
+  : Description
+  :=
+
+    -- (entry.instruction.seq_num < instruction.seq_num)
+    let entry_is_earlier_than_this_one : Term :=
+      Pipeline.Term.expr (
+      Pipeline.Expr.less_than
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+      )
+    -- (entry.instruction.op == stall_on_inst_type)
+    let entry_is_of_desired_type : Term :=
+      Pipeline.Term.expr (
+      Pipeline.Expr.equal
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "op"]))
+      (Pipeline.Term.const (Const.str_lit (stall_on_inst_type.toMurphiString)))
+      )
+    -- let entry_is_valid : Term :=
+    --   Pipeline.Term.expr (
+    --   Pipeline.Expr.not_equal
+    --   (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+    --   (Pipeline.Term.const (Const.num_lit (0))) -- using 0 as an "invalid inst"
+    --   )
+
+    let search_condition : Pipeline.Expr := -- ERROR! TODO: Adjust to ignore invalid entries!
+      -- (Pipeline.Expr.binand
+        -- (Pipeline.Term.expr
+        (Pipeline.Expr.binand
+        entry_is_earlier_than_this_one
+        entry_is_of_desired_type)
+        -- )
+        -- entry_is_valid
+      -- )
+
+    --  min(instruction.seq_num - entry.instruction.seq_num)
+    let search_min : Pipeline.Expr :=
+      Pipeline.Expr.some_term (
+        Pipeline.Term.function_call 
+        (QualifiedName.mk ["min"])
+        [(Pipeline.Expr.sub
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"])))]
+      )
+
+    let ctrler_search_call : Term :=
+      Pipeline.Term.function_call
+      (QualifiedName.mk [ctrler_name, "search"])
+      [search_condition, search_min]
+
+    -- let stall_state_name := ctrler_name ++ "stall" ++ original_state_name
+    let when_success_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block [
+        Pipeline.Statement.conditional_stmt (
+        Pipeline.Conditional.if_else_statement
+        state_check_or_tree
+        (Pipeline.Statement.reset new_stall_state_name)
+        (Pipeline.Statement.transition original_state_name)
+        )
+      ]
+    let when_success : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_success"])
+      (["curr_state"])
+      when_success_stmt_blk
+
+    let when_fail_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block [
+        (Pipeline.Statement.transition original_state_name)
+      ]
+    let when_fail : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_fail"])
+      ([])
+      when_fail_stmt_blk
+
+
+    -- TODO: Fill in the when stmts, and the condition in it
+    let await_stmt : Pipeline.Statement :=
+      Statement.await ctrler_search_call [when_success, when_fail]
+    
+    let stall_state_stmt : Pipeline.Statement :=
+      if original_state's_handleblks.isSome then
+        Statement.listen_handle (Statement.block [await_stmt]) original_state's_handleblks.get!
+      else
+        await_stmt
+
+    Description.state new_stall_state_name (
+      Statement.block [stall_state_stmt])
+
 structure CtrlerStateExpr where
 ctrler : CtrlerName
 state : StateName
-constraints : List Pipeline.Expr
+constraints : List Pipeline.Expr -- equality checks!
+
+structure CtrlerState where
+ctrler : CtrlerName
+state : StateName
 
 -- TODO: Write func to create the stall node.
 -- would have similar logic to the cut & paste code from the inordertransformation file
 
--- def CreateStallNode (ctrler_state_expr : CtrlerStateExpr) : Pipeline.Description :=
---   /-
---   3. Gen the new stall state's name
---   -/
---   -- Get ctrler state sending the mem req
---   let global_perform_state_that_send_mem_req : String ←
---     match states_that_send_mem_req with
---     | [state_name] => pure state_name
---     | [] => 
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found NO states\n" ++
---         s!" that send ({first_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_send_mem_req.name}"
---       throw error_msg
---     | _ => -- "empty list or multiple states that send a load req?"
---       dbg_trace "multiple states that send a load req?"
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states\n" ++
---         s!" that send load requests!" ++
---         s!"\nCtrler: {ctrler_that_send_mem_req.name}" ++
---         s!"\nStates: {states_that_send_mem_req}"
---       throw error_msg
+def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Expr := do
+  match exprs with
+  | [] => throw s!"Empty List of Exprs was provided!"
+  | [expr] => -- just do this one comparison
+    pure expr
+  | h :: t =>
+    -- use recursion
+    pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
 
---   let new_stall_global_perform_state_name : String :=
---     String.join [ctrler_that_send_mem_req.name, "_stall_",
---       global_perform_state_that_send_mem_req]
+def CtrlerMatchingName : List controller_info → CtrlerName → Except String controller_info 
+| ctrlers, ctrler_name => do
+  match ctrlers.filter (·.name == ctrler_name) with
+  | [ctrler] => pure ctrler
+  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
 
---   /-
---   4. Find all previous states to the await mem response state
---   that are not yet complete
---   -/
---   let state_that_await_mem_completion : String ←
---     match states_that_await_mem_completion with
---     | [] =>
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found NO states that await mem completion\n" ++
---         s!" that await ({second_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_await_mem_completion.name}"
---       throw error_msg 
---     | [one] => pure one
---     | _ :: _ =>
---       let error_msg : String :=
---         "FAIL: more_generic_core_in_order_stall_transform found MULTIPLE states that await mem completion\n" ++
---         s!" that await ({second_inst.toString}) requests!" ++
---         s!"\nCtrler: {ctrler_that_await_mem_completion.name}" ++
---         s!"\nStates: {states_that_await_mem_completion}"
---       throw error_msg
+def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : CtrlerStateExpr)
+(ctrlers : List controller_info) (inst_type_to_stall_on : InstType)
+: Except String Pipeline.Description := do
+  /- 3. Gen the new stall state's name -/
+  let new_stall_state_name := String.join [stall_state.ctrler, "_stall_", stall_state.state]
 
---   let transitions : List Description :=
---     if ctrler_that_await_mem_completion.init_trans.isSome then
---       ctrler_that_await_mem_completion.transition_list.get!
---     else if ctrler_that_await_mem_completion.ctrler_init_trans.isSome then
---       ctrler_that_await_mem_completion.ctrler_trans_list.get!
---     else
---       dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler_that_await_mem_completion})"
---         default
---   let states_predecessor_to_await_mem_resp_state : List String := (
---     get_states_leading_to_given_state (state_that_await_mem_completion, transitions))
---     ++ [state_that_await_mem_completion] --, new_stall_state_name]
+  /- 5. Generate the new stall state -/
+  let stall_ctrler ← CtrlerMatchingName ctrlers stall_state.ctrler
+  /- Consider if original state has a listen-handle -/
+  let handle_blks : Option (List HandleBlock) ←
+    get_ctrler_state_handle_blocks stall_ctrler stall_state.state
 
---   /-
---   Find the "complete" transition/state (where this State Machine finishes...)
---   Perhaps one can think of this as a sub-transaction in a larger transaction...
---   -/
---   let all_states_in_completion_ctrler : List Description := transitions
---   let list_list_completion_states : List (List String) ← (
---     all_states_in_completion_ctrler.mapM λ state : Description =>
---     match state with
---     | Description.state ident stmt =>
---       let list_complete_transitions : List String := get_complete_transition stmt
---       dbg_trace s!"Transitions that use 'complete' keyword: {list_complete_transitions}"
---       -- if there were entries, then get the 'complete' transition's ident
---       match list_complete_transitions with
---       | [] => pure []
---         -- should throw here? Yes, any state machine that "completes" should use the keyword
---         -- Nevermind, don't throw here. throw elsewhere.
---         -- let msg : String :=
---         -- "FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---         -- s!"State Machine ({ctrler_that_await_mem_completion.name}) has no 'complete' transition!\n"++
---         -- s!"Controller: ({ctrler_that_await_mem_completion})"
---         -- throw msg
---       | _ => pure [ident]
---     | _ => pure []
---     )
---   let list_completion_states : (List String) := List.join list_list_completion_states
---   let list_completion_states : (List String) ← match list_completion_states with
---   | [] =>
---     -- should throw here? Yes, any state machine that "completes" should use the keyword
---     -- Nevermind, don't throw here. throw elsewhere.
---     let msg : String :=
---     "FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---     s!"State Machine ({ctrler_that_await_mem_completion.name}) has no 'complete' transition!\n"++
---     s!"Controller: ({ctrler_that_await_mem_completion})"
---     throw msg
---   | _ => pure list_completion_states
+  -- Negate since the stall is done if the condition check is true
+  -- i.e. continue when the unique constraints are !false
+  let not_yet_gotten_mem_resp_state_check :=
+  Pipeline.Expr.some_term (
+    Pipeline.Term.logical_negation (
+      Pipeline.Term.expr (← ExprsToAndTreeExpr stall_on_constraint.constraints)
+    )
+  )
 
---   dbg_trace s!"LIST OF COMPLETION STATES: {list_completion_states}"
+  let new_stall_state : Description :=
+    gen_stall_dsl_state new_stall_state_name stall_state.state
+    stall_on_constraint.ctrler not_yet_gotten_mem_resp_state_check inst_type_to_stall_on
+    handle_blks
 
---   /-
---   Get the rest of the states that are "before" this state machine's 'complete' state
---   -/
---   let states_reachable_from_predecessors_not_to_completion_state : List (List ( List String )) ←
---     states_predecessor_to_await_mem_resp_state.mapM (
---       λ state : String => 
---       let prep_traversal_info : state_graph_traversal_info := {
---         visited_states := [],
---         visiting := state,
---         completion_states := list_completion_states,
---         all_states := all_states_in_completion_ctrler
---       }
---       -- find_states_that_don't_lead_to_completion prep_traversal_info
---       match find_states_that_don't_lead_to_completion prep_traversal_info with
---       | .error msg => 
---         let msg' : String :=
---         s!"FAIL: in func more_generic_core_in_order_stall_transform\n" ++
---         s!"ERROR: Searching for reachable states from await_mem_response:\n({msg})"
---         throw msg'
---       | .ok list_of_traversal_paths => pure list_of_traversal_paths
---       )
+  dbg_trace s!"New stall state: \n{new_stall_state}"
+  pure new_stall_state
 
---   dbg_trace s!"REACHABLE PATHS: {states_reachable_from_predecessors_not_to_completion_state}"
+partial def recursively_find_stmt_with_transition_to_arg
+( state_stmt : String × Pipeline.Statement )
+: List Bool
+:=
+  let state : String := state_stmt.1
+  let stmt : Pipeline.Statement := state_stmt.2
 
---   /-
---   i.e. states that are before the await_mem_response state
---   -/
---   let non_completion_path_states :=
---    (List.join (List.join states_reachable_from_predecessors_not_to_completion_state)) ++
---    states_predecessor_to_await_mem_resp_state
---   let unique_non_completion_path_states := List.foldl (
---     λ (unique_states : List String) ( state : String ) =>
---       if unique_states.contains state then
---         unique_states
---       else
---         unique_states.concat state
---     ) [] non_completion_path_states
+  -- try to match statment
+  let bool_list :=
+  match stmt with
+  | Statement.transition ident =>
+    if ident == state then [true]
+    else []
+  -- TODO NOTE: Should count both "reset" & "transition"
+  -- but ignore "completion...?"
+  | Statement.reset _ => []
+  | Statement.complete _ => []
+  | Statement.stall _ => []
+  | Statement.return_stmt _ => []
+  | Statement.block list_statment =>
+    let stmts_with_state_name : List (String × Pipeline.Statement) :=
+      list_statment.map (λ stmt => (state, stmt))
+    
+    let bool_list : List Bool :=
+    List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
+    
+    bool_list
+  | Statement.stray_expr _ => []
+  | Statement.when _ _ stmt => recursively_find_stmt_with_transition_to_arg (state, stmt)
+  | Statement.await (some _) list_stmt =>
+    let stmts_with_state_name : List (String × Pipeline.Statement) :=
+      list_stmt.map (λ stmt => (state, stmt))
+    
+    let bool_list : List Bool :=
+    List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
+    
+    bool_list
+  | Statement.await none list_stmt =>
+    let stmts_with_state_name : List (String × Pipeline.Statement) :=
+      list_stmt.map (λ stmt => (state, stmt))
+    
+    let bool_list : List Bool :=
+    List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
+    
+    bool_list
+  | Statement.listen_handle stmt list_handles =>
+    List.join
+    (
+      [recursively_find_stmt_with_transition_to_arg (state, stmt)]
+      ++
+      ( list_handles.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk _ _ stmt1 =>
+            recursively_find_stmt_with_transition_to_arg (state, stmt1)
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement _ stmt1 stmt2 => List.join (
+      [(state, stmt1),(state, stmt2)].map recursively_find_stmt_with_transition_to_arg
+      )
+    | Conditional.if_statement _ stmt1 => recursively_find_stmt_with_transition_to_arg (state, stmt1)
+  | Statement.variable_assignment _ _ => []
+  | Statement.value_declaration _ _ => []
+  | Statement.variable_declaration _ => []
+  | Statement.labelled_statement _ stmt => recursively_find_stmt_with_transition_to_arg (state, stmt)
+
+  bool_list
+
+def get_states_directly_leading_to_given_state
+( state_and_state_list : (String × List Description) )
+-- : Except String (List String)
+: List String
+:=
+  let state : String := state_and_state_list.1
+  let state_list : List Description := state_and_state_list.2
+  -- 1. check for states which transition to the given state
+  -- 2. recursively check if those states have states which transition to them
+  -- 3. combine these with the previously found states
+  -- 4. return all found states
+
+  -- 1.
+  let states_that_transition_to_state : List Description :=
+    state_list.filter ( λ state_descript =>
+      -- filter for stmts which have a transition that matches this input state var
+      match state_descript with
+      | Description.state _ stmt =>
+        -- check stmt, if there's a transition to this state
+        let bool_list : List Bool := recursively_find_stmt_with_transition_to_arg (state, stmt)
+        -- return bool
+        match bool_list with
+        | [] => false
+        | [true] => true
+        | _::_ => bool_list.all (λ bool' => bool' == true)
+      -- | _ => throw state_descript
+      | _ => false
+    )
   
---   dbg_trace s!"UNIQUE STATES: {unique_non_completion_path_states}"
+  let state_names : List String :=
+    List.join (
+    states_that_transition_to_state.map ( λ state_descript =>
+      match state_descript with
+      | Description.state ident _ => [(ident)]
+      | _ => []
+      ))
 
---   let states_to_stall_on : List String := unique_non_completion_path_states.concat new_stall_global_perform_state_name
+  state_names
 
---   -- Build the tree of (curr_state == <state>) |
---   -- Use convert_state_names_to_dsl_or_tree_state_check
---   let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
---     convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
+partial def recursively_find_stmt_and_update_transitions
+( old_name_new_name_and_stmt : String × (String × Pipeline.Statement) )
+: Pipeline.Statement
+:=
+  let old_name : String := old_name_new_name_and_stmt.1
+  let new_name : String := old_name_new_name_and_stmt.2.1
+  let stmt : Pipeline.Statement := old_name_new_name_and_stmt.2.2
 
---   /-
---   5. Generate the new stall state
---   -/
+  -- try to match statment
+  let bool_list :=
+  match stmt with
+  | Statement.transition ident =>
+    dbg_trace s!"--== BEGIN OLD TRANS NAME: {stmt}"
+    dbg_trace s!"--== THE OLD TRANS NAME: {old_name}"
+    dbg_trace s!"--== END REPLACEMENT TRANS NAME: {new_name}"
+    if ident == old_name then Statement.transition new_name
+    else stmt
+  -- TODO NOTE: Should count both "reset" & "transition"
+  -- but ignore "completion...?"
+  | Statement.reset _ => stmt
+  | Statement.complete _ => stmt
+  | Statement.stall _ => stmt
+  | Statement.return_stmt _ => stmt
+  | Statement.block list_statment =>
+    let stmts_with_name_info : List (String × String × Pipeline.Statement) :=
+      list_statment.map (λ stmt' => (old_name, new_name, stmt'))
+    
+    let blk_stmt : Pipeline.Statement :=
+    Statement.block ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
+    
+    blk_stmt
+  | Statement.stray_expr _ => stmt
+  | Statement.when q_name list_ident stmt' =>
+    let updated_stmt : Pipeline.Statement := recursively_find_stmt_and_update_transitions (old_name, new_name, stmt')
+    let new_when : Pipeline.Statement := Statement.when q_name list_ident updated_stmt
+    new_when
+  | Statement.await term' list_stmt =>
+    let stmts_with_name_info : List (String × String × Pipeline.Statement) :=
+      list_stmt.map (λ stmt' => (old_name, new_name, stmt'))
+    
+    let await_stmt : Pipeline.Statement :=
+    Statement.await term' ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
+    
+    await_stmt
+  -- | Statement.await none list_stmt =>
+  --   let stmts_with_name_info : List (String × String × Statement) :=
+  --     list_stmt.map (λ stmt' => (old_name, new_name, stmt'))
+    
+  --   let await_stmt : Statement :=
+  --   Statement.await none ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
+    
+  --   await_stmt
+  | Statement.listen_handle stmt' list_handles =>
+    Statement.listen_handle (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt'))
+      ( list_handles.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qual_name list_ident stmt1 =>
+            HandleBlock.mk qual_name list_ident ( recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) )
+        )
+      )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr stmt1 stmt2 =>
+      Statement.conditional_stmt (
+      Conditional.if_else_statement expr (
+        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1)
+      ) (
+        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt2)
+      ))
+    | Conditional.if_statement expr stmt1 =>
+      Statement.conditional_stmt (
+      Conditional.if_statement expr (
+        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1)
+      ) )
+  | Statement.variable_assignment _ _ => stmt
+  | Statement.value_declaration _ _ => stmt
+  | Statement.variable_declaration _ => stmt
+  | Statement.labelled_statement label stmt => Statement.labelled_statement label (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt))
 
---   /- Consider if original state has a listen-handle -/
---   -- Get the stmts
---   let handle_blks : Option (List HandleBlock) ←
---   get_ctrler_state_handle_blocks ctrler_that_send_mem_req global_perform_state_that_send_mem_req
+  bool_list
 
---   let new_stall_state : Description :=
---     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
---     ctrler_that_await_mem_completion.name not_yet_gotten_mem_resp_state_check first_inst
---     handle_blks
---   dbg_trace s!"New stall state: \n{new_stall_state}"
+def update_state_transitions_matching_name_to_replacement_name
+( orig_name : String)
+( replacement_name : String)
+( list_states_names_to_update : List String)
+( all_state_descriptions : List Description)
+: (List Description)
+:= --do
 
--- -- TODO: write func to add a node to a controller, as if
--- -- if get's inserted between a given old state and the states that pointed to the given old state
+  -- take the state_descriptions, and see if it's name matches one we need to update
+  -- if it matches, map all of it's statements
+  --   map func should check if stmt is a transition & if it is then replace the identifier
+  --   map func should recursively descend into anything which holds list(s) of statements
+  --   map func should return the original otherwise
+  -----------------------------------------
+  -- high level pseudo code : Do the match on the state descriptions
+  -- match all_state_descriptions with
+  -- if state name == orig name
+  -- then do recursive update rewrite
+  -- else return original state description.
 
--- def AddNodeToCtrler (ctrler : controller_info) (new_state : Description) (old_state_name : StateName) :=
---   /-
---   6. Update states that point to the previous perform
---   -/
+  let updated_states : (List Description) :=
+    List.join (
+    all_state_descriptions.map ( λ state_descript =>
+      match state_descript with
+      | Description.state this_state_name stmt =>
+        if list_states_names_to_update.contains this_state_name then
+          [Description.state this_state_name (recursively_find_stmt_and_update_transitions (orig_name, replacement_name, stmt))]
+        else
+          [state_descript]
+      | _ => []
+    ))
+  updated_states
 
---   let send_mem_req_transitions : List Description :=
---     if ctrler_that_send_mem_req.init_trans.isSome then
---       ctrler_that_send_mem_req.transition_list.get!
---     else if ctrler_that_send_mem_req.ctrler_init_trans.isSome then
---       ctrler_that_send_mem_req.ctrler_trans_list.get!
---     else
---       dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler_that_send_mem_req})"
---         default
+-- TODO: write func to add a node to a controller, as if
+-- if get's inserted between a given old state and the states that pointed to the given old state
 
---   let states_that_transition_to_original_global_perform : List String :=
---     get_states_directly_leading_to_given_state (global_perform_state_that_send_mem_req, send_mem_req_transitions)
---   dbg_trace s!"======= STATES directly leading to state {global_perform_state_that_send_mem_req}"
---   dbg_trace states_that_transition_to_original_global_perform
---   dbg_trace s!"======= END States that directly lead to state {global_perform_state_that_send_mem_req}"
+def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
+: Except String controller_info := do
+  /-
+  6. Update states that point to the previous perform
+  -/
 
---   let updated_state_list_transition_to_stall_state : List Description :=
---     update_state_transitions_matching_name_to_replacement_name
---     global_perform_state_that_send_mem_req new_stall_global_perform_state_name
---     states_that_transition_to_original_global_perform send_mem_req_transitions
+  let ctrler's_states : List Description ← ctrler.state_list
 
---   let new_state_machine_with_stall_state : List Description :=
---     updated_state_list_transition_to_stall_state ++ [new_stall_state]
+  let states_transitioning_to_state_to_stall : List String :=
+    get_states_directly_leading_to_given_state (old_state_name, ctrler's_states)
+  dbg_trace s!"======= STATES directly leading to state {old_state_name}"
+  dbg_trace states_transitioning_to_state_to_stall
+  dbg_trace s!"======= END States that directly lead to state {old_state_name}"
+
+  let updated_state_list_transition_to_stall_state : List Description :=
+    update_state_transitions_matching_name_to_replacement_name
+    old_state_name new_state_name states_transitioning_to_state_to_stall ctrler's_states
+
+  let new_state_machine_with_stall_state : List Description :=
+    updated_state_list_transition_to_stall_state ++ [new_state]
   
---   let new_ctrler : controller_info := {
---     name := ctrler_that_send_mem_req.name,
---     controller_descript := ctrler_that_send_mem_req.controller_descript,
---     entry_descript := ctrler_that_send_mem_req.entry_descript,
---     init_trans := ctrler_that_send_mem_req.init_trans,
---     state_vars := ctrler_that_send_mem_req.state_vars,
---     transition_list := -- new_state_machine_with_stall_state
---       if ctrler_that_send_mem_req.init_trans.isSome then
---         Option.some new_state_machine_with_stall_state
---       else
---         Option.none
---     ctrler_init_trans := ctrler_that_send_mem_req.init_trans,
---     ctrler_state_vars := ctrler_that_send_mem_req.state_vars,
---     ctrler_trans_list := -- new_state_machine_with_stall_state
---       if ctrler_that_send_mem_req.ctrler_init_trans.isSome then
---         Option.some new_state_machine_with_stall_state
---       else
---         Option.none
---   }
+  let new_ctrler : controller_info := {
+    name := ctrler.name,
+    controller_descript := ctrler.controller_descript,
+    entry_descript := ctrler.entry_descript,
+    init_trans := ctrler.init_trans,
+    state_vars := ctrler.state_vars,
+    transition_list := -- new_state_machine_with_stall_state
+      if ctrler.init_trans.isSome then
+        Option.some new_state_machine_with_stall_state
+      else
+        Option.none
+    ctrler_init_trans := ctrler.init_trans,
+    ctrler_state_vars := ctrler.state_vars,
+    ctrler_trans_list := -- new_state_machine_with_stall_state
+      if ctrler.ctrler_init_trans.isSome then
+        Option.some new_state_machine_with_stall_state
+      else
+        Option.none
+  }
 
---   let updated_ctrler_list : List controller_info :=
---     all_ctrlers.map (
---       λ ctrler =>
---         if ctrler.name == ctrler_that_send_mem_req.name then
---           new_ctrler
---         else
---           ctrler
---     )
-  
---   -- dbg_trace s!"The updated ctrler list with the ctrler + stall state: ({updated_ctrler_list})"
+  pure new_ctrler
 
---   return updated_ctrler_list
+def UpdateCtrlerWithNode
+(ctrlers : List controller_info) (ctrler_name : CtrlerName) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
+: Except String (List controller_info) := do
+  ctrlers.mapM (λ ctrler => do
+    if ctrler.name == ctrler_name then (AddNodeAndUpdateCtrler ctrler new_state_name new_state old_state_name)
+    else pure ctrler) 
