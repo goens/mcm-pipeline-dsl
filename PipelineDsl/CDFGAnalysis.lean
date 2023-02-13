@@ -225,7 +225,8 @@ def CDFG.Message.findDestState (cdfg_nodes : List CDFG.Node) (msg : Message) (sr
 def CDFG.Node.unique_msg'd_states : Node → Graph → Except String (List StateName)
 | node, graph => do
   let ctrler_name : CtrlerName := node.ctrler_name
-  let messages : Messages := List.join $ node.transitions.map (·.messages)
+  let transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  let messages : Messages := List.join $ transitions.map (·.messages)
   let msg'd_states : List StateName := (← messages.mapM (·.findDestState graph.nodes ctrler_name) ).join
 
   let unique_msg'd_states : List StateName := msg'd_states.eraseDups
@@ -330,17 +331,19 @@ abbrev Distance := Nat
 -- TODO: Add a visited list
 partial def CDFG.Graph.labelNodesByMessageDistance (start_node : StateName) (message_distance : Distance) (graph : Graph)
 : Except String (List (StateName × Distance)) := do
-    dbg_trace s!"recursive?"
-    dbg_trace s!"start_node: {start_node}"
+    -- dbg_trace s!"Msg Dist: ({message_distance})"
+    -- dbg_trace s!"start_node: {start_node}"
     let unique_msg'd_states : List StateName ←  graph.unique_msg'd_states_by_node start_node
     let unique_transitioned_to_states : List StateName ← graph.unique_transition'd_states_by_node start_node
     -- Look at unique messages
     -- recursive call to Messaged states/ctrlers (which increment counter)
     -- and to transitioned states (which don't increment counter)
+    -- dbg_trace s!"Recursive call on msg'd states: {unique_msg'd_states}"
     let states_traversed_from_message_list : List (List (StateName × Distance))  ←
       unique_msg'd_states.mapM (labelNodesByMessageDistance · (message_distance + 1) graph)
     let states_traversed_from_message : List (StateName × Distance) := states_traversed_from_message_list.join
 
+    -- dbg_trace s!"Recursive call on trans'd states: {unique_transitioned_to_states}"
     let states_traversed_from_transition_list : List (List (StateName × Distance))  ←
       unique_transitioned_to_states.mapM (labelNodesByMessageDistance · message_distance graph)
     let states_traversed_from_transition : List (StateName × Distance) := states_traversed_from_transition_list.join
