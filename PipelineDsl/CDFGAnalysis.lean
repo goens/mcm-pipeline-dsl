@@ -676,6 +676,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
         let common_constraints := List.join (trans_to_same_state.map (·.constraint_info.filter (λ constraint => trans_to_same_state.all (·.constraint_info.any (· == constraint) ) ) ) ) 
         dbg_trace s!"~~2 common_constraints: ({common_constraints})"
         let no_dup_common_constraints := common_constraints.reverse.eraseDups.reverse
+        dbg_trace s!"~~4 no dup constraints: ({no_dup_common_constraints})"
         (state_name, no_dup_common_constraints))
 
     dbg_trace s!"~~1 path_constraints: ({path_constraints})"
@@ -684,9 +685,10 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
       dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
         dbg_trace s!"Did we error here1? state_name: {state_name}"
         let node ← graph.node_from_name! state_name  
+        let path_constraints_with_added_constraints := (ctrler_path_constraints_with_curr_node.add_constraints_and_path_node common_constraints node)
+        dbg_trace s!"~~5 path with constraints: ({path_constraints_with_added_constraints})"
         (
-          graph.ctrler_trans_paths_and_constraints state_name
-          (ctrler_path_constraints_with_curr_node.add_constraints_and_path_node common_constraints node) none 
+          graph.ctrler_trans_paths_and_constraints state_name path_constraints_with_added_constraints none 
         )
         )
     dbg_trace s!"Ctrler Path Constraint, paths_to_dest_states_with_common_constraints: ({paths_to_dest_states_with_common_constraints})"
@@ -694,8 +696,12 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     -- TODO: sth for completion type transitions
     -- TODO: join and return the paths that exist
     -- process results
-    if trans_transitions.isEmpty then
-      pure $ ctrler_path_constraints_with_curr_node :: paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+    if !complete_transitions.isEmpty then
+      let all_path_constraints := List.join $ List.join $ ctrler_path_constraints_with_curr_node.path.map (·.transitions.map (·.constraint_info) )
+      let a_complete_path := ctrler_path_constraints_with_curr_node.add_constraints all_path_constraints
+      let a_complete_path_and_others := pure $ ctrler_path_constraints_with_curr_node :: paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+      dbg_trace s!"@42.0 POST a_complete_path: ({a_complete_path})"
+      a_complete_path_and_others
     else
       pure $ paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
   else
@@ -727,12 +733,14 @@ partial def CDFG.Graph.pre_receive_states_constraints
   let msg'd_states : List ( StateName × Message ) := List.join dest_states
   
   let unique_msg'd_states : List ( StateName × Message ) := msg'd_states.eraseDups
+  dbg_trace s!"@@2.01 unique_msg'd_states: ({unique_msg'd_states})"
 
   let paths_from_msg'd_states : List CtrlerPathConstraint := List.join $ ← unique_msg'd_states.mapM (λ (node_name, msg) => do
     if post_receive_states.nodes.any (·.current_state == node_name) then
       return []
     else
       pre_receive_states.pre_receive_states_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler (← msg.dest_ctrler)) (Option.some (msg, ctrler_name)) post_receive_states)
+  dbg_trace s!"@@2.02 paths_from_msg'd_states: ({paths_from_msg'd_states})"
 
   -- TODO: get the transition constraints from just those transitions that
   -- await on the msg 
@@ -761,17 +769,24 @@ partial def CDFG.Graph.pre_receive_states_constraints
   let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
     dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
       dbg_trace s!"Did we error here3? state_name: {state_name}"
-      let node ← post_receive_states.node_from_name! state_name  
+      let node ← pre_receive_states.node_from_name! state_name  
       (
-        post_receive_states.ctrler_trans_paths_and_constraints state_name
-        (ctrler_path_constraints_with_curr_node.add_constraints_and_path_node common_constraints node) none 
+        pre_receive_states.pre_receive_states_constraints state_name
+        (ctrler_path_constraints_with_curr_node.add_constraints_and_path_node common_constraints node) none post_receive_states
       )
       )
 
   -- TODO: sth for completion type transitions
   -- TODO: join and return the paths that exist
   -- process results
-  return paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+  if !complete_transitions.isEmpty || trans_to_dest_state_not_in_post_receive_states.isEmpty then
+    let all_path_constraints := List.join $ List.join $ ctrler_path_constraints_with_curr_node.path.map (·.transitions.map (·.constraint_info) )
+    let a_complete_path := ctrler_path_constraints_with_curr_node.add_constraints all_path_constraints
+    let a_complete_path_and_others := pure $ ctrler_path_constraints_with_curr_node :: paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+    dbg_trace s!"@42.0 PRE a_complete_path: ({a_complete_path})"
+    a_complete_path_and_others
+  else 
+    pure $ paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
 
 -- Rationale behind doing reverse -> eraseDups -> reverse & ordering of items... (an approximation)
 #eval [1,2,5,1,2,3,5].eraseDups
@@ -788,8 +803,9 @@ def CanonStatePathsApprox : List CtrlerPathConstraint → List CtrlerPathConstra
 
   -- ctrler paths -> path, with just common constraints
   let ctrler_path : List CtrlerPathConstraint := ctrler_paths.map (λ (ctrler, all_paths) =>
-    let list_constraints : ( List ConstraintInfo ) := List.join $
-      all_paths.map (λ path => path.constraints.filter ( λ constraint => all_paths.all (λ path' => path'.constraints.any (· == constraint) )))
+    let list_constraints : ( List ConstraintInfo ) := List.join $ all_paths.map (·.constraints)
+      -- List.join $
+      -- all_paths.map (λ path => path.constraints.filter ( λ constraint => all_paths.all (λ path' => path'.constraints.any (· == constraint) )))
     let no_dup_list_constraints := list_constraints.reverse.eraseDups.reverse
 
     let path_nodes : List Node := List.join $ all_paths.map (·.path)
@@ -813,18 +829,21 @@ instance : ToString CtrlerConstraint where toString := CtrlerConstraint.toString
 --#eval [1,2,3].find? (· == 2)
 def PostReceivePathsUniqueConstraints : List CtrlerPathConstraint → List CtrlerPathConstraint → Except String (List CtrlerConstraint)
 | post_ctrler_constraints, pre_ctrler_constraints => do
-  let unique_post_ctrler_constraints : List CtrlerConstraint := ←
+  let unique_post_ctrler_constraints : List CtrlerConstraint := List.join $ ←
     post_ctrler_constraints.mapM (λ post_ctrler_constraint => do
       let ctrler := post_ctrler_constraint.ctrler
       let pre_ctrler_constraint? : Option CtrlerPathConstraint := pre_ctrler_constraints.find? (·.ctrler == ctrler)
       if let some pre_ctrler_constraint := pre_ctrler_constraint? then
         let post_ctrler_constraints := post_ctrler_constraint.constraints
         let pre_ctrler_constraints := pre_ctrler_constraint.constraints
+        dbg_trace s!"@@2.5 potential match of constraints: post_ctrler_constraints:({post_ctrler_constraints}) pre_ctrler_constraints:({pre_ctrler_constraints})"
         let constraints_unique_to_post := post_ctrler_constraints.filter (!pre_ctrler_constraints.contains ·)
-        pure ({ctrler := ctrler, constraints := constraints_unique_to_post} : CtrlerConstraint)
+        pure [({ctrler := ctrler, constraints := constraints_unique_to_post} : CtrlerConstraint)]
       else
-        let msg := s!"No pre-ctrler constraint for ctrler:({ctrler}) found in path_constraints:({pre_ctrler_constraints})"
-        throw msg
+        -- let msg := s!"No pre-ctrler constraint for ctrler:({ctrler}) found in path_constraints:({pre_ctrler_constraints})"
+        -- throw msg
+        dbg_trace s!"@@2.4 No pre-ctrler constraint for ctrler:({ctrler})"
+        pure []
     )
   let non_empty_unique_post_constraints := unique_post_ctrler_constraints.filter (·.constraints.length > 0)
   pure non_empty_unique_post_constraints
@@ -858,15 +877,17 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
     post_receive_graph.ctrler_trans_paths_and_constraints receive_state_name ( CtrlerPathConstraint.new_path_of_ctrler receive_state_name ) none
   dbg_trace s!"@@@1 post_receive_paths: ({post_receive_states_paths})"
   let canonized_post_receive_paths : List CtrlerPathConstraint := CanonStatePathsApprox post_receive_states_paths
+  dbg_trace s!"@@@1.1 canon post_receive_paths: ({canonized_post_receive_paths})"
 
 
   -- dbg_trace s!">> pre_receive_states: ({pre_receive_states})"
   let pre_receive_graph : Graph := { nodes := pre_receive_states }
+  dbg_trace s!"@@@1.5 pre_receive_graph: ({pre_receive_graph})"
   let pre_receive_states_paths : List CtrlerPathConstraint ← 
     pre_receive_graph.pre_receive_states_constraints not_transitioned_or_messaged_state.current_state ( CtrlerPathConstraint.new_path_of_ctrler receive_state_name ) none post_receive_graph
   dbg_trace s!"@@@2 pre_receive_paths: ({pre_receive_states_paths})"
   let canonized_pre_receive_paths : List CtrlerPathConstraint := CanonStatePathsApprox pre_receive_states_paths
-  -- dbg_trace s!"@@@2 canonized_pre_receive_paths: ({canonized_pre_receive_paths})"
+  dbg_trace s!"@@@2.1 canonized_pre_receive_paths: ({canonized_pre_receive_paths})"
 
   -- use canonized post & pre receive graphs, check for constraints unique to post receive path
   let ctrler_constraints_unique_to_post_receive : List CtrlerConstraint ← PostReceivePathsUniqueConstraints canonized_post_receive_paths canonized_pre_receive_paths
