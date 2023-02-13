@@ -149,6 +149,21 @@ def PrepareAwaitWhenCondAndStmts
     | _ => [when's_stmt]
   (transitions_with_added_cond , stmt_list)
 
+def PrepareAwaitAPIWhenCondAndStmts
+(incomplete_transitions : IncompleteTransitions)
+(await : AwaitStmt)
+(when's_stmt : Pipeline.Statement)
+: IncompleteTransitions × (List Pipeline.Statement)
+:=
+  let transitions_with_added_cond : IncompleteTransitions :=
+  incomplete_transitions.map ( λ transition =>
+      AppendTransitionPredicate transition (Condition.APICondition await) );
+  let stmt_list : List Pipeline.Statement :=
+    match when's_stmt with
+    | .block lst_stmt => lst_stmt
+    | _ => [when's_stmt]
+  (transitions_with_added_cond , stmt_list)
+
 def PrepareHandleCondAndStmts
 (incomplete_transitions : IncompleteTransitions)
 (handle_blk : Pipeline.HandleBlock)
@@ -311,7 +326,7 @@ partial def StmtsToTransitions
             match when_stmt with
             | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
               let (trans_with_await_when, stmt_list) :=
-                PrepareAwaitWhenCondAndStmts
+                PrepareAwaitAPIWhenCondAndStmts
                 transitions_lists.incomplete_transitions
                 (Pipeline.Statement.await (api_term) [when_stmt]) when's_stmt
               let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
