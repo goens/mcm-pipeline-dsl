@@ -336,7 +336,7 @@ structure Graph where
 
 def Graph.toString : Graph → String
 | graph =>
-  let nodes : String := ",\n".intercalate (graph.nodes.map (λ node => node.toString))
+  let nodes : String := "=== GRAPH ===\n" ++ ",\n".intercalate (graph.nodes.map (λ node => node.toString)) ++ "=== END GRAPH ==="
   nodes
 instance : ToString Graph where toString := Graph.toString
 
