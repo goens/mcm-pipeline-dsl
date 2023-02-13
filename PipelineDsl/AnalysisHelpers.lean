@@ -1438,10 +1438,18 @@ structure CtrlerStateExpr where
 ctrler : CtrlerName
 state : StateName
 constraints : List Pipeline.Expr -- equality checks!
+def CtrlerStateExpr.toString : CtrlerStateExpr → String
+| ctrler_state_expr =>
+  s!"== Ctrler & State & Constraint Expr ==\nCtrler: ({ctrler_state_expr.ctrler})\nState: ({ctrler_state_expr.state})\nState: ({ctrler_state_expr.constraints})\n== End Ctrler & State & Constraint Exprs =="
+instance : ToString CtrlerStateExpr where toString := CtrlerStateExpr.toString
 
 structure CtrlerState where
 ctrler : CtrlerName
 state : StateName
+def CtrlerState.toString : CtrlerState → String
+| ctrler_state =>
+  s!"== Ctrler & State ==\nCtrler: ({ctrler_state.ctrler})\nState: ({ctrler_state.state})\n== End Ctrler & State =="
+instance : ToString CtrlerState where toString := CtrlerState.toString
 
 -- TODO: Write func to create the stall node.
 -- would have similar logic to the cut & paste code from the inordertransformation file
