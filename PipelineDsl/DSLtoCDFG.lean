@@ -449,10 +449,27 @@ partial def StmtsToTransitions
               if ident == base_var then [ctrler_var]
               else []
             ))
+          -- dbg_trace s!"ctrler_vars: {ctrler_vars}"
+          -- dbg_trace s!"base_is_in_ctrler_var: {base_is_in_ctrler_var}"
+          -- dbg_trace s!"()Statement: {stmt}"
           if base_is_in_ctrler_var.length > 0 then
+            -- dbg_trace s!"Found var in ctrler vars"
+            -- dbg_trace s!"found expr?: {expr}"
             let constraint_if_lit : Option ConstraintInfo := match expr with
               | .some_term term =>
+                -- dbg_trace s!"Found term?: {term}"
                 match term with
+                | .var ident =>
+                  -- dbg_trace s!"Term was of type Var?: {ident}"
+                  if ident == "true" then
+                    -- dbg_trace s!"()str was true?: {ident}"
+                    some (ConstraintInfo.mk base_var (Sum.inr BoolValue.True))
+                  else if ident == "false" then
+                    some ( ConstraintInfo.mk base_var (Sum.inr BoolValue.False) )
+                  else
+                    dbg_trace "Constraint assign: What other string literal? Null?"
+                    none
+                  
                 | .const const_ =>
                   match const_ with
                   | .str_lit str =>  -- return a boolean constraint if str is "true" or "false"
