@@ -694,7 +694,10 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     -- TODO: sth for completion type transitions
     -- TODO: join and return the paths that exist
     -- process results
-    return paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+    if trans_transitions.isEmpty then
+      pure $ ctrler_path_constraints_with_curr_node :: paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
+    else
+      pure $ paths_from_msg'd_states ++ paths_to_dest_states_with_common_constraints
   else
     throw "Node not found"
 
