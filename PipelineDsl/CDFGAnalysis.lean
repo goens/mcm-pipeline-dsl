@@ -1078,6 +1078,84 @@ partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node :
     -- recursive search
     graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
 
+-- def CDFG.Condition.is_await_on_any_msg (condition : Condition) : Bool :=
+--   match condition with
+--   | .AwaitCondition /-await_stmt-/ _ =>
+--     true
+--   | _ => false
+
+-- def CDFG.Node.is_node_to_given_node_trans_predicated_by_msg (node : Node) (dest_node : Node)
+-- : Bool :=
+--   let basic_trans := node.transitions.filter (·.trans_type == .Transition)
+--   let trans_to_dest := basic_trans.filter (·.dest_state == dest_node.current_state)
+--   trans_to_dest.all (·.predicate.any (·.is_await_on_any_msg))
+
+-- partial def CDFG.Graph.greedy_first_msging_ctrler_node_from_node (graph : Graph) (node : Node) (dist : Distance) (visited : List Node)
+-- : Except String Node := do
+--   -- 1. Recursive back track through nodes until we find one not transitioned to
+--   -- get nodes transitioning to this one
+--   let nodes_transitioning_to_node : List Node := graph.nodes_transitioning_to_node node
+--   match nodes_transitioning_to_node with
+--   | [] => do
+--     -- finished search, and can call fn to get other ctrler msging this one
+--     -- get when predicates, find msg from other ctrler
+--     let basic_transitions := node.transitions.filter (·.trans_type == .Transition)
+--     let await_predicates := List.join $ basic_transitions.map (·.predicate.filter (match · with | .AwaitCondition _ => true | _ => false))
+--     -- match await_predicate to sending ctrler node
+--     -- return the node
+--     match await_predicates with
+--     | [] => do
+--       throw s!"Error: No await predicate found. Node: ({node}). Transitions: ({basic_transitions})"
+--     | _ => do
+--       -- the first message pass to the node is the "first" message that starts this ctrler's state machine
+--       -- assuming I'm adding to the predicate list in the order of the stmts
+--       let await_pred := await_predicates[0]!
+--       await_pred.await_pred's_sending_node graph
+--   | _ => do
+--    -- if nodes_transitioning_to_node.length > 0 then
+--     -- recursive search
+--     -- shouldn't be any cycles in graph, but just in case...
+--     -- TODO
+--     let nodes_not_visited : List Node := nodes_transitioning_to_node.filter (λ node' => !(visited.contains node'))
+--     let nodes_which_await_msg := nodes_not_visited.filter (·.is_node_to_given_node_trans_predicated_by_msg node)
+--     match nodes_which_await_msg with
+--     | _ =>
+--       -- have the option of finding a msg here
+--       -- return 
+--     | [] =>
+--       let first_msging_ctrler_node_list ← nodes_not_visited.mapM (graph.greedy_first_msging_ctrler_node_from_node · (visited.concat node))
+--       -- check to confirm all paths lead to the same node
+--       match first_msging_ctrler_node_list with
+--       | [] =>
+--         dbg_trace s!">>node: ({node})"
+--         dbg_trace s!">>visited: ({visited})"
+--         dbg_trace s!">>nodes_transitioning_to_node: ({nodes_transitioning_to_node})"
+--         dbg_trace s!">>nodes_not_visited: ({nodes_not_visited})"
+--         dbg_trace s!">>first_msging_ctrler_node_list: ({first_msging_ctrler_node_list})"
+--         throw s!"Error: No first msging ctrler node found. Node: ({node}).\nNodes transitioning to node: ({nodes_transitioning_to_node})"
+--       | _ => do
+--         let all_same_node := first_msging_ctrler_node_list.all (· == first_msging_ctrler_node_list[0]!)
+--         match all_same_node with
+--         | true => pure first_msging_ctrler_node_list[0]!
+--         | false => throw "Error: Not all paths lead to the same node"
+
+-- partial def CDFG.Graph.updated_PO_inserted_ctrler_node_from_node (graph : Graph) (node : Node) (ctrlers : List controller_info)
+-- : Except String Node := do
+--   dbg_trace s!"<< updated v1 heuristic search"
+--   dbg_trace s!"node_name: ({node.current_state})"
+--   -- 1. Recursive back track through nodes until we find one not transitioned to, get node that msgs it
+--   let msging_node_of_input_node : Node ← graph.first_msging_ctrler_node_from_node node []
+--   -- 2. Check transitions predicated on msg from other ctrler
+--     -- AZ NOTE: Heuristic should check there's no Unordered queue in the path, and at least 1 ordered FIFO pred by is_head
+--   let is_msging_node_trans_pred_is_head : Bool ← msging_node_of_input_node.is_complete_trans_pred_is_head node.ctrler_name
+--   let is_node_transition_path_PO : Bool ← msging_node_of_input_node.is_msg_in_order graph ctrlers
+--   -- 3. Do a recursive back track through nodes, checking for transitions that are pred by is_head
+--   if is_msging_node_trans_pred_is_head || is_node_transition_path_PO then
+--     pure node
+--   else
+--     -- recursive search
+--     graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
+
 def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers : List controller_info)
 : Except String CtrlerState := do
   -- First, find the first state, which is the state that sends the global perform msg
