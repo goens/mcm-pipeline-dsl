@@ -1073,7 +1073,7 @@ partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node :
   let is_node_transition_path_PO : Bool ← msging_node_of_input_node.is_msg_in_order graph ctrlers
   -- 3. Do a recursive back track through nodes, checking for transitions that are pred by is_head
   if is_msging_node_trans_pred_is_head || is_node_transition_path_PO then
-    pure msging_node_of_input_node
+    pure node
   else
     -- recursive search
     graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
@@ -1111,7 +1111,7 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_type : InstT
   dbg_trace "<< Got graph nodes translated"
   let graph := {nodes := graph_nodes}
   let stall_point ← find_stall_point_heuristic graph inst_to_stall_on_type ctrlers
-  dbg_trace "<< Found stall point from heuristic"
+  dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
   let ctrler_state_to_stall_on ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_type
   dbg_trace "<< Found ctrler/state to stall at"
 
