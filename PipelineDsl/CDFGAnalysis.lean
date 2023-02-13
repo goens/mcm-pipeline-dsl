@@ -536,6 +536,9 @@ def CtrlerPathConstraint.add_constraints : CtrlerPathConstraint → List Constra
 def CtrlerPathConstraint.add_path_node : CtrlerPathConstraint → Node → CtrlerPathConstraint
 | ctrler_path_constraint, node => {ctrler := ctrler_path_constraint.ctrler, path := ctrler_path_constraint.path ++ [node], constraints := ctrler_path_constraint.constraints}
 
+def CtrlerPathConstraint.new_path_of_ctrler_and_node : CtrlerName → Node → CtrlerPathConstraint
+| ctrler_name, node => ( {ctrler := ctrler_name, path := [], constraints := []} : CtrlerPathConstraint ).add_path_node node
+
 def CtrlerPathConstraint.add_constraints_and_path_node : CtrlerPathConstraint → List ConstraintInfo → Node → CtrlerPathConstraint
 | ctrler_path_constraint, constraints, node =>
   (ctrler_path_constraint.add_constraints constraints).add_path_node node
@@ -562,39 +565,60 @@ def Pipeline.QualifiedName.second : QualifiedName → Except String Identifier
   | [_] => throw "Error: QualifiedName has only one ident"
   | _ :: second :: _ => pure second
 
-partial def Pipeline.Statement.matches_msg (stmt : Statement) (msg : Message) : Except String Bool := do
+partial def Pipeline.Statement.matches_msg_from_ctrler (stmt : Statement) (msg : Message) (src_ctrler : CtrlerName) : Except String Bool := do
+  dbg_trace s!"$$3 Match stmt: {stmt} with msg: {msg}, from ctrler: {src_ctrler}"
   match stmt with
   | .await (Option.none) stmts => do
     let when_stmt := ← match stmts with
       | [when_stmt] => pure when_stmt
       | _ => throw "Error: Await statement should have one statement"
-    when_stmt.matches_msg msg
+    when_stmt.matches_msg_from_ctrler msg src_ctrler
   | .when qual_name /- idents -/ _ /- stmt -/ _ => do
-    let ctrler_name_matches := ( ← qual_name.first ) == ( ← msg.dest_ctrler )
+    let ctrler_name_matches := ( ← qual_name.first ) == ( src_ctrler )
     let msg_name_matches := ( ← qual_name.second ) == ( ← msg.name )
+    dbg_trace s!"$$4 qual_name: {qual_name}"
+    dbg_trace s!"$$5 ctrler_name_matches: {ctrler_name_matches}, msg_name_matches: {msg_name_matches}"
     pure (ctrler_name_matches && msg_name_matches)
   | _ => pure false
 
-def CDFG.Condition.is_await_on_msg (condition : Condition) (msg : Message) : Except String Bool := do
+def CDFG.Condition.is_await_on_msg_from_ctrler (condition : Condition) (msg : Message) (src_ctrler : CtrlerName) : Except String Bool := do
   match condition with
   | .AwaitCondition await_stmt => do
-    await_stmt.matches_msg msg
+    let bool := await_stmt.matches_msg_from_ctrler msg src_ctrler
+    dbg_trace s!"$$6.6 bool: {bool}"
+    bool
   | _ => pure false
-  pure default
 
-def CDFG.Transitions.transitions_awaiting_on_msg : Transitions → Message → Except String Transitions
-| transitions, msg => do
-  transitions.filterM (·.predicate.anyM (·.is_await_on_msg msg))
+def CDFG.Transitions.transitions_awaiting_on_msg_from_ctrler : Transitions → Message → CtrlerName  → Except String Transitions
+| transitions, msg, src_ctrler => do
+  let trans_awaiting_msg ← transitions.filterM (
+    let bool := ·.predicate.anyM (
+      let bool' := ·.is_await_on_msg_from_ctrler msg src_ctrler
+      dbg_trace s!"$$6.5 bool': {bool'}"
+      bool'
+      );
+    dbg_trace s!"$$6 bool: {bool}"
+    -- dbg_trace s!"$$6.5 predicates: {·.predicate}"
+    bool
+    )
+  dbg_trace s!"$$7 trans_awaiting_msg: ({trans_awaiting_msg})"
+  pure trans_awaiting_msg
 
-def CDFG.Transitions.transitions_awaiting_on_option_msg : Transitions → Option Message → Except String Transitions
-| transitions, none => pure transitions
-| transitions, some msg => transitions.transitions_awaiting_on_msg msg
+def CDFG.Transitions.transitions_awaiting_on_option_msg_from_ctrler : Transitions → Option ( Message × CtrlerName ) → Except String Transitions
+| transitions, none =>
+  dbg_trace s!"$$1 just return transitions"
+  pure transitions
+| transitions, some ( msg, src_ctrler ) => do
+  dbg_trace s!"$$2 find transitions awaiting on msg: {msg}"
+  let trans_awaiting_msg := ← transitions.transitions_awaiting_on_msg_from_ctrler msg src_ctrler
+  -- dbg_trace s!"$$8 trans_awaiting_msg: ({trans_awaiting_msg})"
+  pure trans_awaiting_msg
 
 #eval [2,1,2,3].reverse.eraseDups.reverse
 #eval [[1,2],[1,3]].map (λ x => List.join $ x.map (λ y => if [[1,2],[1,3]].all (λ z => z.contains y ) then [ y ] else [] ))
 
 partial def CDFG.Graph.ctrler_trans_paths_and_constraints
-(start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint) (msg_trans_should_await : Option Message)
+(start : StateName) (graph : Graph) (path_constraints : CtrlerPathConstraint) (msg_trans_should_await : Option (Message × CtrlerName))
 : Except String (List CtrlerPathConstraint) := do
   dbg_trace s!"Ctrler Path Constraint, at: ({start}))"
   dbg_trace s!"Ctrler Path Constraint, path_constraints: ({path_constraints})"
@@ -609,7 +633,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     let trans_transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
     let complete_transitions := current_node.transitions.filter (·.trans_type == .Completion)
     let trans_compl_transitions := trans_transitions ++ complete_transitions
-    let msg'd_trans_compl_transitions := ← trans_compl_transitions.transitions_awaiting_on_option_msg msg_trans_should_await
+    let msg'd_trans_compl_transitions := ← trans_compl_transitions.transitions_awaiting_on_option_msg_from_ctrler msg_trans_should_await
     dbg_trace s!"^^msg'd_trans_compl_transitions : ({msg'd_trans_compl_transitions})"
 
     let messages := List.join $ msg'd_trans_compl_transitions.map (·.messages)
@@ -625,7 +649,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     let unique_msg'd_states : List ( StateName × Message ) := msg'd_states.eraseDups
 
     let paths_from_msg'd_states : List CtrlerPathConstraint := List.join $ ← unique_msg'd_states.mapM (λ (node_name, msg) => do
-      graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler node_name) (Option.some msg))
+      graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler_and_node (← msg.dest_ctrler ) (← graph.node_from_name! node_name)) (Option.some (msg, current_ctrler)))
     dbg_trace s!"Ctrler Path Constraint, paths_from_msg'd_states: ({paths_from_msg'd_states})"
 
     -- TODO: get the transition constraints from just those transitions that
@@ -638,8 +662,8 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     dbg_trace s!"$$ transitions: ({current_node.transitions})"
     dbg_trace s!"$$ trans_transitions: ({trans_transitions})"
     dbg_trace s!"$$ msg we're awaiting on: ({msg_trans_should_await})"
-    let transitions_of_interest := ← trans_transitions.transitions_awaiting_on_option_msg msg_trans_should_await
     dbg_trace s!"^^ trans_transitions: ({trans_transitions})"
+    let transitions_of_interest := ← trans_transitions.transitions_awaiting_on_option_msg_from_ctrler msg_trans_should_await
     dbg_trace s!"^^transitions_of_interest: ({transitions_of_interest})"
     let transitioned_to_states : List StateName := transitions_of_interest.map (·.dest_state)
     -- group by dest_state × transitions
@@ -648,10 +672,13 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
       trans_to_dest_state.map (λ (state_name, trans_to_same_state) =>
         -- Get constraints common to all transitions.
         -- Should probably later also predicate paths based on inst
+        dbg_trace s!"~~3 trans_to_same_state: ({trans_to_same_state})"
         let common_constraints := List.join (trans_to_same_state.map (·.constraint_info.filter (λ constraint => trans_to_same_state.all (·.constraint_info.any (· == constraint) ) ) ) ) 
+        dbg_trace s!"~~2 common_constraints: ({common_constraints})"
         let no_dup_common_constraints := common_constraints.reverse.eraseDups.reverse
         (state_name, no_dup_common_constraints))
 
+    dbg_trace s!"~~1 path_constraints: ({path_constraints})"
     let ctrler_path_constraints_with_curr_node := path_constraints.add_path_node current_node
     let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
       dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
@@ -676,7 +703,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
 -- i.e. add input arg for nodes/graph to avoid
 
 partial def CDFG.Graph.pre_receive_states_constraints
-: StateName → Graph → CtrlerPathConstraint → Option Message → Graph → Except String (List CtrlerPathConstraint) 
+: StateName → Graph → CtrlerPathConstraint → Option (Message × CtrlerName) → Graph → Except String (List CtrlerPathConstraint) 
 | start, pre_receive_states, ctrler's_path_constraints, msg_trans_should_await?, post_receive_states => do
   -- dbg_trace s!"pre graph: ({pre_receive_states})"
   -- dbg_trace s!"post graph: ({post_receive_states})"
@@ -687,7 +714,7 @@ partial def CDFG.Graph.pre_receive_states_constraints
   let trans_transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
   let complete_transitions := current_node.transitions.filter (·.trans_type == .Completion)
   let trans_compl_transitions := trans_transitions ++ complete_transitions
-  let msg'd_trans_compl_transitions := ← trans_compl_transitions.transitions_awaiting_on_option_msg msg_trans_should_await?
+  let msg'd_trans_compl_transitions := ← trans_compl_transitions.transitions_awaiting_on_option_msg_from_ctrler msg_trans_should_await?
 
   let messages := List.join $ msg'd_trans_compl_transitions.map (·.messages)
   let ctrler_name : String := current_node.ctrler_name
@@ -702,7 +729,7 @@ partial def CDFG.Graph.pre_receive_states_constraints
     if post_receive_states.nodes.any (·.current_state == node_name) then
       return []
     else
-      pre_receive_states.pre_receive_states_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler (← msg.dest_ctrler)) (Option.some msg) post_receive_states)
+      pre_receive_states.pre_receive_states_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler (← msg.dest_ctrler)) (Option.some (msg, ctrler_name)) post_receive_states)
 
   -- TODO: get the transition constraints from just those transitions that
   -- await on the msg 
@@ -711,7 +738,7 @@ partial def CDFG.Graph.pre_receive_states_constraints
   -- Recursive call for each transition
   -- transitions
 
-  let transitions_of_interest := ← trans_transitions.transitions_awaiting_on_option_msg msg_trans_should_await?
+  let transitions_of_interest := ← trans_transitions.transitions_awaiting_on_option_msg_from_ctrler msg_trans_should_await?
   dbg_trace s!"## Transitions of interest: ({transitions_of_interest})"
   let transitioned_to_states : List StateName := transitions_of_interest.map (·.dest_state)
   -- group by dest_state × transitions
