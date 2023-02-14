@@ -326,7 +326,9 @@ def CDFG.Graph.findNotTransitionedToState (graph : Graph)
     !(all_transitioned_or_messaged_states_list.any (· == node.current_state))
   )
   match not_transitioned_or_messaged_states_list with
-  | [node] => pure node -- only one node, so return it
+  | [node] =>
+    dbg_trace s!"## not_transitioned_to_node: {node}"
+    pure node -- only one node, so return it
   | [] => -- empty
     let msg : String := "Error: No nodes which are not transitioned to? There should be 1?"
     throw msg
@@ -494,17 +496,33 @@ def CDFG.Graph.earliest_node_by_msg_dist (graph : Graph) (nodes : List Node)
 
   pure first_receive_node
 
+partial def CDFG.Node.is_node_reaches_complete : Node → Graph → Except String Bool
+| node, graph => do
+  let trans := node.transitions;  
+  match trans.any (·.trans_type == .Completion ) with
+  | true => do pure true
+  | false =>
+    match trans.filter (·.trans_type == .Transition) with
+    | [] => pure false
+    | one_or_more =>
+      let dest_states := one_or_more.map (·.dest_state )
+      let dest_nodes ← dest_states.mapM (graph.node_from_name! ·)
+      let dest_nodes_reach_complete ← dest_nodes.mapM (·.is_node_reaches_complete graph)
+      pure $ dest_nodes_reach_complete.any (· == true )
+
 def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : InstType)
 : Except String Node := do
   let receive_states_and_transitions : List Node ←
     graph.getReceiveStates inst_type
 
   let receive_state : Node ←
-    if receive_states_and_transitions.length == 1 then
-      pure receive_states_and_transitions[0]!
-    else if receive_states_and_transitions.length > 1 then
-      graph.earliest_node_by_msg_dist receive_states_and_transitions
-    else
+    match receive_states_and_transitions with
+    | [state] => pure state
+    | _ :: _ =>
+      let receive_states_that_reach_completion ← receive_states_and_transitions.filterM (·.is_node_reaches_complete graph)
+      let earliest_receive_states_that_reach_completion ← graph.earliest_node_by_msg_dist receive_states_that_reach_completion
+      pure earliest_receive_states_that_reach_completion
+    | [] =>
       -- If none found, error!
       throw "Error: No receive state found"
 
