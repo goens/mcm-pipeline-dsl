@@ -104,7 +104,17 @@ inductive ControllerType
 | FIFO : ControllerType
 | Unordered : ControllerType
 | BasicCtrler : ControllerType
+deriving Inhabited, BEq
 
+def ControllerType.toString : ControllerType → String
+| .FIFO => "FIFO Queue"
+| .Unordered => "Unordered Queue"
+| .BasicCtrler => "BasicCtrler"
+instance : ToString ControllerType where toString := ControllerType.toString
+
+def ControllerType.is_a_queue : ControllerType → Bool
+| .BasicCtrler => false
+| _ => true
 
 def thing : controller_info := default
 #eval thing
@@ -1785,3 +1795,54 @@ def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Ident
   | .function_call qual_name arg_exprs => do
     pure (qual_name.idents , arg_exprs)
   | _ => throw s!"Expected function call, but got {term}"
+
+structure CtrlerStates where
+ctrler : CtrlerName
+states : List StateName
+deriving Inhabited, BEq
+def CtrlerStates.toString : CtrlerStates → String
+| ctrler_states =>
+  s!"== Ctrler & States ==\nCtrler: ({ctrler_states.ctrler})\nStates: ({ctrler_states.states})\n== End Ctrler & States =="
+instance : ToString CtrlerStates where toString := CtrlerStates.toString
+
+-- def Pipeline.HandleBlock.ctrler_msg_names : Pipeline.HandleBlock → Except String (CtrlerName × MsgName)
+-- | handle_blk => do
+--   match handle_blk with
+--   | .mk qual_name /- List Identifier -/ _ /- Statement -/ _ => do
+--     let idents := qual_name.idents
+--     let ctrler? := idents[0]?
+--     let msg? := idents[1]?
+--     match (ctrler?, msg?) with
+--     | (some ctrler, some msg) => pure (ctrler, msg)
+--     | _ => throw s!"Error: Expected controller and message name, but got {handle_blk}"
+
+-- def Pipeline.HandleBlock.ret_if_match_msg_ctrler : Pipeline.HandleBlock → MsgName → CtrlerName → Except String (Bool)
+-- | handle_blk, msg_name, ctrler_name => do
+--   let (ctrler, msg) ← handle_blk.ctrler_msg_names
+--   if ctrler == ctrler_name && msg == msg_name then
+--     pure true
+--   else
+--     pure false
+
+-- -- NOTE: Could also match args..
+-- abbrev Args := List Identifier
+
+-- def Pipeline.Description.handle_blk_matching_msg_ctrler : Pipeline.Description → MsgName → CtrlerName /- → Args-/ → Except String (StateName × Pipeline.HandleBlock)
+-- | state_ , msg_name, ctrler_name => do
+--   match state_ with
+--   | .state ident stmt => do
+--     let stmts ← stmt.stmt_block;
+--     let handle_blks ← get_listen_handle_blks_from_stmts stmts
+--     let handle_blks_listening_to_msg ← handle_blks.filterM (·.ret_if_match_msg_ctrler msg_name ctrler_name)
+--     let handle_blk ← match handle_blks_listening_to_msg[0]? with
+--       | some blk => pure blk
+--       | none => do throw s!"Error: No handle block found for message {msg_name} in blocks {handle_blks}"
+--     pure (ident, handle_blk)
+--   | _ => throw s!"Error: Expected state, but got {state_}"
+
+-- abbrev MsgFnName := String
+
+-- def find_handle_blks_matching_msg : List Pipeline.Description → MsgFnName → CtrlerName → Except String (List (StateName × Pipeline.HandleBlock))
+-- | states_to_search, api_func_name, ctrler_name => do
+--   let handle_blks := states_to_search.mapM (·.handle_blk_matching_msg_ctrler api_func_name ctrler_name);
+--   handle_blks
