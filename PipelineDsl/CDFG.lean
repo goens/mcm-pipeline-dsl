@@ -72,7 +72,7 @@ inductive FIFOPosition
 | NotHead : FIFOPosition
 | Head : FIFOPosition
 | HeadOrNotHead : FIFOPosition -- probably some nicer way to write this
-deriving Inhabited
+deriving Inhabited, BEq
 def FIFOPosition.toString : FIFOPosition → String
 | .Inactive => "Inactive"
 | .NotHead => "NotHead"
@@ -83,7 +83,7 @@ instance : ToString FIFOPosition where toString := FIFOPosition.toString
 inductive UnorderedEntry
 | Inactive : UnorderedEntry
 | Active : UnorderedEntry
-deriving Inhabited
+deriving Inhabited, BEq
 def UnorderedEntry.toString : UnorderedEntry → String
 | .Inactive => "Inactive"
 | .Active => "Active"
@@ -94,7 +94,7 @@ inductive QueueInfo
 | FIFOQueue : FIFOPosition → QueueInfo
 | UnorderedQueue : UnorderedEntry → QueueInfo
 | None : QueueInfo
-deriving Inhabited
+deriving Inhabited, BEq
 def QueueInfo.toString : QueueInfo → String
 | .FIFOQueue pos => s!"FIFOQueue: ({pos})"
 | .UnorderedQueue entry => s!"UnorderedQueue: ({entry})"
@@ -116,7 +116,7 @@ inductive Condition
 | APICondition : AwaitStmt → Condition
 | AwaitCondition : AwaitStmt → Condition
 | HandleCondition : Pipeline.HandleBlock → Condition
-deriving Inhabited-- TODO:, BEq
+deriving Inhabited, BEq -- TODO:, BEq
 def Condition.toString : Condition → String
 | .DSLExpr cond_expr => s!"DSLExpr: ({cond_expr})"
 | .APICondition await_stmt => s!"APICondition: ({await_stmt})"
@@ -201,8 +201,8 @@ stmts : Stmts
 trans_type : TransitionType
 queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
-deriving Inhabited
-instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
+deriving Inhabited, BEq
+-- instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
 
 def Transition.is_transition_to_state_name (transition : Transition) (state_name : StateName) : Bool :=
 -- dbg_trace s!"Trans from {transition.orig_state} to {transition.dest_state}, type: ({transition.trans_type}), desired state: {state_name}"

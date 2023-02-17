@@ -42,6 +42,7 @@ inductive Label
 -- one or more catch blocks
 inductive HandleBlock
 | mk : QualifiedName → List Identifier → Statement → HandleBlock
+deriving BEq
 
 inductive Conditional
 -- if with else
@@ -89,6 +90,7 @@ inductive Expr
 | not_equal : Term → Term → Expr
 | some_term : Term → Expr
 | list : List Expr → Expr
+deriving BEq
 -- | Term : factor → Expr → Expr
 -- | nothing : Expr
 
@@ -108,6 +110,7 @@ inductive Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
 | stall : Expr → Statement
+deriving BEq
 -- what about function call?
 
 end  -- mutual
