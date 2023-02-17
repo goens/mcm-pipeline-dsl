@@ -76,7 +76,7 @@ SQ : record
   head : SQ_idx_t;
   tail : SQ_idx_t;
 end;
-SB_state : enum {sb_await_mem_response, sb_await_send_mem_req, sb_await_creation, init_SB_entry};
+SB_state : enum {sb_await_mem_response, sb_await_send_mem_req, sb_await_creation, init_SB_entry, SB_stall_sb_await_send_mem_req};
 SB_idx_t : 0 .. SB_NUM_ENTRIES_ENUM_CONST;
 SB_count_t : 0 .. SB_NUM_ENTRIES_CONST;
 SB_entry_values : record
@@ -1120,31 +1120,22 @@ ruleset j : cores_t; i : LQ_idx_t do
  
   var found_entry : boolean;
   var found_element : val_t;
-  var found_idx : ROB_idx_t;
+  var found_idx : LQ_idx_t;
   var next_state : STATE;
 
 begin
-  -- put "RUN THIS RULE";
-  -- put "Core: ";
-  -- put j;
-  -- put "\nEntry: ";
-  -- put i;
-  -- put "\n";
   next_state := Sta;
   found_entry := false;
-  for ROB_iter : ROB_idx_t do
-    if (Sta.core_[ j ].ROB_.entries[ ROB_iter ].instruction.seq_num != 0) then
-      if (
-      (ROB_iter < next_state.core_[ j ].ROB_.tail) &
-      (ROB_iter >= next_state.core_[ j ].ROB_.head) &
-      (next_state.core_[ j ].ROB_.entries[ ROB_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_iter ].instruction.op = ld)) then
+  for LQ_iter : LQ_idx_t do
+    if (Sta.core_[ j ].LQ_.entries[ LQ_iter ].instruction.seq_num != 0) then
+      if ((next_state.core_[ j ].LQ_.entries[ LQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_iter ].instruction.op = ld)) then
         if (found_entry = false) then
-          found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].ROB_.entries[ ROB_iter ].instruction.seq_num);
-          found_idx := ROB_iter;
+          found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].LQ_.entries[ LQ_iter ].instruction.seq_num);
+          found_idx := LQ_iter;
         else
-          if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].ROB_.entries[ ROB_iter ].instruction.seq_num) < found_element) then
-            found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].ROB_.entries[ ROB_iter ].instruction.seq_num);
-            found_idx := ROB_iter;
+          if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].LQ_.entries[ LQ_iter ].instruction.seq_num) < found_element) then
+            found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].LQ_.entries[ LQ_iter ].instruction.seq_num);
+            found_idx := LQ_iter;
           end;
         end;
         found_entry := true;
@@ -1152,14 +1143,11 @@ begin
     end;
   endfor;
   if (found_entry = false) then
-    -- put "Progress fwd, no match\n";
     next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
   elsif (found_entry = true) then
-    if !((next_state.core_[ j ].ROB_.entries[ found_idx ].is_executed = True)) then
-      -- put "Stall, found match\n";
+    if !((next_state.core_[ j ].LQ_.entries[ found_idx ].state = write_result) | (next_state.core_[ j ].LQ_.entries[ found_idx ].state = await_committed)) then
       next_state.core_[ j ].LQ_.entries[ i ].state := LQ_stall_build_packet_send_mem_request;
     else
-      -- put "Progress fwd, found match\n";
       next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
     end;
   end;
@@ -1363,6 +1351,46 @@ end;
 end;
 
 
+ruleset j : cores_t; i : SB_idx_t do 
+  rule "SB SB_stall_sb_await_send_mem_req ===> SB_stall_sb_await_send_mem_req || sb_await_send_mem_req" 
+(Sta.core_[ j ].SB_.entries[ i ].state = SB_stall_sb_await_send_mem_req)
+==>
+ 
+  var found_entry : boolean;
+  var found_element : val_t;
+  var found_idx : SB_idx_t;
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  found_entry := false;
+  for SB_iter : SB_idx_t do
+    if (Sta.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num != 0) then
+      if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+        if (found_entry = false) then
+          found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+          found_idx := SB_iter;
+        else
+          if ((next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+            found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+            found_idx := SB_iter;
+          end;
+        end;
+        found_entry := true;
+      end;
+    end;
+  endfor;
+  if (found_entry = false) then
+    next_state.core_[ j ].SB_.entries[ i ].state := sb_await_send_mem_req;
+  elsif (found_entry = true) then
+    next_state.core_[ j ].SB_.entries[ i ].state := SB_stall_sb_await_send_mem_req;
+  end;
+  Sta := next_state;
+
+end;
+end;
+
+
 ruleset j : cores_t; i : ROB_idx_t do 
   rule "ROB rob_commit_if_head ===> rob_commit_if_head || rob_await_creation || rob_commit_if_head || rob_await_creation || rob_commit_if_head" 
 ((Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_if_head) & (Sta.core_[ j ].SB_.num_entries < SB_NUM_ENTRIES_CONST))
@@ -1470,7 +1498,7 @@ begin
                     next_state.core_[ j ].SB_.entries[ SB_curr_idx ].write_value := write_value_from_sq;
                     next_state.core_[ j ].SB_.entries[ SB_curr_idx ].instruction.seq_num := inst_from_sq.seq_num;
                     next_state.core_[ j ].SB_.entries[ SB_curr_idx ].instruction := inst_from_sq;
-                    next_state.core_[ j ].SB_.entries[ SB_curr_idx ].state := sb_await_send_mem_req;
+                    next_state.core_[ j ].SB_.entries[ SB_curr_idx ].state := SB_stall_sb_await_send_mem_req;
                     SB_found_entry := true;
                   end;
                   if (SB_offset != SB_difference) then
