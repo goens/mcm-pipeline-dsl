@@ -456,6 +456,7 @@ partial def CDFG.Graph.preReceiveStates
   let next_unique_states_to_visit : List String := unique_msg'd_states ++ unique_transitioned_to_states
   let next_states_to_visit : List String := next_unique_states_to_visit.filter (λ state => !(don't_visit.contains state))
   
+  dbg_trace s!"!!1"
   let curr_node ← graph.node_from_name! start 
   let reachable_nodes : List Node := [ curr_node ] ++ (←
     next_states_to_visit.mapM (graph.preReceiveStates · don't_visit post_receive_nodes) ).join
@@ -506,6 +507,7 @@ partial def CDFG.Node.is_node_reaches_complete : Node → Graph → Except Strin
     | [] => pure false
     | one_or_more =>
       let dest_states := one_or_more.map (·.dest_state )
+      dbg_trace s!"!!2"
       let dest_nodes ← dest_states.mapM (graph.node_from_name! ·)
       let dest_nodes_reach_complete ← dest_nodes.mapM (·.is_node_reaches_complete graph)
       pure $ dest_nodes_reach_complete.any (· == true )
@@ -667,6 +669,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     let unique_msg'd_states : List ( StateName × Message ) := msg'd_states.eraseDups
 
     let paths_from_msg'd_states : List CtrlerPathConstraint := List.join $ ← unique_msg'd_states.mapM (λ (node_name, msg) => do
+      dbg_trace s!"!!3"
       graph.ctrler_trans_paths_and_constraints node_name (CtrlerPathConstraint.new_path_of_ctrler_and_node (← msg.dest_ctrler ) (← graph.node_from_name! node_name)) (Option.some (msg, current_ctrler)))
     dbg_trace s!"Ctrler Path Constraint, paths_from_msg'd_states: ({paths_from_msg'd_states})"
 
@@ -702,6 +705,7 @@ partial def CDFG.Graph.ctrler_trans_paths_and_constraints
     let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
       dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
         dbg_trace s!"Did we error here1? state_name: {state_name}"
+        dbg_trace s!"!!4"
         let node ← graph.node_from_name! state_name  
         let path_constraints_with_added_constraints := (ctrler_path_constraints_with_curr_node.add_constraints_and_path_node common_constraints node)
         dbg_trace s!"~~5 path with constraints: ({path_constraints_with_added_constraints})"
@@ -736,6 +740,7 @@ partial def CDFG.Graph.pre_receive_states_constraints
   -- dbg_trace s!"post graph: ({post_receive_states})"
   dbg_trace s!"Did we error here2? state_name: {start}"
   dbg_trace s!"Pre-Receive State Fn: start: ({start})"
+  dbg_trace s!"!!5"
   let current_node ← pre_receive_states.node_from_name! start
 
   let trans_transitions : Transitions := current_node.transitions.filter (·.trans_type == .Transition)
@@ -787,6 +792,7 @@ partial def CDFG.Graph.pre_receive_states_constraints
   let paths_to_dest_states_with_common_constraints : List CtrlerPathConstraint := List.join $ ← 
     dest_state_and_common_constraints.mapM (λ (state_name, common_constraints) => do
       dbg_trace s!"Did we error here3? state_name: {state_name}"
+      dbg_trace s!"!!6"
       let node ← pre_receive_states.node_from_name! state_name  
       (
         pre_receive_states.pre_receive_states_constraints state_name
@@ -1076,6 +1082,7 @@ partial def CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates
   -- 2. if it's a queue, is it inserted into in PO
   -- 3. will it be already in this queue while younger insts are at the stall state i.e. 'point a'?
 
+  dbg_trace s!"!!7"
   let node ← post_receive_graph.node_from_name! receive_mem_resp_or_later_state
   -- 1.
   let ctrler ← CtrlerMatchingName ctrlers node.ctrler_name
@@ -1131,6 +1138,7 @@ def get_min_from_α_nat_list {α : Type } (lst : List (α × Nat)) : Except Stri
 def CDFG.Graph.queue_ctrler_distance_from_node (graph : Graph) (start_name : StateName) (ctrlers : List controller_info)
 : Except String (List (CtrlerName × Distance)) := do
   let nodes_labelled_by_msg_distance : List (StateName × Distance) ← graph.labelNodesByMessageDistance start_name 0
+  dbg_trace s!"!!8"
   let node_nodes_by_dist : List (Node × Distance) ← nodes_labelled_by_msg_distance.mapM (λ (ctrler_name, dist) => do pure (← graph.node_from_name! ctrler_name , dist))
   let ctrler_names := graph.nodes.map (·.ctrler_name) |> List.eraseDups
 
@@ -1184,17 +1192,104 @@ def min_dist_ctrler (ctrler_dist : List (CtrlerName × Distance)) (ctrler_names 
 
 --   pure first_receive_node
 
+def CtrlerConstraintsToCtrlerStateConstraintExpr
+(post_receive_graph : CDFG.Graph)
+(ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states : List CtrlerConstraint)
+: Except String CtrlerStateExpr := do
+  -- NOTE: Use this in the func for creating the ctrler/state/constraint info for the constraint cases above
+  -- dbg_trace s!"All ctrler constraints unique to post receive: ({ctrler_constraints_unique_to_post_receive})"
+  -- Simplification on item 5, assume if ctrler has states in both post & pre receive, consider it for query
+  let ctrler_constraints : CtrlerConstraint := ← 
+    match ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states with
+    | [] =>
+      -- dbg_trace s!"Unique post-receive constraints: ({ctrler_constraints_unique_to_post_receive})"
+      throw "Trying to implement this algorithm and only use constraints unique to post receive states."
+    | ctrler_constraints :: _ => pure ctrler_constraints
+
+  let ctrler_constraint_node := post_receive_graph.nodes.find? (·.transitions.any (·.constraint_info.any (ctrler_constraints.constraints.contains ·) ) )
+  -- return the ctrler & constraints to stall on,
+  -- assuming the search on the ctrler will for any older inst of the right type
+  if let some node := ctrler_constraint_node then
+    pure $ ({ctrler := ctrler_constraints.ctrler, state := node.current_state, constraints := (← ctrler_constraints.constraints.mapM ConstraintToBool ) } : CtrlerStateExpr)
+  else
+    throw "Couldn't find ctrler constraint node with the unique constraint?"
+
+def CDFG.Condition.is_await (condition : Condition) : Bool :=
+  match condition with
+  | .AwaitCondition /- await_stmt -/ _ => true
+  | _ => false
+
+def CDFG.Transitions.progression_transitions_are_any_await_transitions : Transitions → Bool
+| transitions =>
+  let progression_transitions := transitions.filter (·.trans_type != .Reset )
+  -- NOTE: TODO later: filter out handle transitions
+  -- let non_handle_transitions := progression_transitions.filter (· )
+  progression_transitions.any (·.predicate.any (·.is_await))
+
+def CDFG.Node.is_await_state : Node → Bool
+| node =>
+  node.transitions.progression_transitions_are_any_await_transitions
+
+def CDFG.Graph.nodes_basic_transitioning_to_node (graph : Graph) (node : Node)
+: (List Node) :=
+  graph.nodes.filter (λ node' => (node'.transitions.filter (·.trans_type == .Transition)).any (·.is_transition_to_state_name node.current_state))
+
+def CDFG.Node.do_other_states_basic_transition_to_this_state (node : Node) (graph : Graph) : Bool :=
+  let nodes_basic_transitioning_to_node := graph.nodes_basic_transitioning_to_node node
+  match nodes_basic_transitioning_to_node with
+  | [] => false
+  | _ => true
+
+def CtrlerStates.prune_pre_receive_await_states (ctrler_states : CtrlerStates) (post_receive_graph : Graph)
+: Except String CtrlerStates := do
+  -- 1. Identify "await" states in the ctrler_states
+  -- 2. Check if any other states basic-transition to them
+  -- 3. If so, remove them from the ctrler_states
+
+  -- 1.
+  let ctrler_nodes : List CDFG.Node := post_receive_graph.nodes.filter (·.ctrler_name == ctrler_states.ctrler )
+  let ctrler_graph : Graph := { nodes := ctrler_nodes }
+  dbg_trace s!"!!9"
+  let states ← ctrler_states.states.mapM (ctrler_graph.node_from_name! ·)
+  let await_states := states.filter (·.is_await_state)
+  -- 2. & 3.
+  let non_trans'd_to_await_states := await_states.filter (! ·.do_other_states_basic_transition_to_this_state ctrler_graph)
+  let non_trans'd_to_await_state_names := non_trans'd_to_await_states.map (·.current_state)
+
+  let pruned_state_names := ctrler_states.states.filter (! non_trans'd_to_await_state_names.contains ·)
+  pure {ctrler := ctrler_states.ctrler, states := pruned_state_names}
+
+def CtrlerStates.prune_states_with_no_complete_path (ctrler_states : CtrlerStates) (post_receive_graph : Graph)
+: Except String CtrlerStates := do
+  -- 1.
+  dbg_trace s!"States Before pruning non-complete-path states: {ctrler_states.states}"
+  let ctrler_nodes : List CDFG.Node := post_receive_graph.nodes.filter (·.ctrler_name == ctrler_states.ctrler )
+  let ctrler_nodes_on_path_that_reach_complete ← ctrler_nodes.filterM (·.is_node_reaches_complete post_receive_graph)
+  let ctrler_node_names_that_reach_complete := ctrler_nodes_on_path_that_reach_complete.map (·.current_state)
+  dbg_trace s!"States after pruning non-complete-path states: {ctrler_node_names_that_reach_complete}"
+  pure {ctrler := ctrler_states.ctrler, states := ctrler_node_names_that_reach_complete}
+
+def CtrlerStates.prune_pre_receive_await_and_no_complete_path_states (ctrler_states : CtrlerStates) (post_receive_graph : Graph)
+: Except String CtrlerStates := do
+  (← ctrler_states.prune_states_with_no_complete_path post_receive_graph).prune_pre_receive_await_states post_receive_graph
+  -- let pruned_no_pre_await_states ← ctrler_states.prune_pre_receive_await_states post_receive_graph
+
+def CtrlerPathConstraint.ctrler_constraints : CtrlerPathConstraint → CtrlerConstraint
+| .mk ctrler /- path -/ _ constraints =>
+  {ctrler := ctrler, constraints := constraints}
+
 -- TODO: finish
 -- One of the Main funcs.
 def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_completion : InstType) (ctrlers : List controller_info)
-: Except String (CtrlerStateExpr) := do
+: Except String (Sum CtrlerStates CtrlerStateExpr) := do
   dbg_trace s!"<< Starting find_ctrler_or_state_to_query_for_stall"
   let receive_state_to_search_from : Node ←
     graph.global_receive_node_of_inst_type inst_to_check_completion
 
   /- Use res, find all post-'receive' states -/
-  let post_receive_states : (List Node) :=
+  let post_receive_states_with_dups : (List Node) :=
       (← (graph.findNodesReachableByTransitionAndMessage receive_state_to_search_from.current_state)).concat receive_state_to_search_from
+  let post_receive_states : (List Node) := post_receive_states_with_dups.eraseDups
   -- dbg_trace s!">> post_receive_states: ({post_receive_states})"
 
   /- Use post-'receive' states, find all pre-'receive' states -/
@@ -1242,11 +1337,11 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
   -- Ctrler states can return an empty list of states, and in this case
   -- don't gen an if stmt, just use the await search API
   match ctrler_states_and_dist, ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states with
-  | some (ctrler_states, dist), ctrler_path_constraints :: _ =>
+  | some (ctrler_states, /- dist -/ _), ctrler_path_constraints :: _ =>
     -- check dist to each, choose shortest dist from receive state
     match ctrler_states.states, ctrler_path_constraints.path with
-    | state_name :: _ , path_node :: _ =>
-      let ctrlers_dist_labels : List (CtrlerName × Distance) ← post_receive_graph.queue_ctrler_distance_from_node receive_state_to_search_from ctrlers
+    | /- state_name -/ _ :: _ , /- path_node -/ _ :: _ =>
+      let ctrlers_dist_labels : List (CtrlerName × Distance) ← post_receive_graph.queue_ctrler_distance_from_node receive_state_to_search_from.current_state ctrlers
       let ctrler_names := [ctrler_states.ctrler, ctrler_path_constraints.ctrler]
 
       let closer_ctrler_to_receive_state ← min_dist_ctrler ctrlers_dist_labels ctrler_names
@@ -1254,6 +1349,8 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
         -- use ctrler_states
         -- TODO: Create a function for this:
         -- Pass this info in a structure
+        let ctrler_states_pruned_awaits ← ctrler_states.prune_pre_receive_await_and_no_complete_path_states post_receive_graph
+        pure $ Sum.inl ctrler_states_pruned_awaits
 
         -- NOTE: This will be for later in the stall state gen:
         -- 1. Remove the "await" state in the states if there is one... i.e. the "await receive global response" since it's also pre-receive
@@ -1263,33 +1360,20 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
         -- use ctrler_path_constraints
         -- TODO:
         -- Create a fn from the old code below
+        pure $ Sum.inr $ ← CtrlerConstraintsToCtrlerStateConstraintExpr post_receive_graph (ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states.map (·.ctrler_constraints))
     | _, _ => 
       throw "Error: There should be states and path nodes"
-  | some (ctrler_states, dist), [] =>
+  | some (ctrler_states, /- dist -/ _), [] =>
     -- use ctrler_states
-  | none, ctrler_path_constraints :: _ =>
+    let ctrler_states_pruned_awaits ← ctrler_states.prune_pre_receive_await_and_no_complete_path_states post_receive_graph
+    pure $ Sum.inl ctrler_states_pruned_awaits
+  | none, /- ctrler_path_constraints -/ _ :: _ =>
     -- use ctrler_path_constraints
+    pure $ Sum.inr $ ← CtrlerConstraintsToCtrlerStateConstraintExpr post_receive_graph (ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states.map (·.ctrler_constraints))
   | none, [] =>
     -- throw "No ctrler states or constraints to use for query"
     throw "No ctrler states or constraints to use for stall query"
 
-  -- NOTE: Use this in the func for creating the ctrler/state/constraint info for the constraint cases above
-  dbg_trace s!"All ctrler constraints unique to post receive: ({ctrler_constraints_unique_to_post_receive})"
-  -- Simplification on item 5, assume if ctrler has states in both post & pre receive, consider it for query
-  let ctrler_constraints : CtrlerConstraint := ← 
-    match ctrler_constraints_unique_to_post_receive_and_have_pre_receive_states with
-    | [] =>
-      dbg_trace s!"Unique post-receive constraints: ({ctrler_constraints_unique_to_post_receive})"
-      throw "Trying to implement this algorithm and only use constraints unique to post receive states."
-    | ctrler_constraints :: _ => pure ctrler_constraints
-
-  let ctrler_constraint_node := post_receive_graph.nodes.find? (·.transitions.any (·.constraint_info.any (ctrler_constraints.constraints.contains ·) ) )
-  -- return the ctrler & constraints to stall on,
-  -- assuming the search on the ctrler will for any older inst of the right type
-  if let some node := ctrler_constraint_node then
-    pure $ ({ctrler := ctrler_constraints.ctrler, state := node.current_state, constraints := (← ctrler_constraints.constraints.mapM ConstraintToBool ) } : CtrlerStateExpr)
-  else
-    throw "Couldn't find ctrler constraint node with the unique constraint?"
   -- generate stall state, add it to the right controller_info obj, 
 
   -- remove common states from post-receive states
@@ -1326,6 +1410,7 @@ def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : Ins
     -- Label by msg distance, take shortest one
     graph.earliest_node_by_msg_dist global_perform_nodes
   else
+    dbg_trace s!"Graph Nodes: ({graph.nodes.map (·.current_state)})"
     throw "Error: No global perform node found"
 
 -- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
@@ -1386,7 +1471,7 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_type : InstT
   let graph := {nodes := graph_nodes}
   let stall_point ← find_stall_point_heuristic graph inst_to_stall_on_type ctrlers
   dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
-  let ctrler_state_to_stall_on ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_type
+  let ctrler_state_to_stall_on : StateOrConstraintToStallOn ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_type ctrlers
   dbg_trace "<< Found ctrler/state to stall at"
 
   let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type 
