@@ -486,20 +486,20 @@ partial def get_states_leading_to_given_state
 --   state_names
 
 -- (a) a func to make the DSL or tree
-def convert_state_names_to_dsl_or_tree_state_check
-( state_names : List String )
-: Except String Pipeline.Expr
--- : Pipeline.Expr
-:= do
-  match state_names with
-  | [a_state_name] => -- just do this one comparison
-    return Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var a_state_name )
-  | h :: t =>
-    -- use recursion
-    let head_equal_check : Pipeline.Expr := Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var h )
-    let expr : Pipeline.Expr ← (convert_state_names_to_dsl_or_tree_state_check t)
-    return Pipeline.Expr.binor (Pipeline.Term.expr head_equal_check) (Pipeline.Term.expr expr)
-  | [] => throw s!"Blank List of Strings was provided!"
+-- def convert_state_names_to_dsl_or_tree_state_check
+-- ( state_names : List StateName )
+-- : Except String Pipeline.Expr
+-- -- : Pipeline.Expr
+-- := do
+--   match state_names with
+--   | [a_state_name] => -- just do this one comparison
+--     return Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var a_state_name )
+--   | h :: t =>
+--     -- use recursion
+--     let head_equal_check : Pipeline.Expr := Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var h )
+--     let expr : Pipeline.Expr ← (convert_state_names_to_dsl_or_tree_state_check t)
+--     return Pipeline.Expr.binor (Pipeline.Term.expr head_equal_check) (Pipeline.Term.expr expr)
+--   | [] => throw s!"Blank List of Strings was provided!"
 
 -- partial def recursively_find_stmt_and_update_transitions
 -- ( old_name_new_name_and_stmt : String × (String × Statement) )
@@ -990,9 +990,9 @@ def naive_update_add_stall_to_global_perform_ld
   let not_yet_gotten_mem_resp_state_check : Pipeline.Expr ←
     convert_state_names_to_dsl_or_tree_state_check states_to_stall_on
 
-  let new_stall_state : Description :=
+  let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_state_name state_globally_performing_mem_ld
-    ctrler.name not_yet_gotten_mem_resp_state_check load Option.none
+    ctrler.name (some not_yet_gotten_mem_resp_state_check) load Option.none false
 
   -- (4) Update the stall state with these Helper Funcs
   -- Update states which transitioned to the original state:
@@ -1426,10 +1426,10 @@ def more_generic_core_in_order_stall_transform
   let handle_blks : Option (List HandleBlock) ←
   get_ctrler_state_handle_blocks ctrler_that_send_mem_req global_perform_state_that_send_mem_req
 
-  let new_stall_state : Description :=
+  let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
-    ctrler_that_await_mem_completion.name not_yet_gotten_mem_resp_state_check first_inst
-    handle_blks
+    ctrler_that_await_mem_completion.name (some not_yet_gotten_mem_resp_state_check) first_inst
+    handle_blks false
   dbg_trace s!"New stall state: \n{new_stall_state}"
 
   /-
