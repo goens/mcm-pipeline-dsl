@@ -1348,15 +1348,103 @@ def get_ctrler_state_handle_blocks
   else
     return Option.some handle_blks
 
+structure CtrlerStateExpr where
+ctrler : CtrlerName
+state : StateName
+constraints : List Pipeline.Expr -- equality checks!
+def CtrlerStateExpr.toString : CtrlerStateExpr → String
+| ctrler_state_expr =>
+  s!"== Ctrler & State & Constraint Expr ==\nCtrler: ({ctrler_state_expr.ctrler})\nState: ({ctrler_state_expr.state})\nState: ({ctrler_state_expr.constraints})\n== End Ctrler & State & Constraint Exprs =="
+instance : ToString CtrlerStateExpr where toString := CtrlerStateExpr.toString
+
+structure CtrlerState where
+ctrler : CtrlerName
+state : StateName
+def CtrlerState.toString : CtrlerState → String
+| ctrler_state =>
+  s!"== Ctrler & State ==\nCtrler: ({ctrler_state.ctrler})\nState: ({ctrler_state.state})\n== End Ctrler & State =="
+instance : ToString CtrlerState where toString := CtrlerState.toString
+
+-- TODO: Write func to create the stall node.
+-- would have similar logic to the cut & paste code from the inordertransformation file
+
+def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Expr := do
+  match exprs with
+  | [] => throw s!"Empty List of Exprs was provided!"
+  | [expr] => -- just do this one comparison
+    pure expr
+  | h :: t =>
+    -- use recursion
+    pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
+
+def CtrlerMatchingName : List controller_info → CtrlerName → Except String controller_info 
+| ctrlers, ctrler_name => do
+  match ctrlers.filter (·.name == ctrler_name) with
+  | [ctrler] => pure ctrler
+  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+
+def convert_state_names_to_dsl_or_tree_state_check
+( state_names : List StateName )
+: Except String Pipeline.Expr
+-- : Pipeline.Expr
+:= do
+  match state_names with
+  | [a_state_name] => -- just do this one comparison
+    return Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var a_state_name )
+  | h :: t =>
+    -- use recursion
+    let head_equal_check : Pipeline.Expr := Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var h )
+    let expr : Pipeline.Expr ← (convert_state_names_to_dsl_or_tree_state_check t)
+    return Pipeline.Expr.binor (Pipeline.Term.expr head_equal_check) (Pipeline.Term.expr expr)
+  | [] => throw s!"Blank List of Strings was provided!"
+
+structure CtrlerStates where
+ctrler : CtrlerName
+states : List StateName
+deriving Inhabited, BEq
+def CtrlerStates.toString : CtrlerStates → String
+| ctrler_states =>
+  s!"== Ctrler & States ==\nCtrler: ({ctrler_states.ctrler})\nStates: ({ctrler_states.states})\n== End Ctrler & States =="
+instance : ToString CtrlerStates where toString := CtrlerStates.toString
+
+abbrev StateOrConstraintToStallOn := CtrlerStates ⊕ CtrlerStateExpr
+
+def StateOrConstraintToStallOn.is_just_reset : StateOrConstraintToStallOn → Bool
+| Sum.inl ctrler_states =>
+  match ctrler_states.states with
+  | [] => true
+  | _ => false
+| Sum.inr /- ctrler_states_constraint_expr -/ _ => false
+
+def StateOrConstraintToStallOn.stall_condition_expr_from_post_receive_state : StateOrConstraintToStallOn → Except String Pipeline.Expr
+| states_or_constraints => do
+  let no_longer_stall_cond ←
+    match states_or_constraints with
+    | Sum.inl ctrler_states => do 
+      convert_state_names_to_dsl_or_tree_state_check ctrler_states.states
+    | Sum.inr ctrler_states_constraint_expr => do
+      pure $ ← ExprsToAndTreeExpr ctrler_states_constraint_expr.constraints
+  pure $ Pipeline.Expr.some_term (
+    Pipeline.Term.logical_negation (
+      Pipeline.Term.expr no_longer_stall_cond
+    )
+  )
+
+def StateOrConstraintToStallOn.ctrler : StateOrConstraintToStallOn → CtrlerName
+| Sum.inl ctrler_states => ctrler_states.ctrler
+| Sum.inr ctrler_states_constraint_expr => ctrler_states_constraint_expr.ctrler
+
 def gen_stall_dsl_state
-  (new_stall_state_name : String)
-  (original_state_name : String)
-  (ctrler_name : String)
-  (state_check_or_tree : Pipeline.Expr)
+  (new_stall_state_name : StateName)
+  (original_state_name : StateName)
+  (ctrler_name : CtrlerName)
+  (state_check_cond? : Option Pipeline.Expr)
   (stall_on_inst_type : InstType)
   (original_state's_handleblks : Option ( List HandleBlock ))
-  : Description
-  :=
+  (just_reset : Bool)
+  : Except String Description
+  := do
 
     -- (entry.instruction.seq_num < instruction.seq_num)
     let entry_is_earlier_than_this_one : Term :=
@@ -1404,16 +1492,28 @@ def gen_stall_dsl_state
       (QualifiedName.mk [ctrler_name, "search"])
       [search_condition, search_min]
 
+    -- If we just reset, then reset. Else use the Expr check.
+    let when_search_success_stmts : List Pipeline.Statement ←
+      match just_reset with
+      | true => do pure [
+        Pipeline.Statement.reset new_stall_state_name
+      ]
+      | false => do
+        if let some state_check_expr := state_check_cond? then
+          pure [
+            Pipeline.Statement.conditional_stmt (
+            Pipeline.Conditional.if_else_statement
+            state_check_expr
+            (Pipeline.Statement.reset new_stall_state_name)
+            (Pipeline.Statement.transition original_state_name)
+            )
+          ]
+        else
+          throw s!"Error: Trying to generate stall state, but was not given a state check condition!"
     -- let stall_state_name := ctrler_name ++ "stall" ++ original_state_name
     let when_success_stmt_blk : Pipeline.Statement :=
-      Pipeline.Statement.block [
-        Pipeline.Statement.conditional_stmt (
-        Pipeline.Conditional.if_else_statement
-        state_check_or_tree
-        (Pipeline.Statement.reset new_stall_state_name)
-        (Pipeline.Statement.transition original_state_name)
-        )
-      ]
+      Pipeline.Statement.block when_search_success_stmts
+
     let when_success : Pipeline.Statement :=
       Pipeline.Statement.when
       (QualifiedName.mk [ctrler_name, "search_success"])
@@ -1441,46 +1541,10 @@ def gen_stall_dsl_state
       else
         await_stmt
 
-    Description.state new_stall_state_name (
+    pure $ Description.state new_stall_state_name (
       Statement.block [stall_state_stmt])
 
-structure CtrlerStateExpr where
-ctrler : CtrlerName
-state : StateName
-constraints : List Pipeline.Expr -- equality checks!
-def CtrlerStateExpr.toString : CtrlerStateExpr → String
-| ctrler_state_expr =>
-  s!"== Ctrler & State & Constraint Expr ==\nCtrler: ({ctrler_state_expr.ctrler})\nState: ({ctrler_state_expr.state})\nState: ({ctrler_state_expr.constraints})\n== End Ctrler & State & Constraint Exprs =="
-instance : ToString CtrlerStateExpr where toString := CtrlerStateExpr.toString
-
-structure CtrlerState where
-ctrler : CtrlerName
-state : StateName
-def CtrlerState.toString : CtrlerState → String
-| ctrler_state =>
-  s!"== Ctrler & State ==\nCtrler: ({ctrler_state.ctrler})\nState: ({ctrler_state.state})\n== End Ctrler & State =="
-instance : ToString CtrlerState where toString := CtrlerState.toString
-
--- TODO: Write func to create the stall node.
--- would have similar logic to the cut & paste code from the inordertransformation file
-
-def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Expr := do
-  match exprs with
-  | [] => throw s!"Empty List of Exprs was provided!"
-  | [expr] => -- just do this one comparison
-    pure expr
-  | h :: t =>
-    -- use recursion
-    pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
-
-def CtrlerMatchingName : List controller_info → CtrlerName → Except String controller_info 
-| ctrlers, ctrler_name => do
-  match ctrlers.filter (·.name == ctrler_name) with
-  | [ctrler] => pure ctrler
-  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
-  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
-
-def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : CtrlerStateExpr)
+def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : StateOrConstraintToStallOn)
 (ctrlers : List controller_info) (inst_type_to_stall_on : InstType)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
@@ -1492,19 +1556,21 @@ def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : CtrlerSta
   let handle_blks : Option (List HandleBlock) ←
     get_ctrler_state_handle_blocks stall_ctrler stall_state.state
 
-  -- Negate since the stall is done if the condition check is true
-  -- i.e. continue when the unique constraints are !false
-  let not_yet_gotten_mem_resp_state_check :=
-  Pipeline.Expr.some_term (
-    Pipeline.Term.logical_negation (
-      Pipeline.Term.expr (← ExprsToAndTreeExpr stall_on_constraint.constraints)
-    )
-  )
+  let just_reset := stall_on_constraint.is_just_reset
 
-  let new_stall_state : Description :=
+  -- i.e. stall when constraints are false, continue when the post receive constraints are true
+  let not_yet_gotten_mem_resp_state_check? : Option Pipeline.Expr ←
+    if just_reset then
+      pure none
+    else
+      pure $ some $ ← stall_on_constraint.stall_condition_expr_from_post_receive_state
+  dbg_trace s!"just_reset: ({just_reset})"
+  dbg_trace s!"stall_on_constraint: {stall_on_constraint}"
+  dbg_trace s!"not_yet_gotten_mem_resp_state_check?: {not_yet_gotten_mem_resp_state_check?}"
+  let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_state_name stall_state.state
-    stall_on_constraint.ctrler not_yet_gotten_mem_resp_state_check inst_type_to_stall_on
-    handle_blks
+    stall_on_constraint.ctrler not_yet_gotten_mem_resp_state_check? inst_type_to_stall_on
+    handle_blks just_reset
 
   dbg_trace s!"New stall state: \n{new_stall_state}"
   pure new_stall_state
@@ -1795,15 +1861,6 @@ def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Ident
   | .function_call qual_name arg_exprs => do
     pure (qual_name.idents , arg_exprs)
   | _ => throw s!"Expected function call, but got {term}"
-
-structure CtrlerStates where
-ctrler : CtrlerName
-states : List StateName
-deriving Inhabited, BEq
-def CtrlerStates.toString : CtrlerStates → String
-| ctrler_states =>
-  s!"== Ctrler & States ==\nCtrler: ({ctrler_states.ctrler})\nStates: ({ctrler_states.states})\n== End Ctrler & States =="
-instance : ToString CtrlerStates where toString := CtrlerStates.toString
 
 -- def Pipeline.HandleBlock.ctrler_msg_names : Pipeline.HandleBlock → Except String (CtrlerName × MsgName)
 -- | handle_blk => do
