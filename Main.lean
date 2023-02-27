@@ -140,16 +140,16 @@ def main (args : List String): IO Unit := do
   --   ctrlers
 
   -- CDFG Initial Implementation
-  let ctrlers := match CDFGInOrderTfsm ctrlers load load with
-    | .ok ctrler_list => ctrler_list
-    | .error msg => 
-      dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
-      []
-  let ctrlers := match CDFGInOrderTfsm ctrlers store store with
-    | .ok ctrler_list => ctrler_list
-    | .error msg => 
-      dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      []
+  -- let ctrlers := match CDFGInOrderTfsm ctrlers load load with
+  --   | .ok ctrler_list => ctrler_list
+  --   | .error msg => 
+  --     dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
+  --     []
+  -- let ctrlers := match CDFGInOrderTfsm ctrlers store store with
+  --   | .ok ctrler_list => ctrler_list
+  --   | .error msg => 
+  --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+  --     []
       
   println! s!"What ctrlers look like after TFSM:"
   println! s!"Ctrlers: {ctrlers}"
