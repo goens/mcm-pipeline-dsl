@@ -2823,6 +2823,44 @@ partial def recursive_await_when_search
   let lst_of_stmts := List.join lst_of_lst_stmts
   lst_of_stmts
 
+partial def find_when_and_state_name_from_transition
+(trans_list : List Pipeline.Description)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: Pipeline.Statement × StateName
+:=
+  let when_with_matching_func_and_src_ctrler_name :=
+  trans_list.map (
+    λ trans =>
+      -- get the transition stmts, find stmts
+      -- which 
+      match trans with
+      | Description.state ident stmt =>
+        let ident : StateName := ident
+        match stmt with
+        | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
+          let when_blks := recursive_await_when_search lst_stmts func_name curr_ctrler_name
+          let when_blks_and_idents := ZipWithList when_blks ident
+          when_blks_and_idents
+        | _ => dbg_trace "stmt under transition should be blk!"
+          []
+      | _ => dbg_trace "wasn't passed a transition?"
+        []
+  )
+  let when_stmts_lst := List.join when_with_matching_func_and_src_ctrler_name
+  let when_stmt :=
+  match when_stmts_lst with
+  | [one_stmt] => one_stmt
+  | _::_ =>
+  dbg_trace "found multiple matching when stmts?"
+  default
+  | [] =>
+  dbg_trace "found no matching when stmts?"
+  default
+
+  when_stmt
+
 partial def find_when_from_transition
 (trans_list : List Pipeline.Description)
 (func_name : Identifier)
