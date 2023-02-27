@@ -563,9 +563,6 @@ def CtrlerPathConstraint.add_constraints_and_path_node : CtrlerPathConstraint �
 | ctrler_path_constraint, constraints, node =>
   (ctrler_path_constraint.add_constraints constraints).add_path_node node
 
-def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β) :=
-  list.zip (List.replicate list.length thing)
-
 -- def Pipeline.QualifiedName.idents : QualifiedName → List Identifier
 -- | qual_name => match qual_name with
 --   | .mk idents => idents

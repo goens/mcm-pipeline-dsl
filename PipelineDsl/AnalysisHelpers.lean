@@ -1903,3 +1903,20 @@ def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Ident
 -- | states_to_search, api_func_name, ctrler_name => do
 --   let handle_blks := states_to_search.mapM (·.handle_blk_matching_msg_ctrler api_func_name ctrler_name);
 --   handle_blks
+
+def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β) :=
+  list.zip (List.replicate list.length thing)
+
+-- def Pipeline.Description.when_stmt_awaiting_msg_ctrler_name : Pipeline.Description → MsgName → CtrlerName → StateName
+
+
+-- def controller_info.when_states_awaiting_msg_ctrler_name : controller_info → MsgName → CtrlerName → Except String StateName
+-- | ctrler, msg_name, ctrler_name => do
+--   -- get ctrler states
+--   let states ← ctrler.state_list
+--   -- get states with await stmt with when stmt
+--   -- check if when stmt awaits a msg of msg_name from ctrler_name
+--   let states_awaiting_msg ← states.filter (·.when_stmt_awaiting_msg_ctrler_name msg_name ctrler_name) 
+--   -- if so, return state name
+--   -- Should also check we only found 1 match.
+--   default
