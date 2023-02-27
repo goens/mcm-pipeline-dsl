@@ -2823,6 +2823,44 @@ partial def recursive_await_when_search
   let lst_of_stmts := List.join lst_of_lst_stmts
   lst_of_stmts
 
+partial def find_when_and_state_name_from_transition
+(trans_list : List Pipeline.Description)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: Pipeline.Statement × StateName
+:=
+  let when_with_matching_func_and_src_ctrler_name :=
+  trans_list.map (
+    λ trans =>
+      -- get the transition stmts, find stmts
+      -- which 
+      match trans with
+      | Description.state ident stmt =>
+        let ident : StateName := ident
+        match stmt with
+        | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
+          let when_blks := recursive_await_when_search lst_stmts func_name curr_ctrler_name
+          let when_blks_and_idents := ZipWithList when_blks ident
+          when_blks_and_idents
+        | _ => dbg_trace "stmt under transition should be blk!"
+          []
+      | _ => dbg_trace "wasn't passed a transition?"
+        []
+  )
+  let when_stmts_lst := List.join when_with_matching_func_and_src_ctrler_name
+  let when_stmt :=
+  match when_stmts_lst with
+  | [one_stmt] => one_stmt
+  | _::_ =>
+  dbg_trace "found multiple matching when stmts?"
+  default
+  | [] =>
+  dbg_trace "found no matching when stmts?"
+  default
+
+  when_stmt
+
 partial def find_when_from_transition
 (trans_list : List Pipeline.Description)
 (func_name : Identifier)
@@ -4741,7 +4779,7 @@ lst_stmts_decls
           -- NOTE: probably don't need a <ctrler>.remove() api?
           -- Since ctrler entries generally do remove() when they get removed..?
           -- else if (api_func_name == "remove") then
-          else /- Default case: Simply find the matching when-stmt & translate it here... -/
+          else /- Default case: Simply find the matching when-stmt & handle blks & then translate it here... -/
             dbg_trace "Arbitrary message passing translation"
             dbg_trace s!"Term (func_call): ({term})"
             dbg_trace s!"Arbitrary Message Name: ({api_func_name})"
@@ -4838,6 +4876,42 @@ lst_stmts_decls
             let murphi_when_stmt : List Murϕ.Statement :=
               murphi_when_stmts_decls.stmts
             dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+
+            -- -- Handle blocks?
+            -- -- find_handle_blks_matching_msg states_to_search api_func_name ctrler_name
+            -- let expected_func := api_func_name
+            -- let expected_struct := ctrler_name
+
+            -- let if_stmt_trans_info : stmt_translation_info := {
+            --   stmt := stmt_trans_info.stmt,
+            --   lst_ctrlers := stmt_trans_info.lst_ctrlers,
+            --   ctrler_name := dest_ctrler_name,--stmt_trans_info.ctrler_name,
+            --   src_ctrler := stmt_trans_info.ctrler_name, -- stmt_trans_info.src_ctrler,
+            --   lst_src_args := stmt_trans_info.lst_src_args,
+            --   func := stmt_trans_info.func,
+            --   is_await := stmt_trans_info.is_await,
+            --   entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+            --   trans_obj := stmt_trans_info.trans_obj,
+            --   specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+            --   lst_decls := stmt_trans_info.lst_decls,
+            --   is_rhs := stmt_trans_info.is_rhs,
+            --   use_specific_dest_in_transition := true
+            --   curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+            --   lhs_var_is_just_default := false
+            --   translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            -- }
+
+            -- let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
+            -- -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
+            -- -- TODO: Replace the squash idx by the context's idx as usual
+            -- let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
+            -- let ctrler_squash_idx_expr : Murϕ.Expr := [murϕ| £ctrler_squash_idx]
+            -- let state_handle_squash_if_stmt : lst_stmts_decls := (
+            --   ctrler_trans_handle_stmts_to_murphi_if_stmt (
+            --   if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
+            --   dest_ctrler_name) expected_func expected_struct
+            -- )
+            -- let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
             let stmts_decls : lst_stmts_decls := {
               stmts := murphi_when_stmts_decls.stmts,

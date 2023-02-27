@@ -10,6 +10,10 @@ import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 -- import PipelineDsl.Translation
 -- import PipelineDsl.Transformation
 -- -- import PipelineDsl.MurphiTests
+import PipelineDsl.CDFG
+import PipelineDsl.DSLtoCDFG
+import PipelineDsl.CDFGAnalysis
+
 open Lean Pipeline
 
 -- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
@@ -98,6 +102,8 @@ def main (args : List String): IO Unit := do
 
   -- let just_one_state : String := in_order_load[0]!
 
+  let cdfg_nodes : Except String (List CDFG.Node) :=
+    DSLtoCDFG ctrlers
   -- AZ NOTE: Testing in-order-transform
   println! s!"------ begin in-order transformation ------\n"
   -- NOTE: Naive initial implementation
@@ -109,29 +115,44 @@ def main (args : List String): IO Unit := do
   --     | .error str => dbg_trace s!"ERROR: doing in-order TSFM: {str}"
   --       ast0021_empty_controller
   -- )
-  let in_order_ld_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform ctrlers load load
-  let in_order_ld_ctrlers : List controller_info := match in_order_ld_ctrlers with
-  | .ok ctrl_list => ctrl_list
-  | .error msg =>
-    let msg' : String :=
-      "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on load -> load\n" ++
-      s!"thrown message: ({msg})" ++
-      "\nReturn original ctrler list for now.."
-    dbg_trace msg'
-    ctrlers
-  println! s!"------ do store -> store in-order transformation ------\n"
-  let in_order_ld_and_st_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform in_order_ld_ctrlers store store
-  let ctrlers : List controller_info := match in_order_ld_and_st_ctrlers with
-  | .ok ctrl_list => ctrl_list
-  | .error msg =>
-    let msg' : String :=
-      "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on store -> store\n" ++
-      s!"thrown message: ({msg})" ++
-      "\nReturn original ctrler list for now.."
-    dbg_trace msg'
-    ctrlers
+
+  -- NOTE: Second Naive implementation
+  -- let in_order_ld_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform ctrlers load load
+  -- let in_order_ld_ctrlers : List controller_info := match in_order_ld_ctrlers with
+  -- | .ok ctrl_list => ctrl_list
+  -- | .error msg =>
+  --   let msg' : String :=
+  --     "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on load -> load\n" ++
+  --     s!"thrown message: ({msg})" ++
+  --     "\nReturn original ctrler list for now.."
+  --   dbg_trace msg'
+  --   ctrlers
+  -- println! s!"------ do store -> store in-order transformation ------\n"
+  -- let in_order_ld_and_st_ctrlers : Except String (List controller_info) := more_generic_core_in_order_stall_transform in_order_ld_ctrlers store store
+  -- let ctrlers : List controller_info := match in_order_ld_and_st_ctrlers with
+  -- | .ok ctrl_list => ctrl_list
+  -- | .error msg =>
+  --   let msg' : String :=
+  --     "ERROR: when trying to run 'more_generic_core_in_order_stall_transform' on store -> store\n" ++
+  --     s!"thrown message: ({msg})" ++
+  --     "\nReturn original ctrler list for now.."
+  --   dbg_trace msg'
+  --   ctrlers
+
+  -- CDFG Initial Implementation
+  -- let ctrlers := match CDFGInOrderTfsm ctrlers load load with
+  --   | .ok ctrler_list => ctrler_list
+  --   | .error msg => 
+  --     dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
+  --     []
+  -- let ctrlers := match CDFGInOrderTfsm ctrlers store store with
+  --   | .ok ctrler_list => ctrler_list
+  --   | .error msg => 
+  --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+  --     []
       
-  println! s!"{ctrlers}"
+  println! s!"What ctrlers look like after TFSM:"
+  println! s!"Ctrlers: {ctrlers}"
   println! s!"------ end in-order transformation ------\n"
 
   let all_joined_ctrlers : List (List dsl_trans_info) :=
@@ -215,6 +236,10 @@ def main (args : List String): IO Unit := do
   -- and just run translation / transformation on those controllers
   -- But we still supply the list of all controllers for
   -- the translation and transformation steps
+
+  -- dbg_trace "== CDFG GRAPH =="
+  -- dbg_trace s!"CDFG Graph: {cdfg_nodes}"
+  -- dbg_trace "== End CDFG GRAPH =="
 
   println! s!"===== Transform Testing Concluding ====="
 

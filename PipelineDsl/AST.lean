@@ -9,6 +9,7 @@ namespace Pipeline
 inductive Direction
  | Previous
  | Next
+ deriving BEq
 
 def indent : Nat → String
   | Nat.zero => ""
@@ -22,6 +23,7 @@ inductive AST
 
 inductive TypedIdentifier
  | mk : TIden → Identifier → TypedIdentifier
+ deriving BEq
 
 inductive Description
 -- constructors have the same signature, but will use different keywords
@@ -40,6 +42,7 @@ inductive Label
 -- one or more catch blocks
 inductive HandleBlock
 | mk : QualifiedName → List Identifier → Statement → HandleBlock
+deriving BEq
 
 inductive Conditional
 -- if with else
@@ -58,6 +61,7 @@ inductive Term
 | function_call : QualifiedName → /- ( -/ List Expr  /- ) -/ → Term
 | expr : Expr → Term
 | relative_entry : Direction → List Expr → Term
+deriving BEq
 
 inductive Const
 | num_lit : Nat → Const
@@ -86,6 +90,7 @@ inductive Expr
 | not_equal : Term → Term → Expr
 | some_term : Term → Expr
 | list : List Expr → Expr
+deriving BEq
 -- | Term : factor → Expr → Expr
 -- | nothing : Expr
 
@@ -105,6 +110,7 @@ inductive Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
 | stall : Expr → Statement
+deriving BEq
 -- what about function call?
 
 end  -- mutual
@@ -222,6 +228,7 @@ instance : ToString Statement where toString := statementToString
 instance : ToString QualifiedName where toString := qualifiedNameToString
 instance : ToString Description where toString := descriptionToString
 instance : ToString TypedIdentifier where toString := typedIdentifierToString
+instance : ToString HandleBlock where toString := handleBlockToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
 instance : Inhabited AST where default := AST.structure_descriptions []
