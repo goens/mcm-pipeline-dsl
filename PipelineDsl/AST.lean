@@ -38,6 +38,7 @@ inductive Description
 
 inductive Label
 | result_write : Label
+| commit : Label
 
 -- one or more catch blocks
 inductive HandleBlock
@@ -138,6 +139,7 @@ private partial def descriptionToString : Description → String
 
 private partial def labelToString : Label → String
   | .result_write => "result_write "
+  | .commit => "commit "
 
 private partial def handleBlockToString : HandleBlock → String
 | .mk name args body => "handle " ++ (qualifiedNameToString name) ++
