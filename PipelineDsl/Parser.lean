@@ -74,6 +74,7 @@ syntax expr ";"? : statement
 syntax typed_identifier ("=" expr)? : variable_declaration
 syntax label statement : labeled_statement
 syntax "result_write" : label
+syntax "commit" : label
 syntax qualified_name "=" expr : assignment -- maybe allow foo.bar?
 syntax ident "=" expr : assignment
 syntax "if" "(" expr ")" statement ("else"  statement)?  : conditional
@@ -276,6 +277,7 @@ partial def mkLabeledStatement : Syntax → Except String Statement
 
 partial def mkLabel : Syntax → Except String Label
   | `(label| result_write ) => return Label.result_write
+  | `(label| commit ) => return Label.commit
   | _ => throw "error parsing label"
 
 partial def mkAssigmnent : Syntax → Except String Statement
