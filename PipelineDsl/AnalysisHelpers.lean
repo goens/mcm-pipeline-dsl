@@ -1920,3 +1920,25 @@ def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β
 --   -- if so, return state name
 --   -- Should also check we only found 1 match.
 --   default
+
+def Pipeline.Statement.is_result_write_from_effects : Pipeline.Statement → Bool
+| stmt =>
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .result_write => true
+  | _ => false
+
+def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Option Pipeline.Statement
+| stmt =>
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .result_write => some stmt
+  | _ => none
+
+-- NOTE: Better to explicitly error with a msg at specific points, to get a "stack trace" where I care
+def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : Except String α := do
+  match e with
+  | .ok a => pure a
+  | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
