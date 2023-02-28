@@ -6,8 +6,26 @@ import PipelineDsl.DSLtoCDFG
 
 import PipelineDsl.CDFGAnalysis
 
+def CDFG.Graph.old_load_value_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
+  -- Find old load value ctrler
+  default
+
+def CDFG.Graph.await_load_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
+  -- Find commit ctrler
+  default
+
+def CDFG.Graph.request_load_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
+  -- Find commit ctrler
+  default
+
+def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
+  -- Find commit ctrler
+  default
+
 def CDFGLoadReplayTfsm (ctrlers : List controller_info)
 : Except String (List controller_info) := do
+  let graph_nodes ← DSLtoCDFG ctrlers
+  let graph : CDFG.Graph := {nodes := graph_nodes}
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
   -- 2. Search for where load API is called
@@ -50,7 +68,7 @@ def CDFGLoadReplayTfsm (ctrlers : List controller_info)
   --       msg the old load value ctrler and add a comparison state there
   --
   --  If comparison is equal, signal to commit ctrler (if in a different ctrler than commit), if it's in the commit ctrler, just transition to next state (commit)
-  --  If comparison is not equal, signal to commit ctrler to squash.
+  --  If comparison is not equal, signal to commit ctrler to
 
   -- ** Squash
   -- D.
