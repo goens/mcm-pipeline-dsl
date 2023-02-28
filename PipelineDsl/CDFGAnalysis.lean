@@ -1477,3 +1477,102 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_type : InstT
   let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
 
   pure updated_ctrlers
+
+def CDFG.Transition.is_has_result_write_labelled (transition : Transition)
+: (Option Pipeline.Statement) :=
+  let result_write_stmts := transition.effects.find? (·.is_result_write_from_effects)
+  result_write_stmts
+  -- match result_write_stmts with
+  -- | [] => pure none
+  -- | [result_write] => pure result_write
+  -- | _ => throw s!"More than one result write in transition: ({transition})"
+
+def CDFG.Node.is_not_reset_trans_result_write_labelled (node : Node)
+: Except String (Option Pipeline.Statement) := do
+  let not_reset_transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  let result_write_stmts? : List (Option Pipeline.Statement) := not_reset_transitions.map (·.is_has_result_write_labelled)
+  let no_none_stmts? := result_write_stmts?.filter (·.isSome)
+  let no_dup_result_write_stmts? := no_none_stmts?.eraseDups
+  match no_dup_result_write_stmts? with
+  | [] => pure none
+  | [result_write?] => pure $ result_write?
+  | _ => throw s!"More than one result write: ({no_dup_result_write_stmts?}) in node: ({node})"
+
+structure NodeLabelledStmt where
+  node : Node
+  labelled_stmt : Pipeline.Statement
+
+-- AZ NOTE: This can be found from analysis, simply finding
+-- 1. IF there are states that are
+-- predicated on msgs from "commit",
+-- then look at the set of state variables that are set by the await-when receive load mem response
+-- if they're still live, then they have the old load value
+-- Or, the other case:
+-- 2. IF the "LQ" is not predicated on "commit" this means
+-- we just track where the await load mem response value is passed to (static analysis)
+-- and is still "Live" in the "commit" states
+-- i.e. it goes to a ctrler and is not potentially overwritten by another inst
+-- Also note the RF is a special case where we need to reason that the RF entry is not
+-- overwritten by another inst
+def CDFG.Graph.getResultWriteStateAndStmt (graph : Graph)
+: Except String NodeLabelledStmt := do
+  let nodes_with_labelled_stmt : List (List NodeLabelledStmt) := ←
+    (graph.nodes.mapM ( λ node => do
+      let result_write_stmt? := node.is_not_reset_trans_result_write_labelled;
+      match ← result_write_stmt? with
+      | none => pure []
+      | some labelled_stmt => pure [ ⟨ node, labelled_stmt ⟩ ]
+      ))
+  let node_with_labelled_stmt := List.join nodes_with_labelled_stmt
+  match node_with_labelled_stmt with
+  | [] => throw "Error: No result write state found"
+  | [node_labelled_stmt] => pure node_labelled_stmt
+  | _ => throw "Error: More than one result write state found"
+
+def CDFG.Graph.old_load_value_node (graph : Graph)
+: Except String NodeLabelledStmt := do
+  -- Find old load value state & stmt that the old load value is written to
+  let result_write_states_and_stmt! : Except String NodeLabelledStmt := graph.getResultWriteStateAndStmt
+
+  result_write_states_and_stmt!.throw_exception_nesting_msg "Error while finding where the Old Load Value is"
+
+def CDFG.Graph.old_load_value_stmt_state_ctrler (graph : CDFG.Graph) : Except String NodeLabelledStmt := do
+  graph.old_load_value_node
+
+def CDFG.Graph.await_load_receive_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node /- CtrlerName do i want an explicit ctrler_name? -/ := do
+  -- Find load receive global response state & ctrler
+  let receive_state_to_search_from! : Except String Node := graph.global_receive_node_of_inst_type load
+
+  receive_state_to_search_from!.throw_exception_nesting_msg "Error while finding where the Await Load Receive State is"
+
+def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node := do
+  -- Find global perform state & ctrler
+  let global_perform_node! : Except String Node := graph.global_perform_node_of_inst_type load
+
+  global_perform_node!.throw_exception_nesting_msg "Error while finding where the Load Global Perform State is"
+
+-- TODO: Do something like this to find the "commit state"
+  -- TODO: Add a "commit" keyword to the DSL to mark the commit state...
+-- def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType)
+-- : Except String Node := do
+--   let global_perform_nodes : List Node :=
+--     (← graph.nodes.filterM (·.transitions.anyM (·.messages.anyM (·.is_global_perform_of_type inst_type))))
+--   if global_perform_nodes.length == 1 then
+--     pure global_perform_nodes[0]!
+--   else if global_perform_nodes.length > 1 then
+--     -- Label by msg distance, take shortest one
+--     graph.earliest_node_by_msg_dist global_perform_nodes
+--   else
+--     dbg_trace s!"Graph Nodes: ({graph.nodes.map (·.current_state)})"
+--     throw "Error: No global perform node found"
+
+def CDFG.Graph.commit_transition_state_ctrler (graph : Graph)
+: Except String Node := do
+  let global_perform_nodes : List Node :=
+    (← graph.nodes.filterM (·.transitions.anyM (·.effects.anyM (·.is_commit_labelled))))
+  default
+
+def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node := do
+  -- Find commit state & ctrler
+  -- Write a function to find the commit state
+  default
