@@ -6,26 +6,34 @@ import PipelineDsl.DSLtoCDFG
 
 import PipelineDsl.CDFGAnalysis
 
-def CDFG.Graph.old_load_value_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
-  -- Find old load value ctrler
+def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : List controller_info) : Except String (List controller_info) := do
+  -- Get the relevant 4 states & ctrlers
+  let commit_node ← graph.commit_state_ctrler
+  let global_perform_load_node ← graph.load_global_perform_state_ctrler
+  let global_complete_load_node ← graph.await_load_receive_state_ctrler
+  let old_load_value_node ← graph.old_load_value_stmt_state_ctrler
+
+  -- Item A. from comments in the top level function below
+  -- For our LSQs we're modeling, the commit & load API nodes are in different ctrlers
+  -- don't bother with this check...
+
+  -- If the Load API nodes is in a Queue vs Ctrler
+
+  -- Load API Node's Ctrler .is_predicated_on_commit_ctrler:
+  -- Then we can add the Load Replay right before the state where it is predicated on the commit ctrler
+  let is_load_api_ctrler_pred_on_commit : Bool := graph.is_ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node
+
+
   default
 
-def CDFG.Graph.await_load_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
-  -- Find commit ctrler
-  default
-
-def CDFG.Graph.request_load_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
-  -- Find commit ctrler
-  default
-
-def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String (CDFG.Node × CtrlerName) :=
-  -- Find commit ctrler
-  default
-
-def CDFGLoadReplayTfsm (ctrlers : List controller_info)
+def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers)
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
+
+  -- The function should do as the comments below describe.
+  let graph_with_load_replay ← graph.AddLoadReplayToCtrlers ctrlers
+  pure graph_with_load_replay
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
   -- 2. Search for where load API is called
@@ -73,5 +81,3 @@ def CDFGLoadReplayTfsm (ctrlers : List controller_info)
   -- ** Squash
   -- D.
   -- Msg Commit ctrler to squash if the comparison fails
-  
-  default
