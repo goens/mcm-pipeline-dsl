@@ -1566,13 +1566,60 @@ def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except St
 --     dbg_trace s!"Graph Nodes: ({graph.nodes.map (·.current_state)})"
 --     throw "Error: No global perform node found"
 
-def CDFG.Graph.commit_transition_state_ctrler (graph : Graph)
-: Except String Node := do
+def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
+  match stmt with
+  | Pipeline.Statement.labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .commit => true
+    | _ => false
+  | _ => false
+
+def CDFG.Transition.has_commit_labelled_effect (transition : Transition) : Bool :=
+  transition.effects.any (·.is_commit_labelled)
+
+def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String Node := do
   let global_perform_nodes : List Node :=
-    (← graph.nodes.filterM (·.transitions.anyM (·.effects.anyM (·.is_commit_labelled))))
-  default
+    (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_effect)))
+
+  match global_perform_nodes with
+  | [] => throw "Error: No commit state found"
+  | [node] => pure node
+  | _ => throw "Error: More than one commit state found"
+  
 
 def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node := do
   -- Find commit state & ctrler
-  -- Write a function to find the commit state
+  let commit_state! : Except String Node := graph.commit_transition_state_ctrler
+
+  commit_state!.throw_exception_nesting_msg "Error while finding where the Commit State is"
+
+def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → Node → Except String Bool
+| this_node, predicating_node => do
+  let pred_node_trans := predicating_node.transitions.filter (·.trans_type != .Reset)
+  let pred_node_commit_trans := pred_node_trans.filter (·.has_commit_labelled_effect)
+  let pred_node_msgs := List.join $ pred_node_commit_trans.map (·.messages) -- NOTE: What if there are multiple commit transitions?
+  let msgs_from_predicating_node_to_this_node ← pred_node_msgs.filterM (λ msg => do
+    let dest_ctrler := ← msg.dest_ctrler;
+    pure $ dest_ctrler == this_node.ctrler_name
+    )
+  
+  let this_node_transitions := this_node.transitions.filter (·.trans_type != .Reset)
+  let this_node_preds := List.join $ this_node_transitions.map (·.predicate)
+  let this_node_await_preds := this_node_preds.filter (·.is_await)
+
+  let msgs_from_pred_that_this_node_awaits := msgs_from_predicating_node_to_this_node.filterM (λ msg => do  
+    -- let msg_name ← msg.name
+    let ctrler_name ← msg.dest_ctrler
+    this_node_await_preds.anyM (CDFG.Condition.is_await_on_msg_from_ctrler · msg ctrler_name)
+  )
+  -- TODO: If there are msgs from pred node that this node awaits, then this node is pred on the commit state
+  -- ret true.
+  default
+
+def CDFG.Graph.is_ctrler_completion_pred_on_commit_states (graph : Graph) (ctrler_name : CtrlerName) (commit_node : CDFG.Node) : Except String Bool := do
+  let ctrler_nodes := graph.nodes.filter (·.is_from_ctrler ctrler_name)
+
+  let ctrler_nodes_pred_on_msg_from_commit : (List Node) := ←
+    ctrler_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_state commit_node)
+
   default
