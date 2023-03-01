@@ -326,6 +326,8 @@ s!"Transitions: ({cdfg_node.transitions})"  ++ "\n" ++
 str
 instance : ToString Node where toString := Node.toString
 
+def Node.is_from_ctrler (node : Node) (ctrler_name : CtrlerName) : Bool := node.ctrler_name == ctrler_name
+
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
   be a list and assume there has to be exactly one node with the name of the destination. We should
