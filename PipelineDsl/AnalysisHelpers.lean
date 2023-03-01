@@ -1927,6 +1927,7 @@ def Pipeline.Statement.is_result_write_from_effects : Pipeline.Statement → Boo
   | .labelled_statement label /-stmt-/ _ =>
     match label with
     | .result_write => true
+    | _ => false
   | _ => false
 
 def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Option Pipeline.Statement
@@ -1935,6 +1936,7 @@ def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Optio
   | .labelled_statement label /-stmt-/ _ =>
     match label with
     | .result_write => some stmt
+    | .commit => none
   | _ => none
 
 -- NOTE: Better to explicitly error with a msg at specific points, to get a "stack trace" where I care
@@ -1942,3 +1944,5 @@ def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : E
   match e with
   | .ok a => pure a
   | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
+
+abbrev Ctrlers := List controller_info
