@@ -17,10 +17,10 @@ lean_lib PipelineDsl {
 }
 
 @[default_target]
-lean_exe pipelinedsl {
+lean_exe aqlc {
   supportInterpreter := true
   root := `Main
 }
 
-require murphi from git "https://github.com/goens/lean-murphi.git"@"main"
+require Murphi from git "https://github.com/goens/lean-murphi.git"@"main"
 require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "nightly"

@@ -3,10 +3,6 @@ import Lean
 import Cli
 open Lean Pipeline
 
--- def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-nosq/iter-1/load-controller.file"
--- NOTE: This is the "rewrite" DSL filename
-def default_filename := "Examples/graph-prototype/operational-axiomatic/lsq-henn-patt/o3/lsq-phys-reg-dsl-rewrite-flattened-simple.file"
-
 def parseFile : Environment → String → IO (Option String × AST)
  | env, filename => do
    let lines <- IO.FS.lines filename
@@ -84,6 +80,8 @@ def mainCmd := `[Cli|
       m, "emit-muprhi";                      "Emit output Murphi"
       M, "muprhi-testing";                   "Run Murphi-specific tests"
       t, "transformer-testing" : Array Nat;  "Print witnesses when exploring"
+    ARGS:
+      input : String;      "Input AQL file"
     ]
 
 
