@@ -167,6 +167,13 @@ def Message.is_global_perform_of_type : Message → InstType → Except String B
     ((← ctrler_msg.dest_ctrler) == memory_interface)
     )
 
+def Message.term : Message → Pipeline.Term
+| .mk term => term
+
+def Message.to_stmt (msg : Message) : Pipeline.Statement :=
+  let term' := msg.term
+  Pipeline.Statement.stray_expr (Pipeline.Expr.some_term term')
+
 abbrev Messages := List Message
 abbrev Effects := List Pipeline.Statement
 abbrev Stmts := List Pipeline.Statement
