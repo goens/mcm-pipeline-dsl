@@ -22,6 +22,9 @@ def load_perform : MsgName := "send_load_request"
 def store_completed : MsgName := "store_completed"
 def store_perform : MsgName := "send_store_request"
 
+-- NOTE: the "name" of the load value from the load response api
+def load_value : Identifier := "load_value"
+
 def InstType.completion_msg_name : InstType → String
 | .load => load_completed
 | .store => store_completed
@@ -45,14 +48,15 @@ def InstType.toMurphiString : InstType → String
 -- #eval InstType.toMurphiString (InstType.load)
 -- #eval (InstType.load).toMurphiString
 
-structure CtrlerType where
+-- NOTE: This ControllerType is now more "legacy", use the CtrlerType now..
+structure ControllerType where
 name : String
 deriving Inhabited, BEq
 
-def FIFO : CtrlerType := {name := "FIFO"}
-def Unordered : CtrlerType := {name := "Unordered"}
+def FIFO : ControllerType := {name := "FIFO"}
+def Unordered : ControllerType := {name := "Unordered"}
 
-def IndexableCtrlerTypes : List CtrlerType := [FIFO, Unordered]
+def IndexableCtrlerTypes : List ControllerType := [FIFO, Unordered]
 def IndexableCtrlerTypesStrings : List String := IndexableCtrlerTypes.map (fun ctrler_type => ctrler_type.name )
 
 
@@ -100,19 +104,21 @@ instance : ToString controller_info := ⟨
     "\n=== End Controller ===\n\n"
   ⟩ 
 
-inductive ControllerType
-| FIFO : ControllerType
-| Unordered : ControllerType
-| BasicCtrler : ControllerType
+inductive CtrlerType
+| FIFO : CtrlerType
+| Unordered : CtrlerType
+| BasicCtrler : CtrlerType
 deriving Inhabited, BEq
 
-def ControllerType.toString : ControllerType → String
+-- abbrev CtrlerType := ControllerType
+
+def CtrlerType.toString : CtrlerType → String
 | .FIFO => "FIFO Queue"
 | .Unordered => "Unordered Queue"
 | .BasicCtrler => "BasicCtrler"
-instance : ToString ControllerType where toString := ControllerType.toString
+instance : ToString CtrlerType where toString := CtrlerType.toString
 
-def ControllerType.is_a_queue : ControllerType → Bool
+def CtrlerType.is_a_queue : CtrlerType → Bool
 | .BasicCtrler => false
 | _ => true
 
@@ -1078,7 +1084,7 @@ def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
   else
     false
 
-def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (ControllerType)
+def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
 | stmt => do
   match stmt with
   | .value_declaration typed_ident expr => do
@@ -1087,9 +1093,9 @@ def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String 
     | true => do
       let var_ident ← expr.var_ident 
       if var_ident == "FIFO" then
-        pure $ ControllerType.FIFO
+        pure $ CtrlerType.FIFO
       else if var_ident == "Unordered" then
-        pure $ ControllerType.Unordered
+        pure $ CtrlerType.Unordered
       else
         throw "Expr.var_ident is not a valid ordering"
     | false => throw "Statement's LHS isn't Ordering"
@@ -1097,7 +1103,7 @@ def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String 
     let msg := s!"Statement is not a variable assignment: ({stmt})"
     throw msg
 
-def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (ControllerType)
+def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (CtrlerType)
 | stmt => do
   let blk ← stmt.stmt_block
   let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
@@ -1108,19 +1114,19 @@ def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except 
     | _ => throw "Multiple orderings found in stmt block"
   ordering_asgn.var_asgn_ordering
 
-def Pipeline.Description.ctrler_type : Pipeline.Description → Except String ControllerType
+def Pipeline.Description.ctrler_type : Pipeline.Description → Except String CtrlerType
 | descript => do
   match descript with
   | .controller /- identifier -/ _ stmt =>
     stmt.ordering_from_stmt_block
   | _ => throw "Description is not a controller: ({descript})"
 
-def controller_info.type : controller_info → Except String ControllerType
+def controller_info.type : controller_info → Except String CtrlerType
 | ctrler =>
   if ctrler.entry_descript.isSome then
     ctrler.controller_descript.ctrler_type
   else
-    pure ControllerType.BasicCtrler
+    pure CtrlerType.BasicCtrler
 
 mutual
 partial def Pipeline.Term.is_head_api : Pipeline.Term → Bool
@@ -1946,3 +1952,45 @@ def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : E
   | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
 
 abbrev Ctrlers := List controller_info
+abbrev Ctrler := controller_info
+
+-- Newer, better, version of get_ctrler_from_ctrlers_list
+def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
+: Except String Ctrler := do
+  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
+  match ctrler_match_list with
+  | [ctrler] => pure ctrler
+  | [] =>
+    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+  | _::_ =>
+    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+
+-- abbrev IdentList := List Identifier
+
+def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
+  Pipeline.QualifiedName.mk idents
+
+def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipeline.Statement :=
+  match stmt with
+  | .labelled_statement _ stmt => stmt
+  | _ => stmt
+
+def rf := "rf"
+def write := "write"
+def read := "read"
+
+def Pipeline.Statement.is_rf_write (stmt : Pipeline.Statement) : Bool :=
+  match stmt with
+  | .stray_expr expr =>
+    match expr with
+    | .some_term term =>
+      match term with
+      | .function_call qual_name _ =>
+        match qual_name.idents with
+        | [ctrler, msg] => ctrler == rf && msg == write
+        | _ => false
+      | _ => false
+    | _ => false
+  | _ => false
