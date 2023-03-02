@@ -1596,8 +1596,10 @@ def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Nod
 def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → Node → Except String Bool
 | this_node, predicating_node => do
   let pred_node_trans := predicating_node.transitions.filter (·.trans_type != .Reset)
+  -- Only consider transitions that commit
   let pred_node_commit_trans := pred_node_trans.filter (·.has_commit_labelled_effect)
   let pred_node_msgs := List.join $ pred_node_commit_trans.map (·.messages) -- NOTE: What if there are multiple commit transitions?
+  -- Find any messages the predicating node sends to this node that are from the "Committing Transition(s)"
   let msgs_from_predicating_node_to_this_node ← pred_node_msgs.filterM (λ msg => do
     let dest_ctrler := ← msg.dest_ctrler;
     pure $ dest_ctrler == this_node.ctrler_name
@@ -1606,20 +1608,55 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → N
   let this_node_transitions := this_node.transitions.filter (·.trans_type != .Reset)
   let this_node_preds := List.join $ this_node_transitions.map (·.predicate)
   let this_node_await_preds := this_node_preds.filter (·.is_await)
-
-  let msgs_from_pred_that_this_node_awaits := msgs_from_predicating_node_to_this_node.filterM (λ msg => do  
+  -- Match the msgs with the awaits here
+  let msgs_from_pred_that_this_node_awaits := ← msgs_from_predicating_node_to_this_node.filterM (λ msg => do -- writing this more explicitly, lean's parser couldn't work this out...
     -- let msg_name ← msg.name
     let ctrler_name ← msg.dest_ctrler
     this_node_await_preds.anyM (CDFG.Condition.is_await_on_msg_from_ctrler · msg ctrler_name)
   )
+
   -- TODO: If there are msgs from pred node that this node awaits, then this node is pred on the commit state
   -- ret true.
-  default
+  match msgs_from_pred_that_this_node_awaits with
+  | [] => pure false
+  | _ => pure true
 
-def CDFG.Graph.is_ctrler_completion_pred_on_commit_states (graph : Graph) (ctrler_name : CtrlerName) (commit_node : CDFG.Node) : Except String Bool := do
+def CDFG.Graph.ctrler_completion_pred_on_commit_states (graph : Graph) (ctrler_name : CtrlerName) (commit_node : CDFG.Node) : Except String (List Node) := do
   let ctrler_nodes := graph.nodes.filter (·.is_from_ctrler ctrler_name)
 
-  let ctrler_nodes_pred_on_msg_from_commit : (List Node) := ←
-    ctrler_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_state commit_node)
+  let ctrler_nodes_pred_on_msg_from_commit! : Except String (List Node) := ctrler_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_state commit_node)
+  let ctrler_nodes_pred_on_msg_from_commit : List Node ← ctrler_nodes_pred_on_msg_from_commit!.throw_exception_nesting_msg "Error while checking if ctrler is predicated on commit state"
 
-  default
+
+  pure ctrler_nodes_pred_on_msg_from_commit
+  -- let is_ctrler_pred_on_msg_from_commit := ctrler_nodes_pred_on_msg_from_commit.length > 0
+  -- pure is_ctrler_pred_on_msg_from_commit
+
+def CDFG.Node.global_perform_load_msg (node : Node) : Except String Message := do
+  let not_reset_transitions := node.transitions.filter (·.trans_type != .Reset)
+  let messages := not_reset_transitions.map (·.messages) |>.join
+
+  let global_perform_msgs! := messages.filterM (·.is_global_perform_of_type load)
+
+  let global_perform_msgs ← global_perform_msgs!.throw_exception_nesting_msg "Error while finding global load perform stmts"
+  let global_perform_msgs_no_dups := global_perform_msgs.eraseDups
+
+  match global_perform_msgs_no_dups with
+  | [] => throw "Error: No global load perform stmts found"
+  | [msg] => pure msg
+  | _ => throw "Error: More than one global load perform stmts found"
+    
+def CDFG.Node.global_perform_load_stmt (node : Node) : Except String Pipeline.Statement := do
+  pure (← node.global_perform_load_msg ).to_stmt
+
+def CDFG.Node.not_reset_transitions (node : Node) : Transitions := node.transitions.filter (·.trans_type != .Reset)
+
+def CDFG.Node.result_write_stmt (node : Node) : Except String Pipeline.Statement := do
+  let not_reset_trans := node.not_reset_transitions
+  let effects := not_reset_trans.map (·.effects) |>.join |>.eraseDups
+  let result_write_stmts := effects.filter (·.is_result_write_from_effects)
+
+  match result_write_stmts with
+  | [] => throw "Error: No result write stmts found"
+  | [stmt] => pure stmt
+  | _ => throw "Error: More than one result write stmts found"
