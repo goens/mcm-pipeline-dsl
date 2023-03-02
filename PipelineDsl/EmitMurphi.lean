@@ -7,6 +7,8 @@ import PipelineDsl.AST
 import PipelineDsl.LitmusTests
 
 import PipelineDsl.Translation
+import PipelineDsl.CDFG
+import PipelineDsl.DSLtoCDFG
 set_option maxHeartbeats 500000
 open Pipeline
 open Murϕ
@@ -2497,3 +2499,4 @@ def gen_murphi_litmus_test_programs
   )
 
   murphi_files
+

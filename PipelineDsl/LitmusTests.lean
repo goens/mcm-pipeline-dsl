@@ -1,4 +1,3 @@
-
 import Murphi
 import PipelineDsl.AnalysisHelpers
 
@@ -455,7 +454,6 @@ def Dekker : LitmusTest := {
     negate_or_not := ForbiddenOrRequired.forbidden},
   orderings := [MCMOrdering.store_to_load]
 }
-
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
 amd1,
