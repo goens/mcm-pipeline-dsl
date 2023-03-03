@@ -2,7 +2,7 @@ import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 import PipelineDsl.AST
 open Pipeline
 
-def emitMurphiIO (emit : Bool) (testing : Bool) (ast : AST) : IO Unit := do
+def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST) : IO Unit := do
     let mut teststr := ""
     teststr := teststr ++ "---- test murhpi ----"
 
@@ -98,6 +98,6 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (ast : AST) : IO Unit := do
 
     if emit then
       let _ ← murphi_files.mapM
-        fun file => IO.FS.writeFile (file.filename.append ".m") file.program.toString
+        fun file => IO.FS.writeFile (directory / file.filename.append ".m") file.program.toString
     if testing then
       IO.println teststr

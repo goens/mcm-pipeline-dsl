@@ -450,7 +450,7 @@ def mkRoundTripFun {α : Type} [ToString α] :
     let rtLArray := Array.mk rtLines
     let rtPreprocessed := preprocess rtLArray
     let rt := rtPreprocessed.foldl (λ s₁ s₂ => s₁ ++ "\n" ++ s₂) ""
-    dbg_trace s!"round-trip preprocessed: {rt}"
+    --dbg_trace s!"round-trip preprocessed: {rt}"
     parseFun rt env
 
 def roundTrip := mkRoundTripFun parse
