@@ -1977,7 +1977,7 @@ def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipel
   | .labelled_statement _ stmt => stmt
   | _ => stmt
 
-def rf := "rf"
+def reg_file : String := "reg_file"
 def write := "write"
 def read := "read"
 
@@ -1989,7 +1989,7 @@ def Pipeline.Statement.is_rf_write (stmt : Pipeline.Statement) : Bool :=
       match term with
       | .function_call qual_name _ =>
         match qual_name.idents with
-        | [ctrler, msg] => ctrler == rf && msg == write
+        | [ctrler, msg] => ctrler == reg_file && msg == write
         | _ => false
       | _ => false
     | _ => false
@@ -1999,3 +1999,15 @@ def CreateDSLMsgCall (ctrler_name : CtrlerName) (msg_name : MsgName) (args : Lis
   : Pipeline.Statement :=
   let qual_name := [ctrler_name, msg_name].to_qual_name
   Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args))
+
+def old_load_value := "old_load_value"
+
+def CreateDSLRefFileReadExpr (ctrler_name : CtrlerName) (msg_name : MsgName) (args : List Pipeline.Expr)
+  : Pipeline.Expr :=
+  let qual_name := [ctrler_name, msg_name].to_qual_name
+  let expr := Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args)
+  expr
+
+def CreateDSLVarAssignmentStmt (var_name : String) (expr : Pipeline.Expr) : Pipeline.Statement :=
+  let stmt := Pipeline.Statement.variable_assignment [var_name].to_qual_name expr
+  stmt
