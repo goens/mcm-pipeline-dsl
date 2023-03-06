@@ -1994,3 +1994,8 @@ def Pipeline.Statement.is_rf_write (stmt : Pipeline.Statement) : Bool :=
       | _ => false
     | _ => false
   | _ => false
+
+def CreateDSLMsgCall (ctrler_name : CtrlerName) (msg_name : MsgName) (args : List Pipeline.Expr)
+  : Pipeline.Statement :=
+  let qual_name := [ctrler_name, msg_name].to_qual_name
+  Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args))
