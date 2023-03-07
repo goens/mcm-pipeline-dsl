@@ -6,12 +6,10 @@ import PipelineDsl.DSLtoCDFG
 
 import PipelineDsl.CDFGAnalysis
 
--- I don't think we need multiple transitions (i.e. within the stmts, like in if-stmts or await-when stmts) just yet...
-structure SingleTransitionState where
-dest : StateName
-stmts : List Pipeline.Statement
-name : StateName
-deriving Inhabited, BEq
+import PipelineDsl.LoadReplayHelpers
+import PipelineDsl.CreateDSLHelpers
+
+-- namespace LoadReplay
 
 -- The 4 nodes
 open CDFG in
@@ -42,7 +40,7 @@ def CreateReplayIssueLoadState
 (is_issue_ctrler_pred_on_commit : Bool)
 -- (replay_await_state_name : StateName)
 (four_nodes : CommitIssueAwaitValueStmtNodes)
-(issue_ctrler_pred_on_commit? : Option CDFG.Node)
+(issue_ctrler_node_pred_on_commit? : Option CDFG.Node)
 (ctrlers : Ctrlers)
 : Except String (Pipeline.Description) := do
   -- NOTE: Temporary way to get a "replay" load stmt
@@ -68,8 +66,8 @@ def CreateReplayIssueLoadState
       -- Generate the transition to the dest state
       if is_issue_ctrler_pred_on_commit then -- && !is_issue_ctrler_and_await_response_ctrler_same
         -- transition to existing await commit state in the issue load ctrler
-        if let some issue_ctrler_pred_on_commit := issue_ctrler_pred_on_commit? then
-          let issue_ctrler_state_that's_pred_on_commit := issue_ctrler_pred_on_commit.current_state
+        if let some issue_ctrler_node_pred_on_commit := issue_ctrler_node_pred_on_commit? then
+          let issue_ctrler_state_that's_pred_on_commit := issue_ctrler_node_pred_on_commit.current_state
           let transition_to_issue_ctrler_state := Pipeline.Statement.transition issue_ctrler_state_that's_pred_on_commit
 
           pure (transition_to_issue_ctrler_state, [start_replay_await_msg])
@@ -89,22 +87,33 @@ def CreateReplayIssueLoadState
 
   pure replay_state
 
+def GenAwaitReplayLoadStmts (ctrlers : Ctrlers) (four_nodes : CommitIssueAwaitValueStmtNodes)
+: Except String (List Pipeline.Statement) := do
+  let await_load_resp_ctrler : Ctrler ← ctrlers.ctrler_from_name four_nodes.global_perform_load_node.ctrler_name
+  let await_ctrler_type ← await_load_resp_ctrler.type
+  let additional_stmts ← match await_ctrler_type with
+    | .Unordered => pure [CreateDSLFuncCallStmt remove []]
+    | .BasicCtrler => pure []
+    | .FIFO => throw "Error while adding await Replay response: FIFO not supported. Due to head & tail ptrs"
+  pure additional_stmts
+
 def CreateReplayAwaitLoadState
 (is_issue_ctrler_and_await_response_ctrler_same : Bool)
 (is_issue_ctrler_pred_on_commit : Bool)
 (four_nodes : CommitIssueAwaitValueStmtNodes)
+(issue_ctrler_node_pred_on_commit? : Option CDFG.Node)
+(ctrlers : Ctrlers)
 : Except String Pipeline.Description := do
   -- ===== required stmts: =====
   -- 1. await the load response
   -- Just simply use an await stmt for now
   -- Should try to copy the original await stmt and handling code
-  let when_load_response_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name []
-  let await_load_response := Pipeline.Statement.await none []
 
   -- 2. read the old value that was marked
   -- look at the old value stmt, if it's from the reg file, then read from the reg file
   -- if it's from a state var, then this is hard to say... maybe we read from the start var
-  let old_load_value_stmt := four_nodes.old_load_value_node.labelled_stmt
+  let old_load_value_stmt : Pipeline.Statement := ←
+    four_nodes.old_load_value_node.stmts_to_read_the_old_value old_load_value
 
   -- 3. compare, handle 2 cases
   --   a. old val == new val: no extra stmts
@@ -112,11 +121,125 @@ def CreateReplayAwaitLoadState
   --   NOTE: This may be more complicated, if the user marks a state var assignment, but
   --   the real place to write to is the register file...
 
+  -- Stmts to
+  -- (a) write the correct replay value to the result write location
+  -- (b) send squash msg to the commit ctrler
+
+  -- 3.(a)
+  let write_correct_replay_value := ←
+    four_nodes.old_load_value_node.stmts_to_write_replay_value_to_result_write_location replay_value
+
+  let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num inst_seq_num_expr
+  -- 3.(b)
+  let commit_ctrler_squash := CreateDSLMsgCall four_nodes.commit_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
+
+  -- the if cond: old_val != replay_val
+  let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value 
+  -- the stmts
+  let if_old_not_equal_replay_stmts :=
+    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, commit_ctrler_squash]
+
+  -- the if stmt to handle the mispeculated case
+  let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
+
   -- 4. signal to ROB that replay is complete
+  let replay_complete_msg := CreateDSLMsgCall four_nodes.commit_node.ctrler_name replay_complete_msg_to_commit []
 
-  -- ===== Then handle the transition at the end =====
+  -- 5. ===== Then handle the transition at the end =====
+  let (transition_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ←
+    if is_issue_ctrler_and_await_response_ctrler_same && is_issue_ctrler_pred_on_commit then do
+      -- transition to the issue load's state that's pred on commit
+      if let some issue_ctrler_node_pred_on_commit := issue_ctrler_node_pred_on_commit? then do
+        let issue_ctrler_state_that's_pred_on_commit := issue_ctrler_node_pred_on_commit.current_state
+        let transition_to_issue_ctrler_state := Pipeline.Statement.transition issue_ctrler_state_that's_pred_on_commit
 
-  default
+        pure (transition_to_issue_ctrler_state, [])
+      else do
+        throw ""
+    else if is_issue_ctrler_and_await_response_ctrler_same then do
+      -- transition to the (issue load / await response) ctrler's first state
+      let trans_to_first_state ← ctrlers.transition_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+
+      -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
+      let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
+
+      pure (trans_to_first_state, additional_stmts)
+    else do
+      -- transition to the await load ctrler's first state
+      let trans_to_first_state ← ctrlers.transition_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+
+      -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
+      let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
+
+      pure (trans_to_first_state, additional_stmts)
+      
+
+  -- Combined from 2. 3. & 4.
+  -- NOTE: We add 2. here, but if the ctrler with the old value isn't a "reg_file.read(dest_reg)"
+  -- then it's a queue, and we access a queue with a search API where we need to be in scope
+  -- But that case is not handled yet..
+  let check_mispeculation_and_replay_complete_stmts := Pipeline.Statement.block $
+    [old_load_value_stmt, if_old_not_equal_replay_expr, replay_complete_msg] ++ additional_stmts ++ [transition_stmt]
+
+  -- from 1.
+  let when_load_response_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name [] check_mispeculation_and_replay_complete_stmts
+  -- All of the await-replay-load stmts
+  let await_load_response := Pipeline.Statement.await none [when_load_response_stmt]
+
+  -- The name of the new await replay state
+  let await_replay_state_name := ReplayAwaitStateName four_nodes.global_complete_load_node
+
+  -- Return: The await replay state.
+  let await_replay_state := Pipeline.Description.state await_replay_state_name await_load_response.to_block
+
+  return await_replay_state
+
+def await_replay_start_state_name := "LoadReplay_await_replay_start"
+def start_replay_msg_name := "start_replay"
+
+def CDFG.Node.create_when_replay_start_msg_state (commit_node : CDFG.Node) : Pipeline.Statement :=
+  let transition_to_issue_replay := Pipeline.Statement.transition replay_issue_load_to_mem
+  let commit_ctrler := commit_node.ctrler_name
+  let when_commit_start_msg := Pipeline.Statement.when [commit_ctrler, start_replay_msg_name].to_qual_name [] transition_to_issue_replay.to_block
+  when_commit_start_msg
+
+def CreateReplayAwaitCommitStartMsgState
+(four_nodes : CommitIssueAwaitValueStmtNodes)
+: (Pipeline.Description) :=
+  -- 1. Create an await stmt to wait for the commit start msg
+  -- 2. Transition to the right state
+  let when_commit_start_msg := four_nodes.commit_node.create_when_replay_start_msg_state
+  let await_when := Pipeline.Statement.await none [when_commit_start_msg]
+
+  Pipeline.Description.state await_replay_start_state_name await_when.to_block
+
+def insert := "insert"
+def UpdateIssueCtrlerFirstStateToAwaitReplayCommit
+(four_nodes : CommitIssueAwaitValueStmtNodes)
+(ctrlers : Ctrlers)
+: Except String (Pipeline.Description) := do
+  -- 1. Get the issue ctrler's first state
+  -- 2. Get it's stmts
+  -- 3. find the await stmt
+  -- 4. add a when stmt to the await stmt
+
+  -- 1.
+  let issue_ctrler_name := four_nodes.global_perform_load_node.ctrler_name
+  let issue_ctrler ← ctrlers.ctrler_from_name issue_ctrler_name
+  let issue_ctrler_first_state ← issue_ctrler.init_trans_dest
+  let first_state ← issue_ctrler.state_from_name issue_ctrler_first_state
+
+  -- 2.
+  let when_commit_start_msg := ←
+    match ← issue_ctrler.type with
+    | .BasicCtrler => pure $ four_nodes.commit_node.create_when_replay_start_msg_state
+    | .Unordered =>
+      let trans_to_await_replay_start := Pipeline.Statement.transition await_replay_start_state_name
+      pure $ Pipeline.Statement.when [four_nodes.commit_node.ctrler_name, insert].to_qual_name [] trans_to_await_replay_start.to_block
+    | .FIFO => throw "Error while gen await commit start replay msg: Got FIFO ctrler (can't handle due to head/tail ptrs)"
+  let first_state ← first_state.append_when_case_to_state's_await_stmt when_commit_start_msg
+
+  pure first_state
 
 def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Except String (Ctrlers) := do
   -- Get the relevant 4 states & ctrlers
@@ -125,142 +248,39 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let global_complete_load_node ← graph.await_load_receive_state_ctrler
   let old_load_value_node ← graph.old_load_value_stmt_state_ctrler
 
-  /- =================== Item A ===================== -/
-  -- Item A. from comments in the top level function below
-  -- For our LSQs we're modeling, the commit & load API nodes are in different ctrlers
-  -- don't bother with this check...
+  let four_nodes := ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
 
-  -- If the Load API nodes is in a Queue vs Ctrler
+  let issue_ctrler_type ← (← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name ).type
 
-  -- Load API Node's Ctrler .is_predicated_on_commit_ctrler:
-  -- Then we can add the Load Replay right before the state where it is predicated on the commit ctrler
+  let issue_ctrler_pred_on_commit : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
+  let is_issue_ctrler_pred_on_commit : Bool := issue_ctrler_pred_on_commit.length > 0
+  let issue_ctrler_node_pred_on_commit? : Option Node := if is_issue_ctrler_pred_on_commit then issue_ctrler_pred_on_commit.head? else none
+  let is_issue_ctrler_and_await_response_ctrler_same := global_perform_load_node.ctrler_name == global_complete_load_node.ctrler_name
 
-  -- OTHERWISE, if the ctrler is a basic Ctrler or an unordered queue,
-  -- we add it to the loadAPI ctrler as another exec path
-
-  let load_api_ctrler_pred_on_commit : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
-  let is_load_api_ctrler_pred_on_commit : Bool := load_api_ctrler_pred_on_commit.length > 0
-
-  let load_api_ctrler : Ctrler ← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name
-  let load_api_ctrler_type : CtrlerType ← load_api_ctrler.type
-
-  -- Helper function to check if Ctrler is pred on commit, and Ctrler type
-  -- Goal is to add Replay in the right way (at commit pred state, or as alternative exec path) (and know if we need to msg this ctrler)
-  -- Do the actual adding of the replay state later, since it also may need to signal to a specific ctrler/state
-  let load_api_stmt ← global_perform_load_node.global_perform_load_stmt
-  
-
-  /- =================== Item B ===================== -/
-  -- Item B. Check the "await mem response" ctrler
-  -- Overlap with Item A. If they're in the same ctrler, then the Replay State from A can transition to a generated "await mem response" state
-  -- Otherwise, transition to the state it's added at.
-
-  let is_load_api_and_await_load_in_same_ctrler : Bool := global_perform_load_node.ctrler_name == global_complete_load_node.ctrler_name
-
-  let await_replay_mem_response_state_name := global_complete_load_node.ctrler_name ++ "_await_load_replay_mem_response_"
-
-  -- NOTE TODO: Also find the place to add this replay API state
-  let replay_api_transition_dest : StateName := ←
-    match is_load_api_ctrler_pred_on_commit with
-    | true => do -- i.e. this entry lives for the duration of the "perform load" actions
-      match is_load_api_and_await_load_in_same_ctrler with
-      | true => do -- transition to the added await mem response state
-        pure await_replay_mem_response_state_name
-      | false => do
-        match load_api_ctrler_pred_on_commit with
-        | [node_pred_on_commit] => pure node_pred_on_commit.current_state
-        | node_pred_on_commit :: _ => pure node_pred_on_commit.current_state
-        | [] => throw "Error: () Load API Ctrler is predicated on commit, but no commit state found"
-    | false => do -- this is the "create an alternate exec path" scenario, since loads pass through here.
-      match is_load_api_and_await_load_in_same_ctrler with
-      | true => do -- transition to the added await mem response state
-        pure await_replay_mem_response_state_name
-      | false => do -- back to first state
-        load_api_ctrler.init_trans_dest
-
+  /- =================== Await Commit "Start Replay" Msg State ===================== -/
   -- 
-  -- ** Awaiting the Memory Response
-  -- B.
-  -- if load API ctrler == await mem response ctrler,
-  --   add await mem response to this ctrler
-  --   (just Need the 1 state then.)
-  --   Then see C. for adding comparison
-  -- if load API ctrler != await mem response ctrler,
-  --   Murphi NOTE: This assumes I can uniquely know which ctrler is awaiting this specific mem response, thru the seq_num, so ensure seq_nums are reset after complete...
-  --   Need 2 states: 1. for moving to a state that specifically awaits for load-replay's response, 2. for receiving the response.
-  --   Then see C. for adding comparison
+  let (await_replay_start_state, unordered_insert_to_await_state?) : Pipeline.Description × (Option Pipeline.Description) := ←
+    if is_issue_ctrler_pred_on_commit then do
+      pure (CreateReplayAwaitCommitStartMsgState four_nodes, none)
+    else if issue_ctrler_type == .BasicCtrler then do
+      pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers, none)
+    else if issue_ctrler_type == .Unordered then do
+      pure (CreateReplayAwaitCommitStartMsgState four_nodes, ← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
+    else do
+      throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
+  -- AZ NOTE: Must insert or replace the state accordingly, based on the cases above...
 
-  -- match is_load_api_and_await_load_in_same_ctrler with
-  -- | true => -- create a state to await the mem response
-  --   let when_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name [load_value] compare_and_transition_stmt_blk
-  --   let await_stmt := Pipeline.Statement.await none when_stmt
-  -- | false =>
+  /- =================== New Issue Replay State ===================== -/
+  -- Issue the Replay Memory Request
+  let new_issue_replay_state ← CreateReplayIssueLoadState is_issue_ctrler_and_await_response_ctrler_same
+    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩  
+    issue_ctrler_node_pred_on_commit? ctrlers 
 
-  -- let await_replay_mem_states : List Pipeline.Description :=
-  --   if is_load_api_and_await_load_in_same_ctrler then
-  --     -- create a simple await mem response state
-  --     -- Dest: the load API state that is predicated on commit
-  --   else
-
-      -- create 1. a state that awaits a msg name (uniquely named "<src_ctrler>_await_load_replay_mem_response_<dest_ctrler>, or something like this")
-      -- Dest: to 2.
-      -- Stmts: await for the unique msg name from the load API ctrler
-      -- Name: (this just uses the existing "start" state, so I don't need to make a name, just a when-case)
-      -- create 2. a state to await the mem response
-      -- Dest: to the "first state"
-      -- Stmts: await for mem response, do the comparison C.
-      -- Name: <dest_ctrler>_awaiting_load_replay_mem_response_<src_ctrler>
-
-  /- =================== Item C ===================== -/
-  -- C. Compare the old load value to the new load value
-
-  -- check if the old load value marked by the label is in the same ctrler as the await_mem_response ctrler
-  -- it should be, otherwise throw an error, I haven't modeled this case so far in the LSQs
-
-  -- Create stmts to get the old value (inductive, if the old value is in a state var, or in the rf.write API)
-
-  -- Create comparison, if old==new, then msg Commit ctrler to transition to next state
-  -- i.e. Commit ctrler needs an await replay complete state
-  -- if old!=new, then update write the new value, just reusing the labelled msg name
-  -- also add a Stmt <commit_ctrler>.squash()
-  -- Don't need separate transition dests for these cases, just use Part B's transition dests
-
-  let inst_dest_reg_expr := Pipeline.Expr.some_term (Pipeline.Term.qualified_var ["instruction", "dest_reg"].to_qual_name)
-
-  let old_load_value_labelled_stmt := old_load_value_node.labelled_stmt.stmt_of_labelled_stmt
-  let old_value_var_name := "old_load_value_load_replay"
-  let old_value_stmt := ←
-    match old_load_value_labelled_stmt.is_rf_write with
-    | true => do
-      let var' := Pipeline.TypedIdentifier.mk "u32" old_value_var_name
-      let rf_read_expr := Pipeline.Expr.some_term (Pipeline.Term.function_call [rf, read].to_qual_name [inst_dest_reg_expr])
-      pure $ Pipeline.Statement.value_declaration var' rf_read_expr
-    | false => do throw "Error: Only handling 'result_write' that's rf.write() for now"
-  let compare_expr := Pipeline.Expr.equal (Pipeline.Term.var old_value_var_name) (Pipeline.Term.var load_value)
-
-  -- do we message the commit ctrler to transition to the next state?
-  let is_await_complete_and_commit_same_ctrler := global_complete_load_node.ctrler_name == commit_node.ctrler_name
-  let load_replay_complete_msg_name := "load_replay_complete"
-  let msg_commit := ← match is_await_complete_and_commit_same_ctrler with
-    | true => do throw "Error: Not handling this case yet, where the commit ctrler is the same ctrler as the await complete ctrler"
-    | false =>
-      let msg_stmt := Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call [commit_node.ctrler_name, load_replay_complete_msg_name].to_qual_name []))
-      pure msg_stmt
-
-  let load_response_value_var_expr := Pipeline.Expr.some_term (Pipeline.Term.var load_value)
-  let write_new_val := Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call [rf, write].to_qual_name [inst_dest_reg_expr, load_response_value_var_expr]))
-
-  let inst_seq_num := Pipeline.Expr.some_term (Pipeline.Term.qualified_var ["instruction", "seq_num"].to_qual_name)
-  let squash_stmt := Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call [commit_node.ctrler_name, "squash"].to_qual_name [inst_seq_num]))
-
-  let compare_equal_blk := Pipeline.Statement.block [msg_commit]
-  let compare_not_eq_blk := Pipeline.Statement.block [write_new_val, squash_stmt, msg_commit]
-
-  let compare_squash_conditional := Pipeline.Conditional.if_else_statement compare_expr compare_equal_blk compare_not_eq_blk
-
-  -- Use this as C, in part B.
-  -- Maybe move to another helper function to make the higher level idea of this function clearer
-  let compare_replay_val_stmt : Pipeline.Statement := Pipeline.Statement.conditional_stmt compare_squash_conditional
+  /- =================== New Await Replay State ===================== -/
+  -- ** Awaiting the Replay Memory Response
+  let new_await_replay_state ← CreateReplayAwaitLoadState is_issue_ctrler_and_await_response_ctrler_same
+    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩  
+    issue_ctrler_node_pred_on_commit? ctrlers
 
 
   default
