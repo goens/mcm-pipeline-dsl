@@ -2000,8 +2000,7 @@ def CreateDSLMsgCall (ctrler_name : CtrlerName) (msg_name : MsgName) (args : Lis
   let qual_name := [ctrler_name, msg_name].to_qual_name
   Pipeline.Statement.stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args))
 
-def old_load_value := "old_load_value"
-
+-- NOTE: Should create a Helper file for DSL AST Helper functions
 def CreateDSLRefFileReadExpr (ctrler_name : CtrlerName) (msg_name : MsgName) (args : List Pipeline.Expr)
   : Pipeline.Expr :=
   let qual_name := [ctrler_name, msg_name].to_qual_name
@@ -2011,3 +2010,97 @@ def CreateDSLRefFileReadExpr (ctrler_name : CtrlerName) (msg_name : MsgName) (ar
 def CreateDSLVarAssignmentStmt (var_name : String) (expr : Pipeline.Expr) : Pipeline.Statement :=
   let stmt := Pipeline.Statement.variable_assignment [var_name].to_qual_name expr
   stmt
+
+def CreateDSLBoolEqualExpr (lhs : Identifier) (rhs : Identifier) : Pipeline.Expr :=
+  let lhs := Pipeline.Term.var lhs
+  let rhs := Pipeline.Term.var rhs
+  let expr := Pipeline.Expr.equal lhs rhs
+  expr
+
+def CreateDSLBoolNotEqualExpr (lhs : Identifier) (rhs : Identifier) : Pipeline.Expr :=
+  let lhs := Pipeline.Term.var lhs
+  let rhs := Pipeline.Term.var rhs
+  let expr := Pipeline.Expr.not_equal lhs rhs
+  expr
+
+def CreateDSLTypedIdentifier (ident : Identifier) (var_name : Identifier) : Pipeline.TypedIdentifier :=
+  Pipeline.TypedIdentifier.mk ident var_name
+
+def CreateDSLDeclAssignExpr (ident : Identifier) (var_name : Identifier) (expr : Pipeline.Expr) : Pipeline.Statement :=
+  Pipeline.Statement.value_declaration (CreateDSLTypedIdentifier ident var_name) expr
+
+def CreateDSLIfStmt (expr : Pipeline.Expr) (stmt : Pipeline.Statement) : Pipeline.Statement :=
+  Pipeline.Statement.conditional_stmt <| Pipeline.Conditional.if_statement expr stmt
+
+def remove := "remove"
+
+def CreateDSLFuncCallStmt (func_name : String) (args : List Pipeline.Expr) : Pipeline.Statement :=
+  let qual_name := [func_name].to_qual_name
+  Pipeline.Statement.stray_expr $ Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args)
+
+def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
+| idents =>
+  Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
+
+def inst := "inst"
+def seq_num := "seq_num"
+def inst_seq_num_expr := [inst, seq_num].to_dsl_var_expr
+def violating_seq_num := "violating_seq_num"
+def squash := "squash"
+
+def String.to_dsl_var_expr : String → Pipeline.Expr
+| var_name =>
+  Pipeline.Expr.some_term (Pipeline.Term.var var_name)
+
+def Ctrlers.transition_to_ctrler's_first_state_stmt : Ctrlers → CtrlerName → Except String Pipeline.Statement
+| ctrlers, ctrler_name => do
+  let ctrler : Ctrler ← ctrlers.ctrler_from_name ctrler_name
+  let ctrler_first_state : StateName ← ctrler.init_trans_dest
+  pure $ Pipeline.Statement.transition ctrler_first_state
+  
+def Pipeline.Statement.to_block : Pipeline.Statement → Pipeline.Statement
+| stmt => Pipeline.Statement.block [stmt]
+
+def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Description → Pipeline.Statement → Except String (Pipeline.Description)
+| descript, stmt_to_append => do
+  match descript with
+  | .state state_name stmt_blk => do
+    let stmts ← stmt_blk.stmt_block
+    if H : stmts.length = 1 then
+      have hyp : 0 < stmts.length := by simp[H]
+      let stmt := stmts[0]'hyp
+  
+      match stmt with
+      | .await none await_stmts =>
+        pure
+        $ Pipeline.Description.state state_name 
+        $ Pipeline.Statement.await none $ await_stmts ++ [stmt_to_append]
+      | .listen_handle listen_stmt handle_blks =>
+        let stmts' ← listen_stmt.stmt_block
+        if H' : stmts'.length = 1 then
+          have hyp' : 0 < stmts'.length := by simp[H']
+          let stmt' := stmts'[0]
+          
+          match stmt' with
+          | .await none await_stmts' =>
+            pure
+            $ Pipeline.Description.state state_name 
+            $ Pipeline.Statement.listen_handle (Pipeline.Statement.await none $ await_stmts' ++ [stmt_to_append]) handle_blks
+          | _ => throw "Error: Expected to find 'await' stmt within a listen_handle ({stmt'})"
+        else
+          let msg : String := s!"Error: Listen stmt's stmt block has more than one stmt ({stmts'}), expected only 1, await"
+          throw msg
+
+      | _ => throw "Error: Expected to find 'await' or 'listen_handle' stmt"
+    else
+      let msg : String := s!"Error: State's stmt block has more than one stmt ({stmts}), expected only 1, await or listen_handle"
+      throw msg
+  | _ => throw "Error: Pipeline Description is not a 'state'"
+  
+def controller_info.state_from_name : Ctrler → StateName → Except String Pipeline.Description
+| ctrler, match_state_name => do
+  let states : List Pipeline.Description := ← ctrler.state_list;
+  let state ← states.findM? (do let state's_name ← ·.state_name; pure $ state's_name == match_state_name)
+  match state with
+  | some state' => pure state'
+  | none => throw "Error: Could not find state in controller"
