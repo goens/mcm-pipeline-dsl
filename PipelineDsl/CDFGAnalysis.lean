@@ -1505,7 +1505,10 @@ deriving Inhabited, BEq
 
 #eval [reg_file, write].to_qual_name == (Pipeline.QualifiedName.mk [reg_file, write])
 
-def NodeLabelledStmt.stmts_to_read_the_old_value (node_labelled_stmt : NodeLabelledStmt)
+def NodeLabelledStmt.stmts_to_read_the_old_value
+(node_labelled_stmt : NodeLabelledStmt) (old_var_dest : Identifier)
+-- NOTE: Maybe also take as input the following stmts after reading the old value,
+-- If the old value is stored in a Queue, the queue needs to be searched...
 : Except String (Pipeline.Statement) := do
   let stmt := node_labelled_stmt.labelled_stmt
   match stmt with
@@ -1514,7 +1517,7 @@ def NodeLabelledStmt.stmts_to_read_the_old_value (node_labelled_stmt : NodeLabel
       -- return a register file read
       -- Should check copy the original register file read call in?
       if let some written_reg_expr := arg_exprs[1]? then
-        pure $ CreateDSLVarAssignmentStmt old_load_value (CreateDSLRefFileReadExpr reg_file read [written_reg_expr])
+        pure $ CreateDSLVarAssignmentStmt old_var_dest (CreateDSLRefFileReadExpr reg_file read [written_reg_expr])
       else
         throw s!"Error, shouldn't get here, since this scope is only reached if arg_exprs.length == 2"
     else
@@ -1530,6 +1533,39 @@ def NodeLabelledStmt.stmts_to_read_the_old_value (node_labelled_stmt : NodeLabel
     throw s!"Error while accessing the old load value's Statement. We're not handling variable assignment just yet"
   | _ => throw s!"Error while accessing the old load value's Statement. Got an unexpected Statement: ({stmt})"
 
+def NodeLabelledStmt.stmts_to_write_replay_value_to_result_write_location
+(node_labelled_stmt : NodeLabelledStmt) (replay_var : Identifier)
+: Except String Pipeline.Statement := do
+  let stmt := node_labelled_stmt.labelled_stmt
+  match stmt with
+  | .stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name arg_exprs)) => do
+    if qual_name == [reg_file, write].to_qual_name && arg_exprs.length == 2 then
+      -- return a register file read
+      -- Should check copy the original register file read call in?
+      -- let written_reg_expr : Pipeline.Expr :=
+      --   if H : arg_exprs.length = 2 then
+      --     have h : 1 < arg_exprs.length := by simp[H];
+      --     arg_exprs[1]'h
+      --   else
+      --     default
+      if let some written_reg_expr := arg_exprs[1]? then
+        pure <| CreateDSLMsgCall reg_file write [replay_var.to_dsl_var_expr, written_reg_expr]
+      else
+        throw s!"Error, shouldn't get here, since this scope is only reached if arg_exprs.length == 2"
+    else
+      throw s!"Error while accessing Statement of a load's result write, got an unexpected function call: ({stmt})"
+  | .variable_assignment /- qual_name -/ _ /- expr -/ _ => do
+    -- TODO:
+    -- Access the variable assigned the old value;
+    -- Verify it IS a state var, i.e. it's persistent
+    -- Check the ctrler type this thing belongs in
+    -- If it's a queue, return a search API call,
+    -- If it's a ctrler, need to access it's contents somehow.... maybe just error for now
+    -- For now: just throw an error
+    throw s!"Error while accessing the old load value's Statement. We're not handling variable assignment just yet"
+  | _ => throw s!"Error while accessing the old load value's Statement. Got an unexpected Statement: ({stmt})"
+  
+  default
 
 -- AZ NOTE: This can be found from analysis, simply finding
 -- 1. IF there are states that are
