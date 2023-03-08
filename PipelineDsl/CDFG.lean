@@ -197,6 +197,7 @@ effects : Effects
 stmts : Stmts
 queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
+commit : Bool
 deriving Inhabited
 structure Transition where
 predicate : Predicate
@@ -208,6 +209,7 @@ stmts : Stmts
 trans_type : TransitionType
 queue_info : QueueInfo
 constraint_info : List ConstraintInfo -- Would come from state updates?
+commit : Bool
 deriving Inhabited, BEq
 -- instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
 
@@ -248,6 +250,7 @@ s!"Stmts: ({stmts})" ++ "\n" ++
 s!"Transition Type: ({transition.trans_type})" ++ "\n" ++
 s!"Queue Info: ({transition.queue_info})" ++ "\n" ++
 s!"Constraint Info: ({constraint})" ++ "\n" ++
+s!"Commit: ({transition.commit})" ++ "\n" ++
 "== End Transition ==\n"
 str
 instance : ToString Transition where toString := Transition.toString
@@ -261,6 +264,7 @@ def IncompleteTransition.new_of_name : StateName → IncompleteTransition
     stmts := [],
     queue_info := .None,
     constraint_info := []
+    commit := false
   }
 
 def Transition.prepend_constraints : Transition → List ConstraintInfo → Transition
@@ -274,6 +278,7 @@ def Transition.prepend_constraints : Transition → List ConstraintInfo → Tran
   trans_type := trans.trans_type
   queue_info := trans.queue_info
   constraint_info := constraints ++ trans.constraint_info
+  commit := trans.commit
 }
 
 /-
