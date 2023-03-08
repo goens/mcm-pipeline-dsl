@@ -49,6 +49,7 @@ def UpdateTransitionDest (transition : IncompleteTransition) (dest : String) (tr
   trans_type := trans_type
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+  commit := transition.commit
 }
 def AppendTransitionPredicate (transition : IncompleteTransition) (condition : Condition)
 : IncompleteTransition
@@ -60,6 +61,7 @@ def AppendTransitionPredicate (transition : IncompleteTransition) (condition : C
   stmts := transition.stmts
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+  commit := transition.commit
 }
 def AppendTransitionStmt (transition : IncompleteTransition) (stmt : Pipeline.Statement)
 : IncompleteTransition
@@ -71,6 +73,7 @@ def AppendTransitionStmt (transition : IncompleteTransition) (stmt : Pipeline.St
   stmts := transition.stmts.concat stmt
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+  commit := transition.commit
 }
 def AppendTransitionEffect (transition : IncompleteTransition) (effect : Pipeline.Statement)
 : IncompleteTransition
@@ -82,6 +85,7 @@ def AppendTransitionEffect (transition : IncompleteTransition) (effect : Pipelin
   stmts := transition.stmts
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+  commit := transition.commit
 }
 def AppendTransitionConstraint (transition : IncompleteTransition) (constraint : ConstraintInfo)
 : IncompleteTransition
@@ -93,6 +97,20 @@ def AppendTransitionConstraint (transition : IncompleteTransition) (constraint :
   stmts := transition.stmts
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info.concat constraint
+  commit := transition.commit
+}
+
+def CDFG.IncompleteTransition.set_commit_true (transition : IncompleteTransition)
+: IncompleteTransition
+:= {
+  predicate := transition.predicate
+  orig_state := transition.orig_state
+  messages := transition.messages
+  effects := transition.effects
+  stmts := transition.stmts
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info
+  commit := true
 }
 
 def UpdateCompleteTransitionsListsDestType
@@ -192,6 +210,7 @@ def AppendTransitionMessages (transition : IncompleteTransition) (message : Mess
   stmts := transition.stmts
   queue_info := transition.queue_info
   constraint_info := transition.constraint_info
+  commit := transition.commit
 }
 
 partial def StmtsToTransitions
@@ -496,8 +515,21 @@ partial def StmtsToTransitions
           else
             ({incomplete_transitions := transitions_with_effect,
               complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
-        | .labelled_statement _ stmt' =>
-          StmtsToTransitions ctrler transitions_lists.incomplete_transitions [stmt']
+        | .labelled_statement label stmt' =>
+          match label with
+          | .result_write =>
+            -- Append the result write to stmts list
+            let transitions_with_stmt : IncompleteTransitions :=
+              transitions_lists.incomplete_transitions.map (AppendTransitionStmt · stmt)
+            -- let transitions_with_effect : IncompleteTransitions :=
+            --   transitions_with_stmt.map (AppendTransitionEffect · stmt)
+
+            StmtsToTransitions ctrler transitions_with_stmt [stmt']
+          | .commit =>
+            -- Set commit to true, recursively check stmt'
+            let transitions_set_as_commit := transitions_lists.incomplete_transitions.map (·.set_commit_true)
+            StmtsToTransitions ctrler transitions_set_as_commit [stmt']
+
         /-
         -- these cases are not really used. skip!
         -/
@@ -544,6 +576,7 @@ def mapStateToNode
     stmts := []
     queue_info := queue_info
     constraint_info := []
+    commit := false
   }
 
   let transitions_lists : TransitionsLists :=
