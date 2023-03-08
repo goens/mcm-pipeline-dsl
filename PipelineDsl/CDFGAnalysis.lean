@@ -1639,12 +1639,15 @@ def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
     | _ => false
   | _ => false
 
-def CDFG.Transition.has_commit_labelled_effect (transition : Transition) : Bool :=
+-- def CDFG.Transition.has_commit_labelled_effect (transition : Transition) : Bool :=
+--   transition.effects.any (·.is_commit_labelled)
+
+def CDFG.Transition.has_commit_labelled_stmt (transition : Transition) : Bool :=
   transition.effects.any (·.is_commit_labelled)
 
 def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String Node := do
   let global_perform_nodes : List Node :=
-    (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_effect)))
+    (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_stmt)))
 
   match global_perform_nodes with
   | [] => throw "Error: No commit state found"
@@ -1662,7 +1665,7 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → N
 | this_node, predicating_node => do
   let pred_node_trans := predicating_node.transitions.filter (·.trans_type != .Reset)
   -- Only consider transitions that commit
-  let pred_node_commit_trans := pred_node_trans.filter (·.has_commit_labelled_effect)
+  let pred_node_commit_trans := pred_node_trans.filter (·.has_commit_labelled_stmt)
   let pred_node_msgs := List.join $ pred_node_commit_trans.map (·.messages) -- NOTE: What if there are multiple commit transitions?
   -- Find any messages the predicating node sends to this node that are from the "Committing Transition(s)"
   let msgs_from_predicating_node_to_this_node ← pred_node_msgs.filterM (λ msg => do
