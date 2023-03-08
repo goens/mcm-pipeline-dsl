@@ -1,5 +1,6 @@
 import PipelineDsl.AST
 import Murphi
+import PipelineDsl.LoadReplayHelpers
 
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
@@ -2104,3 +2105,146 @@ def controller_info.state_from_name : Ctrler → StateName → Except String Pip
   match state with
   | some state' => pure state'
   | none => throw "Error: Could not find state in controller"
+
+def List.to_block (stmts : List Pipeline.Statement) : Pipeline.Statement :=
+  Pipeline.Statement.block stmts
+
+partial def List.split_off_stmts_at_commit_and_inject_stmts
+(stmts : List Pipeline.Statement) (stmts_to_inject : List Pipeline.Statement)
+-- returns: (the stmts we kinda re-build with, the commit stmts)
+: Except String (List Pipeline.Statement × List Pipeline.Statement) := do
+  -- try tail recursion
+  match stmts with
+  | h :: t =>
+    let (tail_re_build_stmts, tail_commit_stmts) ← t.split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+
+    match h with
+    -- The case of interest...
+    | .labelled_statement label stmt =>
+      match label with
+      | .commit =>
+        -- return the two stmt & t
+        pure (stmts_to_inject, [stmt] ++ t)
+      | _ =>
+        pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .block stmts' =>
+      let (re_build_stmts, commit_stmts) ← stmts'.split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+      pure ([re_build_stmts.to_block] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts) -- NOTE: don't touch commit_stmts
+    -- Recursive cases, stmts that may contain stmts, then collect stmts, before recursing on t
+    | .when qual_name idents stmt =>
+      let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+      pure ([Pipeline.Statement.when qual_name idents re_build_stmts.to_block] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts)
+    | .await term? stmts' =>
+      let (re_build_stmts, commit_stmts) ← stmts'.split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+      pure ([Pipeline.Statement.await term? re_build_stmts] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts)
+    | .listen_handle stmt handle_blks =>
+      let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+      pure ([Pipeline.Statement.listen_handle re_build_stmts.to_block handle_blks] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts)
+    | .conditional_stmt cond =>
+      match cond with
+      | .if_statement expr stmt =>
+        let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+        pure (
+          [Pipeline.Statement.conditional_stmt $ Pipeline.Conditional.if_statement expr re_build_stmts.to_block] ++ tail_re_build_stmts,
+          commit_stmts ++ tail_commit_stmts
+          )
+      | .if_else_statement expr stmt stmt' =>
+        let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+        let (re_build_stmts', commit_stmts') ← [stmt'].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+        pure (
+          [
+            Pipeline.Statement.conditional_stmt
+            $ Pipeline.Conditional.if_else_statement expr re_build_stmts.to_block re_build_stmts'.to_block
+          ] ++ tail_re_build_stmts,
+          commit_stmts ++ commit_stmts' ++ tail_commit_stmts
+          )
+    -- Non recursive cases, collect stmt, simply recurse on t
+    | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
+      -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .stray_expr _ =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .complete _ =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .reset (String.mk _) =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .transition (String.mk _) =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .variable_assignment _ _ =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .value_declaration _ _ =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .variable_declaration _ =>
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+  | [] => pure ([], [])
+  -- termination_by stmts.length => by {
+  --   match stmts with
+  --   | h :: t => simp
+  --   | [] => rfl
+  -- }
+
+def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
+(state : Pipeline.Description) (stmts_to_inject : List Pipeline.Statement)
+-- Return
+-- 1. the state with commit smts replaced with injected stmts
+-- 2. the stmt at commit and stmts after
+: Except String (Pipeline.Description × Pipeline.Description) := do
+  -- open up state, look through stmts
+  match state with
+  | .state state_name stmt => do
+    let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement)
+      := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+    let updated_state := Pipeline.Description.state state_name updated_stmt_with_injected.to_block
+    let original_state_name := original_commit_code_prefix.append "_" |>.append state_name
+    let stmts_after_commit_state := Pipeline.Description.state original_state_name stmts_after_commit.to_block
+    pure (updated_state, stmts_after_commit_state)
+  | _ => throw "Error: Expected input Pipeline.Description to be a state. Instead got ({state})"
+
+-- AZ NOTE: TODO: place the API function names into a function name namespace
+-- And do the same for organizing other defined names
+def tail_search := "tail_search"
+def search_fail := "search_fail"
+def search_success := "search_success"
+
+def entry := "entry"
+def instruction := "instruction"
+-- def seq_num := "seq_num"
+
+def CreateDSLFIFOSearchAPI (dest_ctrler_name : CtrlerName) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
+  -- await LQ.tail_search(entry.instruction.seq_num == instruction.seq_num)
+  -- when search_success() from LQ
+  -- when search_fail() from LQ
+  let when_search_fail := Pipeline.Statement.when [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_success := Pipeline.Statement.when [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
+
+  let entry_seq_num_match : Pipeline.Expr :=
+    Pipeline.Expr.equal
+    (Pipeline.Term.qualified_var [entry, instruction, seq_num].to_qual_name)
+    (Pipeline.Term.qualified_var [instruction, seq_num].to_qual_name)
+
+  let search_api_term : Pipeline.Term := Pipeline.Term.function_call [dest_ctrler_name, tail_search].to_qual_name [entry_seq_num_match]
+  let search_api := Pipeline.Statement.await (some search_api_term) [when_search_success, when_search_fail]
+  search_api
+
+def search := "search"
+def min := "min"
+
+def CreateDSLUnorderedSearchAPI (dest_ctrler_name : CtrlerName) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
+  -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
+  -- when search_fail() from SB
+  -- when search_success(write_value) from SB
+  let when_search_fail := Pipeline.Statement.when [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_success := Pipeline.Statement.when [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
+
+  let entry_inst := (Pipeline.Term.qualified_var [entry, instruction, seq_num].to_qual_name)
+  let curr_ctrler_inst := (Pipeline.Term.qualified_var [instruction, seq_num].to_qual_name)
+  let entry_seq_num_match : Pipeline.Expr := Pipeline.Expr.equal entry_inst curr_ctrler_inst
+
+  let inst_and_entry_inst_seq_num_diff := Pipeline.Expr.sub curr_ctrler_inst entry_inst
+  let min_of_diff := Pipeline.Expr.some_term $ Pipeline.Term.function_call [(min : Identifier)].to_qual_name [inst_and_entry_inst_seq_num_diff]
+
+  -- AZ NOTE: min_of_diff may not be necessary...
+  let search_api_term : Pipeline.Term := Pipeline.Term.function_call [dest_ctrler_name, search].to_qual_name [entry_seq_num_match, min_of_diff]
+  let search_api := Pipeline.Statement.await (some search_api_term) [when_search_success, when_search_fail]
+  search_api
