@@ -411,12 +411,14 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let await_replay_start_state : Pipeline.Description := ←
     if is_issue_ctrler_pred_on_commit then do -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       pure (CreateReplayAwaitCommitStartMsgState four_nodes)
-    else if issue_ctrler_type == .BasicCtrler then do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
-      pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
-    else if issue_ctrler_type == .Unordered then do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
-      pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
-    else do
-      throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
+    else
+      match issue_ctrler_type with
+      | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
+        pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
+      | .Unordered => do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
+        pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
+      | .FIFO => do
+        throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
   -- AZ NOTE: Must insert or replace the state accordingly, based on the cases above...
 
   /- =================== New Issue Replay State ===================== -/
@@ -466,27 +468,36 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let ctrlers_with_issue_replay_state : Ctrlers := ←
     if is_issue_ctrler_pred_on_commit then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
-    else if issue_ctrler_type == .BasicCtrler then do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
-      let ctrlers_with_issue_await_replay_start_state ← ctrlers_with_commit_start_and_finish_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
-      ctrlers_with_issue_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
-    else if issue_ctrler_type == .Unordered then do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
-      let ctrlers_with_issue_await_replay_start_state ← ctrlers_with_commit_start_and_finish_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
-      ctrlers_with_issue_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
     else
-      throw "Error while adding created replay issue states to ctrlers: Shouldn't reach here, we aren't ready to handle .FIFO"
+      match issue_ctrler_type with
+      | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
+        let ctrlers_with_issue_await_replay_start_state ← ctrlers_with_commit_start_and_finish_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
+        ctrlers_with_issue_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
+      | .Unordered => do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
+        let ctrlers_with_issue_await_replay_start_state ← ctrlers_with_commit_start_and_finish_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
+        ctrlers_with_issue_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
+      | .FIFO =>
+        throw "Error while adding created replay issue states to ctrlers: Shouldn't reach here, we aren't ready to handle .FIFO"
 
+  let await_resp_ctrler_type ← (← ctrlers.ctrler_from_name global_complete_load_node.ctrler_name ).type
   /- ===== Add await replay states ===== -/
   let ctrlers_with_await_replay_response_state : Ctrlers := ←
-    if is_issue_ctrler_pred_on_commit then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
-      ctrlers_with_issue_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
-    else if issue_ctrler_type == .BasicCtrler then do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
-      let ctrlers_with_await_replay_start_state ← ctrlers_with_issue_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
-      ctrlers_with_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
-    else if issue_ctrler_type == .Unordered then do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
-      let ctrlers_with_await_replay_start_state ← ctrlers_with_issue_replay_state.update_ctrler_state global_perform_load_node.ctrler_name await_replay_start_state
-      ctrlers_with_await_replay_start_state.add_ctrler_states global_perform_load_node.ctrler_name [new_issue_replay_state]
+    if is_issue_ctrler_and_await_response_ctrler_same then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
+      ctrlers_with_issue_replay_state.add_ctrler_states global_complete_load_node.ctrler_name [new_await_replay_state]
     else
-      throw "Error while adding created replay issue states to ctrlers: Shouldn't reach here, we aren't ready to handle .FIFO"
+      match updated_replay_await_load_issued_state? with
+      | some updated_replay_await_load_issued_state =>
+        match await_resp_ctrler_type with
+        | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
+          let ctrlers_with_await_replay_start_state ← ctrlers_with_issue_replay_state.update_ctrler_state global_perform_load_node.ctrler_name updated_replay_await_load_issued_state
+          ctrlers_with_await_replay_start_state.add_ctrler_states global_complete_load_node.ctrler_name [new_await_replay_state]
+        | .Unordered => do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
+          let ctrlers_with_await_replay_start_state ← ctrlers_with_issue_replay_state.update_ctrler_state global_perform_load_node.ctrler_name updated_replay_await_load_issued_state
+          ctrlers_with_await_replay_start_state.add_ctrler_states global_complete_load_node.ctrler_name [new_await_replay_state]
+        | .FIFO =>
+          throw "Error while adding created await replay response states to ctrlers: Shouldn't reach here, we aren't ready to handle .FIFO"
+      | none =>
+        throw "Error while adding created await replay response states to ctrlers: Shouldn't reach here, based on the if condition, this should have been set to Option.some"
 
   return ctrlers_with_await_replay_response_state
 
