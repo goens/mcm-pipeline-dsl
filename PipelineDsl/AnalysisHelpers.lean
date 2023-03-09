@@ -2261,3 +2261,88 @@ def Ctrler.queue_search_api_to_send_msg (dest_ctrler : Ctrler) (msg_call : Pipel
     -- when search_fail() from SB
     -- when search_success(write_value) from SB
     pure $ CreateDSLUnorderedSearchAPI dest_ctrler_name [msg_call]
+
+def List.update_dsl_state (state_list : List Pipeline.Description) (state_to_update_with : Pipeline.Description) : Except String (List Pipeline.Description) := do
+  let state_to_update_name ← state_to_update_with.state_name
+  let updated_states := state_list.mapM (do
+    let list_state := ·;
+    let list_state_name := ← list_state.state_name;
+    if list_state_name == state_to_update_name then
+      pure state_to_update_with
+    else
+      pure list_state
+  )
+
+  updated_states
+
+def Ctrler.update_ctrler_state_list (ctrler : Ctrler) (updated_state_list : List Pipeline.Description) : Ctrler :=
+  {
+    name := ctrler.name
+    controller_descript := ctrler.controller_descript
+    entry_descript := ctrler.entry_descript
+    init_trans := ctrler.init_trans
+    state_vars := ctrler.state_vars
+    transition_list := ctrler.transition_list
+    ctrler_init_trans := ctrler.ctrler_init_trans
+    ctrler_trans_list := updated_state_list
+    ctrler_state_vars := ctrler.ctrler_state_vars
+  }
+
+def Ctrler.update_queue_state_list (ctrler : Ctrler) (updated_state_list : List Pipeline.Description) : Ctrler :=
+  {
+    name := ctrler.name
+    controller_descript := ctrler.controller_descript
+    entry_descript := ctrler.entry_descript
+    init_trans := ctrler.init_trans
+    state_vars := ctrler.state_vars
+    transition_list := updated_state_list
+    ctrler_init_trans := ctrler.ctrler_init_trans
+    ctrler_trans_list := ctrler.ctrler_trans_list
+    ctrler_state_vars := ctrler.ctrler_state_vars
+  }
+
+def Ctrler.update_state_list (ctrler : Ctrler) (updated_state_list : List Pipeline.Description) : Except String Ctrler := do
+  match ← ctrler.type with
+  | .BasicCtrler => return ctrler.update_ctrler_state_list updated_state_list
+  | .FIFO => return ctrler.update_queue_state_list updated_state_list
+  | .Unordered => return ctrler.update_queue_state_list updated_state_list
+
+def Ctrler.update_ctrler_state (ctrler : Ctrler) (updated_state : Pipeline.Description) : Except String Ctrler := do
+  -- let state_to_update_name ← updated_state.state_name
+  let state_list ← ctrler.state_list
+  let updated_state_list ← state_list.update_dsl_state updated_state
+  let updated_ctrler := ctrler.update_state_list updated_state_list
+
+  updated_ctrler
+
+def Ctrlers.update_ctrler (ctrlers : Ctrlers) (ctrler : Ctrler) : Except String Ctrlers := do
+  let ctrler_to_update_name := ctrler.name
+  let updated_ctrlers := ctrlers.map (
+    let list_ctrler := ·;
+    let list_ctrler_name := list_ctrler.name;
+    if list_ctrler_name == ctrler_to_update_name then
+      ctrler
+    else
+      list_ctrler
+  )
+
+  return updated_ctrlers
+
+def Ctrlers.update_ctrler_state (ctrlers : Ctrlers) (ctrler_name : CtrlerName) (updated_state : Pipeline.Description) : Except String Ctrlers := do
+  let ctrler ← ctrlers.ctrler_from_name ctrler_name
+  let updated_ctrler ← ctrler.update_ctrler_state updated_state
+  ctrlers.update_ctrler updated_ctrler
+
+def Ctrler.add_states (ctrler : Ctrler) (states_to_add : List Pipeline.Description) : Except String Ctrler := do
+  let state_list ← ctrler.state_list
+  let updated_state_list := state_list ++ states_to_add
+  let updated_ctrler ← ctrler.update_state_list updated_state_list
+
+  return updated_ctrler
+
+def Ctrlers.add_ctrler_states (ctrlers : Ctrlers) (ctrler_name : CtrlerName) (states_to_add : List Pipeline.Description) : Except String Ctrlers := do
+  let ctrler ← ctrlers.ctrler_from_name ctrler_name
+  let ctrler_with_states_added ← ctrler.add_states states_to_add
+  let updated_ctrlers ← ctrlers.update_ctrler ctrler_with_states_added
+
+  return updated_ctrlers
