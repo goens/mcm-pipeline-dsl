@@ -13,6 +13,7 @@ import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 import PipelineDsl.CDFG
 import PipelineDsl.DSLtoCDFG
 import PipelineDsl.CDFGAnalysis
+import PipelineDsl.CDFGLoadReplay
 
 open Lean Pipeline
 
@@ -150,6 +151,11 @@ def main (args : List String): IO Unit := do
   --   | .error msg => 
   --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
   --     []
+  let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers with
+    | .ok ctrler_list => ctrler_list
+    | .error msg => 
+      dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+      []
       
   println! s!"What ctrlers look like after TFSM:"
   println! s!"Ctrlers: {ctrlers}"
