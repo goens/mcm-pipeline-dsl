@@ -2178,11 +2178,8 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
     | .variable_declaration _ =>
       pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
   | [] => pure ([], [])
-  -- termination_by stmts.length => by {
-  --   match stmts with
-  --   | h :: t => simp
-  --   | [] => rfl
-  -- }
+-- termination_by _  => stmts.length - 1
+-- decreasing_by exact (by simp [List.length])
 
 def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
 (state : Pipeline.Description) (stmts_to_inject : List Pipeline.Statement)
@@ -2193,8 +2190,7 @@ def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
   -- open up state, look through stmts
   match state with
   | .state state_name stmt => do
-    let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement)
-      := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+    let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement) := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
     let updated_state := Pipeline.Description.state state_name updated_stmt_with_injected.to_block
     let original_state_name := original_commit_code_prefix.append "_" |>.append state_name
     let stmts_after_commit_state := Pipeline.Description.state original_state_name stmts_after_commit.to_block
@@ -2248,3 +2244,20 @@ def CreateDSLUnorderedSearchAPI (dest_ctrler_name : CtrlerName) (success_case_st
   let search_api_term : Pipeline.Term := Pipeline.Term.function_call [dest_ctrler_name, search].to_qual_name [entry_seq_num_match, min_of_diff]
   let search_api := Pipeline.Statement.await (some search_api_term) [when_search_success, when_search_fail]
   search_api
+
+/- Send a msg to this ctrler -/
+def Ctrler.queue_search_api_to_send_msg (dest_ctrler : Ctrler) (msg_call : Pipeline.Statement) : Except String (Pipeline.Statement) := do
+  let dest_ctrler_name := dest_ctrler.name
+  let dest_ctrler_type ← dest_ctrler.type
+  match dest_ctrler_type with
+  | .BasicCtrler => pure msg_call
+  | .FIFO =>
+    -- await LQ.tail_search(entry.instruction.seq_num == instruction.seq_num)
+    -- when search_success() from LQ
+    -- when search_fail() from LQ
+    pure $ CreateDSLFIFOSearchAPI dest_ctrler_name [msg_call]
+  | .Unordered =>
+    -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
+    -- when search_fail() from SB
+    -- when search_success(write_value) from SB
+    pure $ CreateDSLUnorderedSearchAPI dest_ctrler_name [msg_call]
