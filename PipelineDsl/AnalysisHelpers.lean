@@ -2346,3 +2346,8 @@ def Ctrlers.add_ctrler_states (ctrlers : Ctrlers) (ctrler_name : CtrlerName) (st
   let updated_ctrlers ← ctrlers.update_ctrler ctrler_with_states_added
 
   return updated_ctrlers
+
+def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement) : Except String Pipeline.Statement :=
+  match labelled_stmt with
+  | .labelled_statement /-label-/ _ stmt => pure stmt
+  | _ => throw "Error while trying to get a labelled_stmt's_stmt: input stmt is not a labelled statement"
