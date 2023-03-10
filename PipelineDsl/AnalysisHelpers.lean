@@ -1928,7 +1928,7 @@ def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β
 --   -- Should also check we only found 1 match.
 --   default
 
-def Pipeline.Statement.is_result_write_from_effects : Pipeline.Statement → Bool
+def Pipeline.Statement.is_result_write_from_stmts : Pipeline.Statement → Bool
 | stmt =>
   match stmt with
   | .labelled_statement label /-stmt-/ _ =>
