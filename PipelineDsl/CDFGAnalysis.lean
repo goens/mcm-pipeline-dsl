@@ -289,7 +289,7 @@ def CDFG.Graph.unique_msg'd_states_by_node : Graph → StateName → Except Stri
     -- let msg_dest_node : List Node
     current_node.unique_msg'd_states graph
   else
-    throw s!"Error: (graph, unique msg'd states) No node with name: ({state_name})"
+    throw s!"Error: (graph, unique msg'd states) No node with name: ({state_name})\nGraph: ({graph})"
 
 def CDFG.Graph.unique_transition'd_states_by_node : Graph → StateName → Except String (List StateName)
 | graph, state_name => do
@@ -1480,7 +1480,7 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_type : InstT
 
 def CDFG.Transition.is_has_result_write_labelled (transition : Transition)
 : (Option Pipeline.Statement) :=
-  let result_write_stmts := transition.effects.find? (·.is_result_write_from_effects)
+  let result_write_stmts := transition.stmts.find? (·.is_result_write_from_stmts)
   result_write_stmts
   -- match result_write_stmts with
   -- | [] => pure none
@@ -1631,19 +1631,22 @@ def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except St
 --     dbg_trace s!"Graph Nodes: ({graph.nodes.map (·.current_state)})"
 --     throw "Error: No global perform node found"
 
-def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
-  match stmt with
-  | Pipeline.Statement.labelled_statement label /-stmt-/ _ =>
-    match label with
-    | .commit => true
-    | _ => false
-  | _ => false
+-- NOTE: This function won't do what it's supposed to,
+-- Because commit labels are not stored in transition.stmts, just recorded as a bool flag
+-- def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
+--   match stmt with
+--   | Pipeline.Statement.labelled_statement label /-stmt-/ _ =>
+--     match label with
+--     | .commit => true
+--     | _ => false
+--   | _ => false
 
 -- def CDFG.Transition.has_commit_labelled_effect (transition : Transition) : Bool :=
 --   transition.effects.any (·.is_commit_labelled)
 
 def CDFG.Transition.has_commit_labelled_stmt (transition : Transition) : Bool :=
-  transition.effects.any (·.is_commit_labelled)
+  transition.commit
+  -- transition.stmts.any (·.is_commit_labelled)
 
 def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String Node := do
   let global_perform_nodes : List Node :=
@@ -1719,13 +1722,14 @@ def CDFG.Node.global_perform_load_stmt (node : Node) : Except String Pipeline.St
 
 def CDFG.Node.not_reset_transitions (node : Node) : Transitions := node.transitions.filter (·.trans_type != .Reset)
 
-def CDFG.Node.result_write_stmt (node : Node) : Except String Pipeline.Statement := do
-  let not_reset_trans := node.not_reset_transitions
-  let effects := not_reset_trans.map (·.effects) |>.join |>.eraseDups
-  let result_write_stmts := effects.filter (·.is_result_write_from_effects)
+-- AZ NOTE UNUSED: This is unused at the moment... 
+-- def CDFG.Node.result_write_stmt (node : Node) : Except String Pipeline.Statement := do
+--   let not_reset_trans := node.not_reset_transitions
+--   let stmts := not_reset_trans.map (·.stmts) |>.join |>.eraseDups
+--   let result_write_stmts := stmts.filter (·.is_result_write_from_stmts)
 
-  match result_write_stmts with
-  | [] => throw "Error: No result write stmts found"
-  | [stmt] => pure stmt
-  | _ => throw "Error: More than one result write stmts found"
+--   match result_write_stmts with
+--   | [] => throw "Error: No result write stmts found"
+--   | [stmt] => pure stmt
+--   | _ => throw "Error: More than one result write stmts found"
 
