@@ -810,6 +810,7 @@ partial def get_stmts_with_transitions
   | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
   | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
   | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
+  | Statement.labelled_statement /-label-/ _ stmt => get_stmts_with_transitions stmt
   -- | Statement.listen_handle  => 
   | _ => default
 
@@ -889,6 +890,7 @@ partial def ast0038_trans_ident_to_trans_list
           -- dbg_trace "==END when ==\n"
           true
           | Statement.listen_handle stmt1 lst => true
+          | Statement.labelled_statement label stmt' => true
           | _ => false
         )
       | Statement.await _ await_lst => await_lst
@@ -898,6 +900,7 @@ partial def ast0038_trans_ident_to_trans_list
       | Statement.complete iden2 => [stmt]
       | Statement.conditional_stmt cond => [stmt]
       | Statement.listen_handle stmt1 lst => [stmt]
+      | Statement.labelled_statement label stmt' => [stmt]
       | _ => []
     | _ => []
   )
@@ -971,6 +974,9 @@ def ctrl_find_entry_states
     init_trans := ctrl.init_trans,
     state_vars := ctrl.state_vars,
     transition_list := ast0039_trans_ident_to_list (ast0038_trans_ident_to_trans_list ctrl.init_trans.get! all_states []) all_states
+      -- let transitioned_to_state_names := (ast0038_trans_ident_to_trans_list ctrl.init_trans.get! all_states [])
+      -- dbg_trace s!"$$transitioned_to_state_names: {transitioned_to_state_names}"
+      -- ast0039_trans_ident_to_list transitioned_to_state_names all_states,
     ctrler_init_trans := ctrl.ctrler_init_trans,
     ctrler_state_vars := ctrl.ctrler_state_vars
     ctrler_trans_list := ctrl.ctrler_trans_list
