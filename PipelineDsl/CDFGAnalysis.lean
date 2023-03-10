@@ -871,9 +871,12 @@ def PostReceivePathsUniqueConstraints : List CtrlerPathConstraint → List Ctrle
   let non_empty_unique_post_constraints := unique_post_ctrler_constraints.filter (·.constraints.length > 0)
   pure non_empty_unique_post_constraints
 
+def CDFG.Node.non_reset_transitions (node : Node) : (Transitions) :=
+  node.transitions.filter (·.trans_type != .Reset)
+
 def CDFG.Graph.nodes_transitioning_to_node (graph : Graph) (node : Node)
 : (List Node) :=
-  graph.nodes.filter (·.transitions.any (·.is_transition_to_state_name node.current_state))
+  graph.nodes.filter (·.non_reset_transitions.any (·.is_transition_to_state_name node.current_state))
 
 partial def CDFG.Graph.first_msging_ctrler_node_from_node (graph : Graph) (node : Node) (visited : List Node)
 : Except String Node := do
@@ -1738,3 +1741,26 @@ def CDFG.Node.not_reset_transitions (node : Node) : Transitions := node.transiti
 --   | [stmt] => pure stmt
 --   | _ => throw "Error: More than one result write stmts found"
 
+def CDFG.Condition.is_pred_inst_not_load (cond : Condition) : Bool :=
+  match cond with
+  | .DSLExpr expr => expr.is_contains_is_head_api
+  | _ => false
+
+def CDFG.Node.is_pred_by_instruction_not_load (node : Node) (dest_node_name : StateName) : Bool :=
+  let trans := node.non_reset_transitions
+  let trans_to_dest := trans.filter (·.dest_state == dest_node_name)
+  let preds := trans_to_dest.map (·.predicate) |>.join |>.eraseDups
+
+  let exists_pred_on_not_load := preds.any (·.is_pred_inst_not_load)
+  exists_pred_on_not_load
+
+def CDFG.Graph.filter_is_node_for_ld (graph : Graph) (node : Node) : Bool :=
+  let nodes_transitioning_to_node := graph.nodes_transitioning_to_node node
+  let is_any_node_trans_to_this_node_not_for_load : Bool := nodes_transitioning_to_node.any (·.is_pred_by_instruction_not_load node.current_state)
+
+  match is_any_node_trans_to_this_node_not_for_load with
+  | true => false -- then this state path is not for load, i.e. is pred on instruction.op != ld
+  | false => true -- then loads may take this path
+
+def CDFG.Graph.filter_input_nodes_only_ld (graph : Graph) (nodes : List Node) : List Node :=
+  nodes.filter ( graph.filter_is_node_for_ld · )
