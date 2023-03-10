@@ -505,6 +505,8 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers)
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
+  dbg_trace "$$LoadReplay ctrlers: {ctrlers}"
+  dbg_trace "$$LoadReplay graph: {graph}"
 
   -- The function should do as the comments below describe.
   let graph_with_load_replay! := graph.AddLoadReplayToCtrlers ctrlers
