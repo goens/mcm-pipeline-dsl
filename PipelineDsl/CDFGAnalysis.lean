@@ -1510,17 +1510,18 @@ def NodeLabelledStmt.stmts_to_read_the_old_value
 -- NOTE: Maybe also take as input the following stmts after reading the old value,
 -- If the old value is stored in a Queue, the queue needs to be searched...
 : Except String (Pipeline.Statement) := do
-  let stmt := node_labelled_stmt.labelled_stmt
+  let labelled_stmt := node_labelled_stmt.labelled_stmt
+  let stmt ← labelled_stmt.labelled_stmt's_stmt
   match stmt with
   | .stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name arg_exprs)) => do
-    if qual_name == [reg_file, write].to_qual_name && arg_exprs.length == 2 then
+    if qual_name == [reg_file, write].to_qual_name && arg_exprs.length == 2 then do
       -- return a register file read
       -- Should check copy the original register file read call in?
-      if let some written_reg_expr := arg_exprs[1]? then
+      if let some written_reg_expr := arg_exprs[1]? then do
         pure $ CreateDSLVarAssignmentStmt old_var_dest (CreateDSLRefFileReadExpr reg_file read [written_reg_expr])
-      else
+      else do
         throw s!"Error, shouldn't get here, since this scope is only reached if arg_exprs.length == 2"
-    else
+    else do
       throw s!"Error while accessing Statement of a load's result write, got an unexpected function call: ({stmt})"
   | .variable_assignment /- qual_name -/ _ /- expr -/ _ => do
     -- TODO:
@@ -1531,15 +1532,16 @@ def NodeLabelledStmt.stmts_to_read_the_old_value
     -- If it's a ctrler, need to access it's contents somehow.... maybe just error for now
     -- For now: just throw an error
     throw s!"Error while accessing the old load value's Statement. We're not handling variable assignment just yet"
-  | _ => throw s!"Error while accessing the old load value's Statement. Got an unexpected Statement: ({stmt})"
+  | _ => do throw s!"Error while accessing the old load value's Statement. Got an unexpected Statement: ({stmt})"
 
 def NodeLabelledStmt.stmts_to_write_replay_value_to_result_write_location
 (node_labelled_stmt : NodeLabelledStmt) (replay_var : Identifier)
 : Except String Pipeline.Statement := do
-  let stmt := node_labelled_stmt.labelled_stmt
+  let labelled_stmt := node_labelled_stmt.labelled_stmt
+  let stmt ← labelled_stmt.labelled_stmt's_stmt
   match stmt with
   | .stray_expr (Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name arg_exprs)) => do
-    if qual_name == [reg_file, write].to_qual_name && arg_exprs.length == 2 then
+    if qual_name == [reg_file, write].to_qual_name && arg_exprs.length == 2 then do
       -- return a register file read
       -- Should check copy the original register file read call in?
       -- let written_reg_expr : Pipeline.Expr :=
@@ -1548,11 +1550,11 @@ def NodeLabelledStmt.stmts_to_write_replay_value_to_result_write_location
       --     arg_exprs[1]'h
       --   else
       --     default
-      if let some written_reg_expr := arg_exprs[1]? then
+      if let some written_reg_expr := arg_exprs[1]? then do
         pure <| CreateDSLMsgCall reg_file write [replay_var.to_dsl_var_expr, written_reg_expr]
-      else
+      else do
         throw s!"Error, shouldn't get here, since this scope is only reached if arg_exprs.length == 2"
-    else
+    else do
       throw s!"Error while accessing Statement of a load's result write, got an unexpected function call: ({stmt})"
   | .variable_assignment /- qual_name -/ _ /- expr -/ _ => do
     -- TODO:
@@ -1562,10 +1564,8 @@ def NodeLabelledStmt.stmts_to_write_replay_value_to_result_write_location
     -- If it's a queue, return a search API call,
     -- If it's a ctrler, need to access it's contents somehow.... maybe just error for now
     -- For now: just throw an error
-    throw s!"Error while accessing the old load value's Statement. We're not handling variable assignment just yet"
-  | _ => throw s!"Error while accessing the old load value's Statement. Got an unexpected Statement: ({stmt})"
-  
-  default
+    throw s!"Error while trying to write replay val to the old val location. We're not handling variable assignment just yet"
+  | _ => do throw s!"Error while trying to write replay val to the old val location. Got an unexpected Statement: ({stmt})"
 
 -- AZ NOTE: This can be found from analysis, simply finding
 -- 1. IF there are states that are
@@ -1670,11 +1670,16 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → N
   -- Only consider transitions that commit
   let pred_node_commit_trans := pred_node_trans.filter (·.has_commit_labelled_stmt)
   let pred_node_msgs := List.join $ pred_node_commit_trans.map (·.messages) -- NOTE: What if there are multiple commit transitions?
+
+  dbg_trace s!"$$Pred Node Msgs: ({pred_node_msgs})"
   -- Find any messages the predicating node sends to this node that are from the "Committing Transition(s)"
   let msgs_from_predicating_node_to_this_node ← pred_node_msgs.filterM (λ msg => do
     let dest_ctrler := ← msg.dest_ctrler;
+    -- dbg_trace s!"$$Dest Ctrler: ({dest_ctrler})"
+    -- dbg_trace s!"$$This Ctrler: ({this_node.ctrler_name})"
     pure $ dest_ctrler == this_node.ctrler_name
     )
+  dbg_trace s!"$$msgs_from_predicating_node_to_this_node: ({msgs_from_predicating_node_to_this_node})"
   
   let this_node_transitions := this_node.transitions.filter (·.trans_type != .Reset)
   let this_node_preds := List.join $ this_node_transitions.map (·.predicate)
@@ -1682,8 +1687,8 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → N
   -- Match the msgs with the awaits here
   let msgs_from_pred_that_this_node_awaits := ← msgs_from_predicating_node_to_this_node.filterM (λ msg => do -- writing this more explicitly, lean's parser couldn't work this out...
     -- let msg_name ← msg.name
-    let ctrler_name ← msg.dest_ctrler
-    this_node_await_preds.anyM (CDFG.Condition.is_await_on_msg_from_ctrler · msg ctrler_name)
+    let pred_ctrler_name := predicating_node.ctrler_name
+    this_node_await_preds.anyM (CDFG.Condition.is_await_on_msg_from_ctrler · msg pred_ctrler_name)
   )
 
   -- TODO: If there are msgs from pred node that this node awaits, then this node is pred on the commit state
