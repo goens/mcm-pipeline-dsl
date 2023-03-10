@@ -2070,9 +2070,9 @@ def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
 | idents =>
   Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
 
-def inst := "inst"
+-- def inst := "inst"
 def seq_num := "seq_num"
-def inst_seq_num_expr := [inst, seq_num].to_dsl_var_expr
+def inst_seq_num_expr := [instruction, seq_num].to_dsl_var_expr
 def violating_seq_num := "violating_seq_num"
 def squash := "squash"
 
@@ -2273,21 +2273,22 @@ def CreateDSLUnorderedSearchAPI (dest_ctrler_name : CtrlerName) (success_case_st
   search_api
 
 /- Send a msg to this ctrler -/
-def Ctrler.queue_search_api_to_send_msg (dest_ctrler : Ctrler) (msg_call : Pipeline.Statement) : Except String (Pipeline.Statement) := do
+def Ctrler.queue_search_api_to_send_msg (dest_ctrler : Ctrler) (msg_call : Pipeline.Statement) (additional_stmts : List Pipeline.Statement)
+: Except String (Pipeline.Statement) := do
   let dest_ctrler_name := dest_ctrler.name
   let dest_ctrler_type ← dest_ctrler.type
   match dest_ctrler_type with
-  | .BasicCtrler => pure msg_call
+  | .BasicCtrler => pure $ ([msg_call] ++ additional_stmts).to_block
   | .FIFO =>
     -- await LQ.tail_search(entry.instruction.seq_num == instruction.seq_num)
     -- when search_success() from LQ
     -- when search_fail() from LQ
-    pure $ CreateDSLFIFOSearchAPI dest_ctrler_name [msg_call]
+    pure $ CreateDSLFIFOSearchAPI dest_ctrler_name $ [msg_call] ++ additional_stmts
   | .Unordered =>
     -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
     -- when search_fail() from SB
     -- when search_success(write_value) from SB
-    pure $ CreateDSLUnorderedSearchAPI dest_ctrler_name [msg_call]
+    pure $ CreateDSLUnorderedSearchAPI dest_ctrler_name $ [msg_call] ++ additional_stmts
 
 def List.update_dsl_state (state_list : List Pipeline.Description) (state_to_update_with : Pipeline.Description) : Except String (List Pipeline.Description) := do
   let state_to_update_name ← state_to_update_with.state_name
