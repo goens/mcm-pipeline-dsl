@@ -406,11 +406,12 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   -- Issue Ctrler / State info
   let issue_ctrler_type ← (← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name ).type
   -- Particularly if the Issue Ctrler's state(s) are predicated on Commit
-  let issue_ctrler_pred_on_commit : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
-  dbg_trace s!"$$issue_ctrler_pred_on_commit: ({issue_ctrler_pred_on_commit})"
-  let is_issue_ctrler_pred_on_commit : Bool := issue_ctrler_pred_on_commit.length > 0
+  let issue_ctrler_pred_on_commit_nodes : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
+  let issue_ctrler_pred_on_commit_nodes_for_load := graph.filter_input_nodes_only_ld issue_ctrler_pred_on_commit_nodes
+  dbg_trace s!"$$issue_ctrler_pred_on_commit_nodes_for_load: ({issue_ctrler_pred_on_commit_nodes_for_load})"
+  let is_issue_ctrler_pred_on_commit : Bool := issue_ctrler_pred_on_commit_nodes_for_load.length > 0
   dbg_trace s!"$$is_issue_ctrler_pred_on_commit: ({is_issue_ctrler_pred_on_commit})"
-  let issue_ctrler_node_pred_on_commit? : Option Node := if is_issue_ctrler_pred_on_commit then issue_ctrler_pred_on_commit.head? else none
+  let issue_ctrler_node_pred_on_commit? : Option Node := if is_issue_ctrler_pred_on_commit then issue_ctrler_pred_on_commit_nodes_for_load.head? else none
 
   let is_issue_ctrler_and_await_response_ctrler_same := global_perform_load_node.ctrler_name == global_complete_load_node.ctrler_name
   dbg_trace s!"global_perform_load_node: ({global_perform_load_node})"
