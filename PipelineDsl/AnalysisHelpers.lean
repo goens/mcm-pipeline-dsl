@@ -1146,6 +1146,36 @@ partial def Pipeline.Expr.is_contains_is_head_api : Pipeline.Expr → Bool
   | _ => false
 end
 
+def instruction := "instruction"
+def op := "op"
+def ld := "ld"
+
+def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
+  Pipeline.QualifiedName.mk idents
+
+mutual
+partial def Pipeline.Term.is_instruction_not_eq_ld : Pipeline.Term → Bool
+| term =>
+  match term with
+  | .expr expr' =>
+    expr'.is_contains_instruction_not_eq_ld
+  | _ => false
+
+partial def Pipeline.Expr.is_contains_instruction_not_eq_ld : Pipeline.Expr → Bool
+| expr =>
+  match expr with
+  | .equal term1 term2 =>
+    match term1, term2 with
+    | .qualified_var qual_var, .var ident =>
+      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+    | .var ident, .qualified_var qual_var =>
+      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+    | _, _ => false
+  | .binand term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld
+  -- | .binor term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld
+  | _ => false
+end
+
 -- partial def Pipeline.Term.is_search_older_seq_num_success : Pipeline.Term → CtrlerName → Bool
 -- | term, ctrler_name =>
 --   match term with
@@ -1970,9 +2000,6 @@ def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
 
 -- abbrev IdentList := List Identifier
 
-def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
-  Pipeline.QualifiedName.mk idents
-
 def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipeline.Statement :=
   match stmt with
   | .labelled_statement _ stmt => stmt
@@ -2204,7 +2231,7 @@ def search_fail := "search_fail"
 def search_success := "search_success"
 
 def entry := "entry"
-def instruction := "instruction"
+-- def instruction := "instruction"
 -- def seq_num := "seq_num"
 
 def CreateDSLFIFOSearchAPI (dest_ctrler_name : CtrlerName) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
