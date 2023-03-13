@@ -45,7 +45,7 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
     let all_joined_ctrlers : List (List dsl_trans_info) :=
     ctrlers.map (
       λ ctrler =>
-        dbg_trace s!"preparing to emit murphi for ctrler: ({ctrler})"
+        --dbg_trace s!"preparing to emit murphi for ctrler: ({ctrler})"
         let states : List Description :=
           if ctrler.init_trans.isSome then
             ctrler.transition_list.get!
@@ -96,8 +96,14 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
     let murphi_files : List MurphiFile := --Murϕ.Program :=
     gen_murphi_litmus_test_programs_no_RENAME_no_IQ_no_ROB const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
 
-    if emit then
+    if emit then do
+      if !(← System.FilePath.pathExists directory) then
+        IO.FS.createDir directory
       let _ ← murphi_files.mapM
-        fun file => IO.FS.writeFile (directory / file.filename.append ".m") file.program.toString
+        fun file => do
+        let filename : System.FilePath := directory / file.filename.append ".m"
+        if (← System.FilePath.pathExists filename) then
+          IO.FS.removeFile filename
+        IO.FS.writeFile filename file.program.toString
     if testing then
       IO.println teststr

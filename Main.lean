@@ -68,8 +68,8 @@ def runMainCmd : Cli.Parsed → IO UInt32
       | none => pure ()
       | some tests =>
         transformTesting ast $ tests.as! $ Array Nat
-  if args.hasFlag "emit-murphi" || args.hasFlag "murphiTesting" then
-    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphiTesting") directory ast
+  if args.hasFlag "emit-murphi" || args.hasFlag "murphi-testing" then
+    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphi-testing") directory ast
 
 
   return 0
@@ -82,7 +82,7 @@ def mainCmd := `[Cli|
       r, "round-trip";                       "Round trip the AST through the parser and pretty printer"
       s, "sanity-check";                     "Run sanity check on the round tripped code"
       a, "pretty-print-ast";                 "Pretty print the AST"
-      m, "emit-muprhi";                      "Emit output Murphi"
+      m, "emit-murphi";                      "Emit output Murphi"
       M, "muprhi-testing";                   "Run Murphi-specific tests"
       D, "output-dir" : String;              "Output directory for emitting Murphi"
       t, "transformer-testing" : Array Nat;  "Print witnesses when exploring"
