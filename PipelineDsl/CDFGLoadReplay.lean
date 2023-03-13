@@ -364,7 +364,15 @@ def UpdateCommitCtrlerToStartReplayLoad
   -- let commit_ctrler_name := four_nodes.commit_node.ctrler_name
   -- let original_commit_code_state_name := original_commit_code_prefix ++ "_" ++ commit_ctrler_name
 
-  let (updated_start_replay_commit_po_state, original_commit_actions_state) ← commit_state.split_off_stmts_at_commit_and_inject_stmts [start_replay_msg, trans_to_commit_await_replay_complete]
+  -- Create another if stmt: if (instruction.op == ld) {start_replay_msg, trans_to_commit_await_replay_complete}
+  -- else {trans_to_original_commit_code_state}
+  let if_instruction_is_ld_expr := Pipeline.Expr.equal (Pipeline.Term.qualified_var [instruction, op].to_qual_name) (Pipeline.Term.var ld)
+  let original_commit_code_state_name := original_commit_code_prefix.append "_" |>.append four_nodes.commit_node.current_state
+  let trans_to_original_commit_code_state := Pipeline.Statement.transition original_commit_code_state_name
+  let do_replay_if_inst_is_load_if_stmt := Pipeline.Statement.conditional_stmt $
+    Pipeline.Conditional.if_else_statement if_instruction_is_ld_expr [start_replay_msg, trans_to_commit_await_replay_complete].to_block trans_to_original_commit_code_state
+
+  let (updated_start_replay_commit_po_state, original_commit_actions_state) ← commit_state.split_off_stmts_at_commit_and_inject_stmts [do_replay_if_inst_is_load_if_stmt]
 
   return (updated_start_replay_commit_po_state, original_commit_actions_state)
 
