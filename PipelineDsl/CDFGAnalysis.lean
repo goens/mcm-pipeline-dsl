@@ -99,7 +99,7 @@ def Pipeline.Statement.await_when's_sending_node (stmt : Pipeline.Statement) (gr
   -- If more than one node, or 0, throw error
   match msg_nodes with
   | [node] => pure node
-  | _ => throw s!"Statement: More than one node in ctrler: ({ctrler_name}) with msg: ({msg_name})"
+  | _ => throw s!"Statement: More than one node in ctrler: ({ctrler_name}) with msg: ({msg_name})\nMsg Nodes: ({msg_nodes})"
 
 def CDFG.Condition.await_pred's_sending_node (condition : Condition) (graph : Graph)
 : Except String Node := do
@@ -1115,7 +1115,7 @@ partial def CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates
     let downstream_ctrlers ← states_msg'd.mapM (CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates post_receive_graph pre_receive_graph total_graph · ctrlers (dist + 1))
     let just_downstream_ctrlers := downstream_ctrlers.filter (·.isSome)
     match just_downstream_ctrlers with
-    | [] => pure none
+    | [] => pure none -- pure $ some (⟨node.ctrler_name, []⟩,0)
     | [one] => pure (one)
     | list => -- choose the closest one from
       let ctrler_states_dist := list.map (·.get!)
