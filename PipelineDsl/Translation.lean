@@ -2904,6 +2904,42 @@ partial def find_when_from_transition
 
   when_stmt
 
+partial def find_state_name_matching_when_msg
+(trans_list : List Pipeline.Description)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: StateName
+:=
+  let state_name_with_matching_func_and_src_ctrler_name :=
+  trans_list.map (
+    λ trans =>
+      -- get the transition stmts, find stmts
+      -- which 
+      match trans with
+      | Description.state state_name stmt =>
+        match stmt with
+        | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
+          let when_blk :=
+          recursive_await_when_search lst_stmts func_name curr_ctrler_name
+          if when_blk.length > 0 then
+            some state_name
+          else
+            none
+        | _ => dbg_trace "stmt under transition should be blk!"
+          none
+      | _ => dbg_trace "wasn't passed a transition?"
+        none
+  )
+  
+  let no_none := state_name_with_matching_func_and_src_ctrler_name.filter (·.isSome)
+  match no_none with
+  | [some state_name] => state_name
+  | _ :: _ => dbg_trace "found multiple matching when stmts?"
+    default
+  | [] => dbg_trace "found no matching when stmts?"
+    default
+
 -- partial def ast_expr_to_murphi_expr_for_a_fifo_buffer
 -- (expr : Pipeline.Expr)
 -- :=
@@ -3209,6 +3245,9 @@ partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
 
 (expected_func : Identifier)
 (expected_struct : Identifier)
+
+(murphi_when_stmts : Option (List Murϕ.Statement))
+(if_in_when_state : Option Murϕ.Expr)
 :
 -- List Murϕ.Statement -- if stmt..
 lst_stmts_decls
@@ -3306,26 +3345,43 @@ lst_stmts_decls
   dbg_trace "##### END match handle block #####"
   -- This would be the if stmt
   -- to do handle ROB Squash signals
+  let error_if_not_on_expected_state := [murϕ| error "Controller is not on an expected state for a msg."]
+
   let trans_handle_squash_if_stmt : lst_stmts_decls :=
   match trans_handle_squash_list with
   | [] => --dbg_trace ""
     -- Nothing found, nothing to generate?
-    empty_stmt_decl_lsts
+    match murphi_when_stmts, if_in_when_state with
+    | none, none =>
+      empty_stmt_decl_lsts
+    | some when_stmts, some if_cond_expr =>
+      let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_cond_expr when_stmts [] [error_if_not_on_expected_state];
+      ⟨ [ murphi_if_stmt ], [] ⟩ 
+    | _, _ => dbg_trace "ERROR, when stmts and if cond expr aren't either both none or some"
+      default
   | [one] => 
     let murphi_if_condition : Murϕ.Expr := one.1
     let murphi_true_cond_stmts : lst_stmts_decls := one.2
 
-    let stmts_decls : lst_stmts_decls := {
-      stmts := [
-        [murϕ|
-        if (£murphi_if_condition) then
-        £murphi_true_cond_stmts.stmts
-        endif
-        ]
-      ],
-      decls := murphi_true_cond_stmts.decls
-    }
-    stmts_decls
+    match murphi_when_stmts, if_in_when_state with
+    | none, none =>
+      let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt murphi_if_condition murphi_true_cond_stmts.stmts [] [error_if_not_on_expected_state];
+      ⟨ [ murphi_if_stmt ], murphi_true_cond_stmts.decls ⟩ 
+    | some when_stmts, some if_cond_expr =>
+      let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_cond_expr when_stmts [(murphi_if_condition, murphi_true_cond_stmts.stmts)] [error_if_not_on_expected_state];
+      ⟨ [ murphi_if_stmt ], murphi_true_cond_stmts.decls ⟩ 
+    | _, _ => dbg_trace "ERROR, when stmts and if cond expr aren't either both none or some"
+      default
+    -- let stmts_decls : lst_stmts_decls := {
+    --   stmts := [
+    --     [murϕ|
+    --     if (£murphi_if_condition) then
+    --     £murphi_true_cond_stmts.stmts
+    --     endif
+    --     ]
+    --   ],
+    --   decls := murphi_true_cond_stmts.decls
+    -- }
   | h :: t => 
     let len_2_if_conds : Bool :=
     trans_handle_squash_list.length == 2
@@ -3341,23 +3397,32 @@ lst_stmts_decls
     let true_cond_stmts_1 : lst_stmts_decls := snd_if_cond.2
 
     if len_2_if_conds then
-    let stmts_decls : lst_stmts_decls := {
-      stmts := [
-        [murϕ|
-        if (£if_condition_0) then
-          £true_cond_stmts_0.stmts
-        elsif (£if_condition_1) then
-          £true_cond_stmts_1.stmts
-        -- else
-          -- actually, could be on other states,
-          -- so don't error here!
-          -- error "Unexpected case in this transition";
-        endif
-        ]
-      ],
-      decls := true_cond_stmts_0.decls ++ true_cond_stmts_1.decls
-    }
-    stmts_decls
+      match murphi_when_stmts, if_in_when_state with
+      | none, none =>
+        let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0.stmts [(if_condition_1, true_cond_stmts_1.stmts)] [error_if_not_on_expected_state];
+        ⟨ [ murphi_if_stmt ], true_cond_stmts_0.decls ++ true_cond_stmts_1.decls⟩ 
+      | some when_stmts, some if_cond_expr =>
+        let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_cond_expr when_stmts [(if_condition_0, true_cond_stmts_0.stmts), (if_condition_1, true_cond_stmts_1.stmts)] [error_if_not_on_expected_state];
+        ⟨ [ murphi_if_stmt ], true_cond_stmts_0.decls ++ true_cond_stmts_1.decls ⟩ 
+      | _, _ => dbg_trace "ERROR, when stmts and if cond expr aren't either both none or some"
+        default
+      -- let stmts_decls : lst_stmts_decls := {
+      --   stmts := [
+      --     [murϕ|
+      --     if (£if_condition_0) then
+      --       £true_cond_stmts_0.stmts
+      --     elsif (£if_condition_1) then
+      --       £true_cond_stmts_1.stmts
+      --     -- else
+      --       -- actually, could be on other states,
+      --       -- so don't error here!
+      --       -- error "Unexpected case in this transition";
+      --     endif
+      --     ]
+      --   ],
+      --   decls := true_cond_stmts_0.decls ++ true_cond_stmts_1.decls
+      -- }
+      -- stmts_decls
     else
     if more_than_2_if_conds then
       let stmts_form : List (Murϕ.Expr × List Murϕ.Statement) :=
@@ -3378,11 +3443,20 @@ lst_stmts_decls
         )
       )
 
-      let stmts_decls : lst_stmts_decls := {
-        stmts := [murphi_if_stmt],
-        decls := true_cond_stmts_0.decls ++ decls
-      }
-      stmts_decls
+      match murphi_when_stmts, if_in_when_state with
+      | none, none =>
+        let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_condition_0 true_cond_stmts_0.stmts stmts_form [error_if_not_on_expected_state];
+        ⟨ [ murphi_if_stmt ], true_cond_stmts_0.decls ++ decls⟩ 
+      | some when_stmts, some if_cond_expr =>
+        let murphi_if_stmt : Murϕ.Statement := Murϕ.Statement.ifstmt if_cond_expr when_stmts (stmts_form ++ [(if_condition_0, true_cond_stmts_0.stmts)] ) [error_if_not_on_expected_state];
+        ⟨ [ murphi_if_stmt ], true_cond_stmts_0.decls ++ decls ⟩ 
+      | _, _ => dbg_trace "ERROR, when stmts and if cond expr aren't either both none or some"
+        default
+      -- let stmts_decls : lst_stmts_decls := {
+      --   stmts := [murphi_if_stmt],
+      --   decls := true_cond_stmts_0.decls ++ decls
+      -- }
+      -- stmts_decls
     else
       panic! "Should have caught other cases before this one?"
   
@@ -3826,7 +3900,7 @@ lst_stmts_decls
             let ld_trans_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) speculative_ld_unit_name squash_ld_id (
-              dest_ctrler_name) expected_func expected_struct
+              dest_ctrler_name) expected_func expected_struct none none
             )
             dbg_trace "===== BEGIN LQ Handle finder ====="
             dbg_trace ld_trans_handle_squash_if_stmt.stmts
@@ -3841,7 +3915,7 @@ lst_stmts_decls
             let st_trans_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               stmt_trans_info) speculative_st_unit_name squash_st_id (
-              dest_ctrler_name) expected_func expected_struct
+              dest_ctrler_name) expected_func expected_struct none none
             )
 
             dbg_trace "===== BEGIN SQ Handle finder ====="
@@ -4760,7 +4834,7 @@ lst_stmts_decls
             let state_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
-              dest_ctrler_name) expected_func expected_struct
+              dest_ctrler_name) expected_func expected_struct none none
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
@@ -4883,45 +4957,69 @@ lst_stmts_decls
               murphi_when_stmts_decls.stmts
             dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
 
-            -- -- Handle blocks?
-            -- -- find_handle_blks_matching_msg states_to_search api_func_name ctrler_name
-            -- let expected_func := api_func_name
-            -- let expected_struct := ctrler_name
+            -- Handle blocks?
+            -- find_handle_blks_matching_msg states_to_search api_func_name ctrler_name
+            let expected_func := api_func_name
+            let expected_struct := ctrler_name
 
-            -- let if_stmt_trans_info : stmt_translation_info := {
-            --   stmt := stmt_trans_info.stmt,
-            --   lst_ctrlers := stmt_trans_info.lst_ctrlers,
-            --   ctrler_name := dest_ctrler_name,--stmt_trans_info.ctrler_name,
-            --   src_ctrler := stmt_trans_info.ctrler_name, -- stmt_trans_info.src_ctrler,
-            --   lst_src_args := stmt_trans_info.lst_src_args,
-            --   func := stmt_trans_info.func,
-            --   is_await := stmt_trans_info.is_await,
-            --   entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
-            --   trans_obj := stmt_trans_info.trans_obj,
-            --   specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
-            --   lst_decls := stmt_trans_info.lst_decls,
-            --   is_rhs := stmt_trans_info.is_rhs,
-            --   use_specific_dest_in_transition := true
-            --   curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
-            --   lhs_var_is_just_default := false
-            --   translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
-            -- }
+            let if_stmt_trans_info : stmt_translation_info := {
+              stmt := stmt_trans_info.stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name,--stmt_trans_info.ctrler_name,
+              src_ctrler := stmt_trans_info.ctrler_name, -- stmt_trans_info.src_ctrler,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := false
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
 
-            -- let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
-            -- -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
-            -- -- TODO: Replace the squash idx by the context's idx as usual
-            -- let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
-            -- let ctrler_squash_idx_expr : Murϕ.Expr := [murϕ| £ctrler_squash_idx]
-            -- let state_handle_squash_if_stmt : lst_stmts_decls := (
-            --   ctrler_trans_handle_stmts_to_murphi_if_stmt (
-            --   if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
-            --   dest_ctrler_name) expected_func expected_struct
-            -- )
-            -- let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
+            let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
+            -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
+            -- TODO: Replace the squash idx by the context's idx as usual
+            let ctrler_squash_idx : String := dest_ctrler_name.append "_idx"
+            let ctrler_squash_idx_expr : Murϕ.Expr := [murϕ| £ctrler_squash_idx]
+
+            let state_when_is_in : StateName :=
+              find_state_name_matching_when_msg states_to_search api_func_name ctrler_name
+            let dest_ctrler_name_ := dest_ctrler_name.append "_"
+            let ctrler_is_on_state_check : Murϕ.Expr := match dest_ctrler.type with
+              | .ok type_ => match type_ with
+                | .BasicCtrler => [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .state = £state_when_is_in] 
+                | .Unordered =>
+                  if let some specific_ctrler_desig := stmt_trans_info.specific_murphi_dest_expr then
+                    [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £specific_ctrler_desig ] .state = £state_when_is_in] 
+                  else
+                    dbg_trace s!"Error, curr_ctrler_designator_idx is none, but dest_ctrler is a Queue type (Unordered)"
+                    default
+                | .FIFO =>
+                  if let some specific_ctrler_desig := stmt_trans_info.specific_murphi_dest_expr then
+                    [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £specific_ctrler_desig ] .state = £state_when_is_in] 
+                  else
+                    dbg_trace s!"Error, curr_ctrler_designator_idx is none, but dest_ctrler is a Queue type (FIFO)"
+                    default
+              | .error msg =>
+                dbg_trace s!"Error while translating arbitrary message to Murϕ: ({msg})"
+                default
+
+            let state_handle_squash_if_stmt : lst_stmts_decls := (
+              ctrler_trans_handle_stmts_to_murphi_if_stmt (
+              if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
+              dest_ctrler_name) expected_func expected_struct
+              (some murphi_when_stmt) (some ctrler_is_on_state_check)
+            )
+            let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
             let stmts_decls : lst_stmts_decls := {
-              stmts := murphi_when_stmts_decls.stmts,
-              decls := murphi_when_stmts_decls.decls
+              stmts := squash_handle_by_state,
+              decls := murphi_when_stmts_decls.decls ++ state_handle_squash_if_stmt.decls
             }
             stmts_decls
         else
