@@ -40,7 +40,11 @@ def transformTesting : AST → Array Nat → IO Unit
 
 def runMainCmd : Cli.Parsed → IO UInt32
   | args => do
-  initSearchPath (← Lean.findSysroot) ["build/lib"]
+  let executablePath : System.FilePath ← IO.appPath
+  let libPath : System.FilePath := match executablePath.parent >>= System.FilePath.parent with
+    | some parent => parent / "lib"
+    | none => "build/lib"
+  initSearchPath (← Lean.findSysroot) [libPath]
   let env ← importModules [{ module := `PipelineDsl.Parser }] {}
   let input : String := args.positionalArg! "input" |>.as! String
   let (err, ast) ← parseFile env input
@@ -89,7 +93,6 @@ def mainCmd := `[Cli|
     ARGS:
       input : String;      "Input AQL file"
     ]
-
 
 def main (args : List String): IO UInt32 :=
   mainCmd.validate args
