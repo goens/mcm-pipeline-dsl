@@ -5047,6 +5047,7 @@ partial def api_term_func_to_murphi_func
   -- Extract info, gen the murphi func code
   -- this is mostly setting up the Murphi Template
   let is_tail_search : Bool := lst_names.contains "tail_search"
+  let is_head_search : Bool := lst_names.contains "head_search"
   let is_unordered_search : Bool := lst_names.contains "search"
 
   dbg_trace "&&&&& BEGIN is await function tail_search? &&&&&"
@@ -5325,15 +5326,294 @@ partial def api_term_func_to_murphi_func
         endif]
     ]
 
---   AZ NOTE: Move this to the func call, instead of
---   in this await-when func call block
---   since the squash func here for the first LSQ doesn't
---   check for the return when cases...
---   update this to work generically..?
 
     -- 0
     let stmts_decls : lst_stmts_decls := {
       stmts := overall_murphi_tail_search_template,
+      decls := (
+        when_search_success_murphi_stmts.decls ++
+        when_search_fail_murphi_stmts.decls ++
+        decls
+      )
+    }
+    stmts_decls
+    -- default
+  else if is_head_search then
+    -- AZ TODO: This we know should have the one expr,
+    -- we could techinically use Except and 'throw' here
+    -- if the len isn't 1
+    -- dbg_trace "== trying to get expr from func call arg list =="
+    -- let curr_idx := Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+    let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
+    let murphi_ctrler_curr_idx : Murϕ.Expr := [murϕ| £ctrler_curr_idx]
+
+    let match_cond : Pipeline.Expr := lst_exprs[0]!
+    let match_cond_trans_info : expr_translation_info :=  {
+      expr := match_cond
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      -- The "main ctrler to translate with"
+      -- is it the 
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := term_trans_info.src_ctrler, -- Option.some dest_ctrler_name, -- 
+      lst_src_args := Option.some [], -- term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := Option.some murphi_ctrler_curr_idx,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := term_trans_info.use_specific_dest_in_transition
+      -- TODO: Double check what is this?
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx --term_trans_info.specific_murphi_dest_expr 
+      lhs_var_is_just_default := false
+      translate_entry_or_ctrler := term_trans_info.translate_entry_or_ctrler
+    }
+    dbg_trace s!"Head_Search match cond: ({match_cond_trans_info})"
+
+    -- (
+    -- assn_term_to_expr_translation_info term_trans_info match_cond)
+
+    let murphi_match_cond_expr := ast_expr_to_murphi_expr match_cond_trans_info
+    dbg_trace "&&&&& BEGIN match if cond &&&&&"
+    dbg_trace murphi_match_cond_expr
+    dbg_trace "&&&&& END match if cond &&&&&"
+
+    -- AZ TODO: Identify the "search success case"
+    -- and the "search failure case"
+    -- translate them accordingly
+    -- take the stmts in await, should be 2, the 2 whens?
+    let when_stmts : List Pipeline.Statement := stmts_in_await.filter (
+      λ stmt =>
+        match stmt with
+        | Pipeline.Statement.when _ _ _ =>
+          true
+        | _ => false
+    )
+    dbg_trace "&&&&& BEGIN when_stmts &&&&&"
+    dbg_trace when_stmts
+    dbg_trace "&&&&& END when_stmts &&&&&"
+        -- qual name is probably the structure -- ... list idents is the args list!
+        -- so take the qual name and check for search_success / fail
+    let when_search_success_list : List Pipeline.Statement := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName :=
+      match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error here?"
+        default
+
+      let is_search_success : Bool :=
+      match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => (
+      lst_idents.contains "search_success")
+
+      is_search_success
+    )
+    let when_search_fail_list := when_stmts.filter (
+      λ when_stmt =>
+      let qual_name_from_when : QualifiedName := match when_stmt with
+      | Pipeline.Statement.when qual_name _ _ => qual_name
+      | _ => dbg_trace "place an error?"
+        default
+      let is_search_fail : Bool := match qual_name_from_when with
+      | Pipeline.QualifiedName.mk lst_idents => lst_idents.contains "search_fail"
+      is_search_fail
+    )
+    dbg_trace "&&&&& BEGIN when_success &&&&&"
+    dbg_trace when_search_success_list
+    dbg_trace "&&&&& END when_success &&&&&"
+    dbg_trace "&&&&& BEGIN when_fail &&&&&"
+    dbg_trace when_search_fail_list
+    dbg_trace "&&&&& END when_fail &&&&&"
+    -- dbg_trace "== assuming there are when search success/fail stmts found! =="
+    let when_search_success := when_search_success_list[0]!
+    let when_search_fail := when_search_fail_list[0]!
+
+    dbg_trace s!"When ctrler: ({term_trans_info.ctrler_name})\n"++
+      s!"When src_ctrler: ({dest_ctrler_name})"
+
+    let when_success_stmt_args : List String :=
+      match (get_when_stmt_src_args when_search_success) with
+      | .error msg =>
+        let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+        dbg_trace msg'
+        -- default
+        panic! msg'
+      | .ok lst_args => lst_args
+    let when_fail_stmt_args : List String :=
+      match (get_when_stmt_src_args when_search_fail) with
+      | .error msg =>
+        let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+        dbg_trace msg'
+        -- default
+        panic! msg'
+      | .ok lst_args => lst_args
+
+    let when_search_success_trans_info : stmt_translation_info := {
+      stmt := when_search_success,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := Option.some dest_ctrler_name, -- term_trans_info.src_ctrler,
+      lst_src_args := Option.some when_success_stmt_args -- term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := Option.some murphi_ctrler_curr_idx,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+      -- i.e. use this for lhs
+      -- (ex. lhs = rhs ==> next_state.LQ.entry[desig_idx].lhs, ... rhs)
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx -- Option.some murphi_ctrler_curr_idx
+      lhs_var_is_just_default := true
+      translate_entry_or_ctrler := term_trans_info.translate_entry_or_ctrler
+    }
+    dbg_trace s!"Head_Search search success: ({when_search_success_trans_info})"
+
+    let when_search_fail_trans_info : stmt_translation_info := {
+      stmt := when_search_fail,
+      lst_ctrlers := term_trans_info.lst_ctrlers,
+      ctrler_name := term_trans_info.ctrler_name,
+      src_ctrler := Option.some dest_ctrler_name, -- term_trans_info.src_ctrler,
+      lst_src_args := Option.some when_fail_stmt_args -- term_trans_info.lst_src_args,
+      func := term_trans_info.func,
+      is_await := term_trans_info.is_await,
+      entry_keyword_dest := Option.some dest_ctrler_name,
+      trans_obj := term_trans_info.trans_obj,
+      specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
+      lst_decls := term_trans_info.lst_decls,
+      is_rhs := term_trans_info.is_rhs,
+      use_specific_dest_in_transition := false
+      -- search fail isn't in the loop, so we don't use the murphi_ctrler_curr_idx
+      curr_ctrler_designator_idx := term_trans_info.curr_ctrler_designator_idx
+      lhs_var_is_just_default := true
+      translate_entry_or_ctrler := term_trans_info.translate_entry_or_ctrler
+    }
+    dbg_trace s!"Head_Search search fail: ({when_search_fail_trans_info})"
+
+    dbg_trace "(((***((( BEGIN Head SEARCH WHEN TRANSLATION ))))))"
+    let when_search_success_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_success_trans_info
+    let when_search_fail_murphi_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts when_search_fail_trans_info
+    dbg_trace "(((***((( END Head SEARCH WHEN TRANSLATION ))))))"
+
+    dbg_trace "&&&&& BEGIN Murϕ head_search when_success &&&&&"
+    dbg_trace s!"head_search when_success: ({when_search_success})"
+    dbg_trace when_search_success_murphi_stmts.stmts
+    dbg_trace when_search_success_murphi_stmts.decls
+    dbg_trace "&&&&& END Murϕ head_search when_success &&&&&"
+    dbg_trace "&&&&& BEGIN Murϕ head_search when_fail &&&&&"
+    dbg_trace s!"head_search when_fail: ({when_search_fail})"
+    dbg_trace when_search_fail_murphi_stmts.stmts
+    dbg_trace when_search_fail_murphi_stmts.decls
+    dbg_trace "&&&&& END Murϕ head_search when_fail &&&&&"
+
+    -- ex. SQ_NUM_ETNRIES_CONST
+    let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
+
+    -- AZ NOTE: Use this point to build a different template
+    -- based on the specific API call...
+    -- Or maybe earlier, but i'm not 100% sure
+    -- what the "common code" segments are just yet...
+
+    -- TODO: Give them slightly more unique names, so they don't collide..
+    -- This affects the curr_idx designator that will need to be adjusted as well
+    let ctrler_while_break : String := dest_ctrler_name.append "_while_break"
+    let ctrler_found_entry : String := dest_ctrler_name.append "_found_entry"
+    let ctrler_entry_idx : String :=   dest_ctrler_name.append "_entry_idx"
+    let ctrler_difference : String :=  dest_ctrler_name.append "_difference"
+    let ctrler_offset : String :=      dest_ctrler_name.append "_offset"
+      -- This one is defined above
+    -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
+
+    let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+    let decls : List Murϕ.Decl := [
+      (Murϕ.Decl.var [ctrler_while_break] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      (Murϕ.Decl.var [ctrler_found_entry] (Murϕ.TypeExpr.previouslyDefined "boolean")),
+      -- [murϕ_var_decls|
+      --   var found_entry : boolean
+      -- ],
+      (Murϕ.Decl.var [ctrler_entry_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_curr_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
+      -- [murϕ_var_decls|
+      --   var curr_idx : £ctrler_idx_t
+      -- ]
+    ]
+    let dest_ctrler_name_ := dest_ctrler_name.append "_"
+    let overall_murphi_head_search_template : List Murϕ.Statement :=
+    [
+      -- AZ TODO: introduce a type for the ACCESS_HASH
+      -- or ACCESS_head and just set it at the beginning
+
+      -- [murϕ| next_state := Sta]
+      -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
+      -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
+      [murϕ|  £ctrler_while_break := false],
+      [murϕ|  £ctrler_found_entry := false],
+      [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
+          £ctrler_while_break := true;
+        endif],
+        -- AZ TODO:
+        -- no, can just map the condition check
+
+      -- [murϕ|  if (£dest_ctrler_name .sq_msg_enum = £dest_ctrler_name_ACCESS_HASH) then
+      --     st_idx := find_st_idx_of_seq_num(£dest_ctrler_name,
+      --                                      £dest_ctrler_name .st_seq_num);
+      --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_head) then
+      --     st_idx := (£dest_ctrler_name .sq_head + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
+      --   endif],
+      [murϕ|  £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head],-- (next_state .core_[j] .£dest_ctrler_name_ .head + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
+      [murϕ|  £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
+      [murϕ|  £ctrler_offset := 0],
+      [murϕ|   while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+          £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
+          if (
+            -- AZ TODO:
+            -- THIS IS WHERE TO TRANSLATE THE "API ARGS LIST"
+            -- INTO CONDITIONS
+            -- Keeping the code here as an example of
+            -- what to expect kind of
+
+            -- £dest_ctrler_name_ .entries[curr_idx] .phys_addr
+            --   =
+            --   £dest_ctrler_name_ .phys_addr
+            £murphi_match_cond_expr
+
+              ) then
+    
+            -- AZ TODO:
+            -- This should be replaced with "this" ctrler's
+            -- code
+            -- Note that "entry" indicates access to the dest ctrler's
+            -- fields
+            -- So that we can even use entry in the when block...
+            £when_search_success_murphi_stmts.stmts;
+
+            -- value := £dest_ctrler_name_ .entries[curr_idx] .write_value;
+    
+            £ctrler_found_entry := true;
+          endif;
+    
+          -- This is not really necessary
+          if (£ctrler_offset != £ctrler_difference) then
+            £ctrler_offset := £ctrler_offset + 1;
+          else
+            £ctrler_while_break := true;
+          endif;
+        end],
+      [murϕ|
+        if (£ctrler_found_entry = false) then
+          £when_search_fail_murphi_stmts.stmts
+        endif]
+    ]
+
+
+    -- 0
+    let stmts_decls : lst_stmts_decls := {
+      stmts := overall_murphi_head_search_template,
       decls := (
         when_search_success_murphi_stmts.decls ++
         when_search_fail_murphi_stmts.decls ++
