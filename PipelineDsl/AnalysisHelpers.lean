@@ -2102,7 +2102,7 @@ def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Descr
       | .await none await_stmts =>
         pure
         $ Pipeline.Description.state state_name 
-        $ Pipeline.Statement.await none $ await_stmts ++ [stmt_to_append]
+        $ (Pipeline.Statement.await none $ await_stmts ++ [stmt_to_append]).to_block
       | .listen_handle listen_stmt handle_blks =>
         let stmts' ← listen_stmt.stmt_block
         if H' : stmts'.length = 1 then
@@ -2113,7 +2113,7 @@ def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Descr
           | .await none await_stmts' =>
             pure
             $ Pipeline.Description.state state_name 
-            $ Pipeline.Statement.listen_handle (Pipeline.Statement.await none $ await_stmts' ++ [stmt_to_append]) handle_blks
+            $ (Pipeline.Statement.listen_handle (Pipeline.Statement.await none $ await_stmts' ++ [stmt_to_append]) handle_blks).to_block
           | _ => throw "Error: Expected to find 'await' stmt within a listen_handle ({stmt'})"
         else
           let msg : String := s!"Error: Listen stmt's stmt block has more than one stmt ({stmts'}), expected only 1, await"
