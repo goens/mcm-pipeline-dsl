@@ -1874,8 +1874,8 @@ def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateNam
         Option.some new_state_machine_with_stall_state
       else
         Option.none
-    ctrler_init_trans := ctrler.init_trans,
-    ctrler_state_vars := ctrler.state_vars,
+    ctrler_init_trans := ctrler.ctrler_init_trans, -- NOTE to self: Consider strongly typing things...
+    ctrler_state_vars := ctrler.ctrler_state_vars,
     ctrler_trans_list := -- new_state_machine_with_stall_state
       if ctrler.ctrler_init_trans.isSome then
         Option.some new_state_machine_with_stall_state
