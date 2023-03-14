@@ -1219,6 +1219,10 @@ def Pipeline.Description.state_name : Pipeline.Description → Except String Ide
 | .state ident /- stmt -/ _ => pure ident
 | _ => throw "Error: Description is not a state"
 
+def Pipeline.Description.stmt : Pipeline.Description → Except String Pipeline.Statement
+| .state /- ident -/ _ stmt => pure stmt
+| _ => throw "Error: Description is not a state"
+
 def controller_info.init_trans_descript (ctrler : controller_info) : Except String Pipeline.Description
 := do
   let state_list ← ctrler.state_list
@@ -2225,6 +2229,30 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
 -- termination_by _  => stmts.length - 1
 -- decreasing_by exact (by simp [List.length])
 
+def Pipeline.Statement.replace_listen_handle_stmts (stmt : Pipeline.Statement) (replacement_stmts : List Pipeline.Statement) : Except String Pipeline.Statement := do
+  match stmt with
+  | .listen_handle /-stmt-/ _ handle_blks => pure $ Pipeline.Statement.listen_handle replacement_stmts.to_block handle_blks
+  | _ => throw "Error while replacing a listen handle stmt's block: input stmt is not a listen statement"
+  
+def List.has_listen_handle? (stmts : List Pipeline.Statement) : Option Pipeline.Statement := do
+  match stmts with
+  | [stmt] => do
+    match stmt with
+    | .listen_handle /-stmt-/ _ /- handle_blks -/ _ => some stmt
+    | _ => none
+  | _ => none
+
+def Pipeline.Description.listen_handle_stmt? (state : Pipeline.Description) : Except String (Option Pipeline.Statement) := do
+  let state_stmt_blk ← state.stmt
+  let stmts ← state_stmt_blk.stmt_block
+  pure stmts.has_listen_handle?
+
+def Pipeline.Description.wrap_stmt_with_node's_listen_handle_if_exists (state : Pipeline.Description) (stmt : Pipeline.Statement) : Except String Pipeline.Statement := do
+  let listen_handle? ← state.listen_handle_stmt? 
+  match listen_handle? with
+  | none => do pure stmt
+  | some listen_handle => do listen_handle.replace_listen_handle_stmts [stmt]
+
 def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
 (state : Pipeline.Description) (stmts_to_inject : List Pipeline.Statement)
 -- Return
@@ -2236,8 +2264,11 @@ def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
   | .state state_name stmt => do
     let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement) := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
     let updated_state := Pipeline.Description.state state_name updated_stmt_with_injected.to_block
+
     let original_state_name := original_commit_code_prefix.append "_" |>.append state_name
-    let stmts_after_commit_state := Pipeline.Description.state original_state_name stmts_after_commit.to_block
+
+    let stmts_after_commit_wrapped_in_listen_handle ← state.wrap_stmt_with_node's_listen_handle_if_exists stmts_after_commit.to_block
+    let stmts_after_commit_state := Pipeline.Description.state original_state_name stmts_after_commit_wrapped_in_listen_handle.to_block
     pure (updated_state, stmts_after_commit_state)
   | _ => throw "Error: Expected input Pipeline.Description to be a state. Instead got ({state})"
 
@@ -2418,3 +2449,9 @@ def Ctrlers.update_ctrler_states_trans_to_specific_state (ctrlers : Ctrlers) (ct
   let updated_ctrler ← ctrler.update_ctrler_basic_and_reset_transitions prev_trans_to_state replacement_state_name
   ctrlers.update_ctrler updated_ctrler
   
+def controller_info.init_trans_dest_state (ctrler : controller_info)
+: Except String Pipeline.Description
+:= do
+  let init_trans_dest : StateName ← ctrler.init_trans_dest 
+  ctrler.state_from_name init_trans_dest   
+
