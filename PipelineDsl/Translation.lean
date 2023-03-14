@@ -3017,6 +3017,7 @@ List (Murϕ.Expr × lst_stmts_decls)
 
   let stmt_blk := match trans with
   | Pipeline.Description.state ident stmt =>
+  dbg_trace s!"State: ({ident}), stmt block: ({stmt})"
   stmt
   | _ => dbg_trace "TODO: throw an error here!"
     default
@@ -3876,7 +3877,7 @@ lst_stmts_decls
             let squash_ld_id :=
             Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
             let expected_func := "squash"
-            let expected_struct := "ROB"
+            let expected_struct := "ROB" -- current ctrler
 
             let if_stmt_trans_info : stmt_translation_info := {
               stmt := stmt_trans_info.stmt,
@@ -4806,7 +4807,7 @@ lst_stmts_decls
             -- Just get the handle code
             -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
             let expected_func := "squash"
-            let expected_struct := "ROB"
+            let expected_struct := ctrler_name
 
             let if_stmt_trans_info : stmt_translation_info := {
               stmt := stmt_trans_info.stmt,
@@ -4827,6 +4828,7 @@ lst_stmts_decls
               translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
             }
 
+            dbg_trace s!"**search for squash handlers for ctrler: ({dest_ctrler_name}) from ctrler: ({ctrler_name})"
             let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
             -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
             let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
