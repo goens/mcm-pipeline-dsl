@@ -2879,10 +2879,10 @@ partial def find_when_from_transition
       -- get the transition stmts, find stmts
       -- which 
       match trans with
-      | Description.state ident stmt =>
+      | Description.state state_name stmt =>
         match stmt with
         | Statement.block lst_stmts =>
-          dbg_trace s!"first When stmt from find when stmt: ({stmt})"
+          dbg_trace s!"first When stmt from find when state_name: ({state_name}) stmt: ({stmt})"
           let when_blk :=
           recursive_await_when_search lst_stmts func_name curr_ctrler_name
           when_blk
@@ -4888,11 +4888,20 @@ lst_stmts_decls
                 dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({dest_ctrler})"
                   default
 
+            dbg_trace s!"===== Begin When Info ====="
+            dbg_trace s!"search for when stmt for 'arbitrary' ({api_func_name})"
+            dbg_trace s!"States to search: ({states_to_search})"
+            dbg_trace s!"dest_ctrler: ({dest_ctrler})"
+            dbg_trace s!"curr_ctrler: ({ctrler_name})"
+            dbg_trace s!"===== End When Info ====="
+
             let when_stmt : Pipeline.Statement :=
               find_when_from_transition states_to_search api_func_name ctrler_name
             dbg_trace s!"dest_ctrler_name: ({dest_ctrler_name})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'arbitrary' ({api_func_name}) API: ({when_stmt})"
+            dbg_trace s!"States to search: ({states_to_search})"
+            dbg_trace s!"dest_ctrler: ({dest_ctrler})"
 
             let when_stmt_args : List String :=
               match (get_when_stmt_src_args when_stmt) with
@@ -4990,9 +4999,13 @@ lst_stmts_decls
             let state_when_is_in : StateName :=
               find_state_name_matching_when_msg states_to_search api_func_name ctrler_name
             let dest_ctrler_name_ := dest_ctrler_name.append "_"
-            let ctrler_is_on_state_check : Murϕ.Expr := match dest_ctrler.type with
+            let ctrler_is_on_state_check : Murϕ.Expr :=
+              dbg_trace s!"Translating Ctrler is on state check Murphi Expr, state when is in: ({state_when_is_in})"
+              match dest_ctrler.type with
               | .ok type_ => match type_ with
-                | .BasicCtrler => [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .state = £state_when_is_in] 
+                | .BasicCtrler =>
+                  dbg_trace s!"***Translation Msg to BasicCtrler: Dest Ctrler Name: ({dest_ctrler_name_}) | State when is in: ({state_when_is_in})"
+                  [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .state = £state_when_is_in] 
                 | .Unordered =>
                   if let some specific_ctrler_desig := stmt_trans_info.specific_murphi_dest_expr then
                     [murϕ| next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £specific_ctrler_desig ] .state = £state_when_is_in] 
