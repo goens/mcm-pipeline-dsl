@@ -82,10 +82,13 @@ def CreateReplayIssueLoadState
         let transition_to_first_state := Pipeline.Statement.transition issue_ctrler_first_state
 
         pure (transition_to_first_state, [search_api_to_send_start_replay_await_msg])
-  
+
   let replay_issue_stmts_blk := Pipeline.Statement.block ([replay_load_stmt] ++ additional_stmts ++ [transition_stmt])
+
+  let replay_issue_in_listen_handle ← four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists replay_issue_stmts_blk ctrlers
+  
   let replay_issue_name := replay_issue_load_to_mem
-  let replay_state := Pipeline.Description.state replay_issue_name replay_issue_stmts_blk
+  let replay_state := Pipeline.Description.state replay_issue_name replay_issue_in_listen_handle.to_block
 
   pure replay_state
 
@@ -195,10 +198,25 @@ def CreateReplayAwaitLoadState
   -- The name of the new await replay state
   let await_replay_state_name := ReplayAwaitStateName four_nodes.global_complete_load_node
 
-  -- Return: The await replay state.
-  let await_replay_state := Pipeline.Description.state await_replay_state_name await_load_response.to_block
+  let listen_handle_wrapped_await_replay ← four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists await_load_response.to_block ctrlers
 
-  let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" check_mispeculation_and_replay_complete_stmts.to_block
+  -- Return: The await replay state.
+  let await_replay_state := Pipeline.Description.state await_replay_state_name listen_handle_wrapped_await_replay.to_block
+
+  let compare_and_check_wrapped_stmts : Pipeline.Statement ←
+    if is_issue_ctrler_and_await_response_ctrler_same then do
+      match issue_ctrler_node_pred_on_commit? with
+      | .some issue_ctrler_node_pred_on_commit => do
+        issue_ctrler_node_pred_on_commit.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
+      | .none => throw "Error, issue ctrler node should be available, since it's set if the bool is true"
+    else do
+      let await_load_ctrler_node := four_nodes.global_perform_load_node
+      let await_load_ctrler ← ctrlers.ctrler_from_name await_load_ctrler_node.ctrler_name 
+      let await_load_ctrler_first_state ← await_load_ctrler.init_trans_dest_state
+
+      await_load_ctrler_first_state.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block
+      
+  let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" compare_and_check_wrapped_stmts
 
   dbg_trace "##Sanity 2"
   return (await_replay_state, compare_and_check_state)
@@ -262,13 +280,15 @@ def CDFG.Node.create_when_replay_start_msg_state (commit_node : CDFG.Node) : Pip
 
 def CreateReplayAwaitCommitStartMsgState
 (four_nodes : CommitIssueAwaitValueStmtNodes)
-: (Pipeline.Description) :=
+(listen_handle_blk : Option Pipeline.Statement)
+: Except String (Pipeline.Description) :=
   -- 1. Create an await stmt to wait for the commit start msg
   -- 2. Transition to the right state
   let when_commit_start_msg := four_nodes.commit_node.create_when_replay_start_msg_state
   let await_when := Pipeline.Statement.await none [when_commit_start_msg]
-
-  Pipeline.Description.state await_replay_start_state_name await_when.to_block
+  match listen_handle_blk with
+  | none => do pure $ Pipeline.Description.state await_replay_start_state_name await_when.to_block
+  | some listen_handle_blk => do pure $ Pipeline.Description.state await_replay_start_state_name (← listen_handle_blk.replace_listen_handle_stmts [await_when]).to_block
 
 -- This is for the receive ctrler, if it's separate from the issue ctrler,
 -- to specifically transition or do actions for replay, rather than it's normal actions
@@ -381,7 +401,8 @@ def UpdateCommitCtrlerToStartReplayLoad
 
 def CreateCommitAwaitReplayCompleteState
 (four_nodes : CommitIssueAwaitValueStmtNodes)
-: Pipeline.Description :=
+(ctrlers : Ctrlers)
+: Except String Pipeline.Description := do
   -- prepare a transition to "original_commit_" + state_name
   let commit_ctrler_name := four_nodes.commit_node.ctrler_name
   let original_commit_code_state_name := original_commit_code_prefix ++ "_" ++ four_nodes.commit_node.current_state
@@ -394,13 +415,14 @@ def CreateCommitAwaitReplayCompleteState
     [await_resp_ctrler, replay_complete_msg_to_commit].to_qual_name [] trans_to_original_commit_code.to_block
   let await_replay_stmt := Pipeline.Statement.await none [when_replay_resp]
 
+  let await_replay_stmt_wrapped_in_listen_handle ← four_nodes.commit_node.wrap_stmt_with_node's_listen_handle_if_exists await_replay_stmt.to_block ctrlers
   -- Create this await replay response state
   --   Need the state name & above await stmt
   let await_replay_state_name := commit_ctrler_name ++ "_" ++ commit_await_replay_complete
-  let await_replay_state := Pipeline.Description.state await_replay_state_name await_replay_stmt.to_block
+  let await_replay_state := Pipeline.Description.state await_replay_state_name await_replay_stmt_wrapped_in_listen_handle.to_block
 
   -- return the await replay response state
-  await_replay_state
+  pure await_replay_state
 
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
@@ -420,9 +442,16 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let issue_ctrler_pred_on_commit_nodes : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
   let issue_ctrler_pred_on_commit_nodes_for_load := graph.filter_input_nodes_only_ld issue_ctrler_pred_on_commit_nodes
   dbg_trace s!"$$issue_ctrler_pred_on_commit_nodes_for_load: ({issue_ctrler_pred_on_commit_nodes_for_load})"
-  let is_issue_ctrler_pred_on_commit : Bool := if issue_ctrler_pred_on_commit_nodes_for_load.length > 0 then true else false
+  let ( is_issue_ctrler_pred_on_commit, issue_ctrler_node_pred_on_commit?, issue_ctrler_node_pred_on_commit_listen_handle_stmt? )
+    : Bool × Option Node × Option Pipeline.Statement := ← do
+    if H_non_zero : issue_ctrler_pred_on_commit_nodes_for_load.length > 0 then do
+      have hyp : 0 < issue_ctrler_pred_on_commit_nodes_for_load.length := by simp[H_non_zero]
+      let issue_ctrler_node_pred_on_commit := issue_ctrler_pred_on_commit_nodes_for_load[0]'hyp
+      let listen_handle_of_node? : Option Pipeline.Statement ← issue_ctrler_node_pred_on_commit.listen_handle_stmt? ctrlers
+      pure (true, some issue_ctrler_node_pred_on_commit, listen_handle_of_node?)
+    else do
+      pure (false, none, none)
   dbg_trace s!"$$is_issue_ctrler_pred_on_commit: ({is_issue_ctrler_pred_on_commit})"
-  let issue_ctrler_node_pred_on_commit? : Option Node := if is_issue_ctrler_pred_on_commit then issue_ctrler_pred_on_commit_nodes_for_load.head? else none
 
   let is_issue_ctrler_and_await_response_ctrler_same := global_perform_load_node.ctrler_name == global_complete_load_node.ctrler_name
   dbg_trace s!"global_perform_load_node: ({global_perform_load_node})"
@@ -435,13 +464,13 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let await_replay_start_state : Pipeline.Description := ←
     if is_issue_ctrler_pred_on_commit then do -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       dbg_trace s!"$$1is_issue_ctrler_pred_on_commit: ({is_issue_ctrler_pred_on_commit})"
-      pure (CreateReplayAwaitCommitStartMsgState four_nodes)
-    else
+      CreateReplayAwaitCommitStartMsgState four_nodes issue_ctrler_node_pred_on_commit_listen_handle_stmt?
+    else do
       match issue_ctrler_type with
       | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
-        pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
+        UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers
       | .Unordered => do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
-        pure (← UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers)
+        UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers
       | .FIFO => throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
   -- AZ NOTE: Must insert or replace the state accordingly, based on the cases above...
 
@@ -493,7 +522,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
 
   dbg_trace s!"$$sanity6"
   /- ================= Commit Ctrler: await load replay completion ================ -/
-  let commit_await_replay_complete_state := CreateCommitAwaitReplayCompleteState four_nodes
+  let commit_await_replay_complete_state ← CreateCommitAwaitReplayCompleteState four_nodes ctrlers
 
   /- =============== add the states to the ctrlers ==================-/
 
