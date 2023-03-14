@@ -420,7 +420,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let issue_ctrler_pred_on_commit_nodes : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
   let issue_ctrler_pred_on_commit_nodes_for_load := graph.filter_input_nodes_only_ld issue_ctrler_pred_on_commit_nodes
   dbg_trace s!"$$issue_ctrler_pred_on_commit_nodes_for_load: ({issue_ctrler_pred_on_commit_nodes_for_load})"
-  let is_issue_ctrler_pred_on_commit : Bool := issue_ctrler_pred_on_commit_nodes_for_load.length > 0
+  let is_issue_ctrler_pred_on_commit : Bool := if issue_ctrler_pred_on_commit_nodes_for_load.length > 0 then true else false
   dbg_trace s!"$$is_issue_ctrler_pred_on_commit: ({is_issue_ctrler_pred_on_commit})"
   let issue_ctrler_node_pred_on_commit? : Option Node := if is_issue_ctrler_pred_on_commit then issue_ctrler_pred_on_commit_nodes_for_load.head? else none
 
@@ -505,7 +505,12 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   /- ===== Add issue replay states ===== -/
   let ctrlers_with_issue_replay_state : Ctrlers := ←
     if is_issue_ctrler_pred_on_commit then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
-      ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
+      -- if issue is pred on commit make the states pointing to commit, to point to the await-replay-start state
+      let states_added_to_ctrler_in_ctrlers := ← 
+        ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
+      let ctrler_with_states_trans_to_given_state_updated :=
+        states_added_to_ctrler_in_ctrlers.update_ctrler_states_trans_to_specific_state global_perform_load_node.ctrler_name issue_ctrler_node_pred_on_commit?.get!.current_state (← await_replay_start_state.state_name)
+      ctrler_with_states_trans_to_given_state_updated
     else
       match issue_ctrler_type with
       | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
