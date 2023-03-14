@@ -1742,7 +1742,13 @@ partial def recursively_find_stmt_and_update_transitions
     else stmt
   -- TODO NOTE: Should count both "reset" & "transition"
   -- but ignore "completion...?"
-  | Statement.reset _ => stmt
+  | Statement.reset ident => 
+    dbg_trace s!"--== BEGIN OLD TRANS NAME: {stmt}"
+    dbg_trace s!"--== THE OLD TRANS NAME: {old_name}"
+    dbg_trace s!"--== END REPLACEMENT TRANS NAME: {new_name}"
+    if ident == old_name then Statement.transition new_name
+    else stmt
+
   | Statement.complete _ => stmt
   | Statement.stall _ => stmt
   | Statement.return_stmt _ => stmt
@@ -1842,6 +1848,28 @@ def update_state_transitions_matching_name_to_replacement_name
 -- TODO: write func to add a node to a controller, as if
 -- if get's inserted between a given old state and the states that pointed to the given old state
 
+def controller_info.update_my_state_list (ctrler : controller_info) (new_state_list : List Description) : controller_info :=
+  let new_ctrler : controller_info := {
+    name := ctrler.name,
+    controller_descript := ctrler.controller_descript,
+    entry_descript := ctrler.entry_descript,
+    init_trans := ctrler.init_trans,
+    state_vars := ctrler.state_vars,
+    transition_list := -- new_state_machine_with_stall_state
+      if ctrler.init_trans.isSome then
+        Option.some new_state_list
+      else
+        Option.none
+    ctrler_init_trans := ctrler.ctrler_init_trans, -- NOTE to self: Consider strongly typing things...
+    ctrler_state_vars := ctrler.ctrler_state_vars,
+    ctrler_trans_list := -- new_state_machine_with_stall_state
+      if ctrler.ctrler_init_trans.isSome then
+        Option.some new_state_list
+      else
+        Option.none
+  }
+  new_ctrler
+
 def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
 : Except String controller_info := do
   /-
@@ -1863,25 +1891,7 @@ def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateNam
   let new_state_machine_with_stall_state : List Description :=
     updated_state_list_transition_to_stall_state ++ [new_state]
   
-  let new_ctrler : controller_info := {
-    name := ctrler.name,
-    controller_descript := ctrler.controller_descript,
-    entry_descript := ctrler.entry_descript,
-    init_trans := ctrler.init_trans,
-    state_vars := ctrler.state_vars,
-    transition_list := -- new_state_machine_with_stall_state
-      if ctrler.init_trans.isSome then
-        Option.some new_state_machine_with_stall_state
-      else
-        Option.none
-    ctrler_init_trans := ctrler.ctrler_init_trans, -- NOTE to self: Consider strongly typing things...
-    ctrler_state_vars := ctrler.ctrler_state_vars,
-    ctrler_trans_list := -- new_state_machine_with_stall_state
-      if ctrler.ctrler_init_trans.isSome then
-        Option.some new_state_machine_with_stall_state
-      else
-        Option.none
-  }
+  let new_ctrler : controller_info := ctrler.update_my_state_list new_state_machine_with_stall_state
 
   pure new_ctrler
 
@@ -2087,7 +2097,9 @@ def Ctrlers.transition_to_ctrler's_first_state_stmt : Ctrlers → CtrlerName →
   pure $ Pipeline.Statement.transition ctrler_first_state
   
 def Pipeline.Statement.to_block : Pipeline.Statement → Pipeline.Statement
-| stmt => Pipeline.Statement.block [stmt]
+| stmt => match stmt with
+  | .block _ => stmt
+  | _ => Pipeline.Statement.block [stmt]
 
 def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Description → Pipeline.Statement → Except String (Pipeline.Description)
 | descript, stmt_to_append => do
@@ -2133,8 +2145,13 @@ def controller_info.state_from_name : Ctrler → StateName → Except String Pip
   | some state' => pure state'
   | none => throw "Error: Could not find state in controller"
 
+-- NOTE: "to_block_if_not"
 def List.to_block (stmts : List Pipeline.Statement) : Pipeline.Statement :=
-  Pipeline.Statement.block stmts
+  match stmts with
+  | [stmt] => match stmt with
+    | .block _ => stmt
+    | _ => Pipeline.Statement.block stmts
+  | _ => Pipeline.Statement.block stmts
 
 partial def List.split_off_stmts_at_commit_and_inject_stmts
 (stmts : List Pipeline.Statement) (stmts_to_inject : List Pipeline.Statement)
@@ -2379,3 +2396,25 @@ def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement)
   match labelled_stmt with
   | .labelled_statement /-label-/ _ stmt => pure stmt
   | _ => throw "Error while trying to get a labelled_stmt's_stmt: input stmt is not a labelled statement"
+
+-- def update_state_transitions_matching_name_to_replacement_name
+-- ( orig_name : String)
+-- ( replacement_name : String)
+-- ( list_states_names_to_update : List String)
+-- ( all_state_descriptions : List Description)
+def Ctrler.update_ctrler_basic_and_reset_transitions (ctrler : Ctrler) (prev_trans_to_state : StateName) (replacement_state_name : StateName) : Except String Ctrler := do
+  let all_states : List Description ← ctrler.state_list 
+  let states_transitioning_to_state_to_stall : List StateName :=
+    get_states_directly_leading_to_given_state (prev_trans_to_state, all_states)
+  let new_states_trans_to_new_state_name := update_state_transitions_matching_name_to_replacement_name prev_trans_to_state replacement_state_name states_transitioning_to_state_to_stall all_states
+
+  let updated_ctrler := ctrler.update_my_state_list new_states_trans_to_new_state_name
+  pure updated_ctrler
+
+def Ctrlers.update_ctrler_states_trans_to_specific_state (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
+(prev_trans_to_state : StateName) (replacement_state_name : StateName)
+: Except String Ctrlers := do
+  let ctrler ← ctrlers.ctrler_from_name ctrler_name
+  let updated_ctrler ← ctrler.update_ctrler_basic_and_reset_transitions prev_trans_to_state replacement_state_name
+  ctrlers.update_ctrler updated_ctrler
+  
