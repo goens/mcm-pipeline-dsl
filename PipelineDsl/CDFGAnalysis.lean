@@ -1115,7 +1115,12 @@ partial def CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates
     let downstream_ctrlers ← states_msg'd.mapM (CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates post_receive_graph pre_receive_graph total_graph · ctrlers (dist + 1))
     let just_downstream_ctrlers := downstream_ctrlers.filter (·.isSome)
     match just_downstream_ctrlers with
-    | [] => pure none -- pure $ some (⟨node.ctrler_name, []⟩,0)
+    | [] =>
+      -- if is_a_queue then
+      --   pure $ some (⟨node.ctrler_name, []⟩,0)
+      --   -- Could probably do a 3rd case; If basic ctrler, then 
+      -- else
+        pure none
     | [one] => pure (one)
     | list => -- choose the closest one from
       let ctrler_states_dist := list.map (·.get!)
@@ -1764,3 +1769,17 @@ def CDFG.Graph.filter_is_node_for_ld (graph : Graph) (node : Node) : Bool :=
 
 def CDFG.Graph.filter_input_nodes_only_ld (graph : Graph) (nodes : List Node) : List Node :=
   nodes.filter ( graph.filter_is_node_for_ld · )
+
+def CDFG.Node.listen_handle_stmt? (node : Node) (ctrlers : Ctrlers) : Except String (Option Pipeline.Statement) := do
+  let ctrler ← ctrlers.ctrler_from_name node.ctrler_name 
+  let state ← ctrler.state_from_name node.current_state
+  let stmt ← state.listen_handle_stmt? 
+
+  pure stmt
+
+def CDFG.Node.wrap_stmt_with_node's_listen_handle_if_exists (node : CDFG.Node) (stmt : Pipeline.Statement) (ctrlers : Ctrlers) : Except String Pipeline.Statement := do
+  let listen_handle? ← node.listen_handle_stmt? ctrlers
+  match listen_handle? with
+  | none => do pure stmt
+  | some listen_handle => do listen_handle.replace_listen_handle_stmts [stmt]
+
