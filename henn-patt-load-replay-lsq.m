@@ -41,12 +41,7 @@ INST : record
   imm : val_t;
   write_value : val_t;
 end;
-LQ_state : enum {squashed_await_ld_mem_resp, await_committed, write_result,
-await_mem_response, build_packet_send_mem_request, await_sb_fwd_check_response,
-await_fwd_check, await_translation, await_scheduled, await_creation,
-init_entry_with_default_state, LoadReplay_await_replay_start,
-replay_issue_load_to_mem, replay_generated_await_mem_response,
-replay_compare_and_check_state};
+LQ_state : enum {squashed_await_ld_mem_resp, await_committed, write_result, await_mem_response, build_packet_send_mem_request, await_sb_fwd_check_response, await_fwd_check, await_translation, await_scheduled, await_creation, init_entry_with_default_state, LoadReplay_await_replay_start, replay_issue_load_to_mem, replay_generated_await_mem_response, replay_compare_and_check_state};
 LQ_idx_t : 0 .. LQ_NUM_ENTRIES_ENUM_CONST;
 LQ_count_t : 0 .. LQ_NUM_ENTRIES_CONST;
 LQ_entry_values : record
@@ -901,7 +896,7 @@ end;
 
 
 ruleset j : cores_t; i : LQ_idx_t do 
-  rule "LQ write_result ===> await_committed || await_fwd_check" 
+  rule "LQ write_result ===> LoadReplay_await_replay_start || await_fwd_check" 
 (Sta.core_[ j ].LQ_.entries[ i ].state = write_result)
 ==>
  
@@ -927,8 +922,12 @@ begin
   while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
-      next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].is_executed := true;
-      next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := rob_commit_if_head;
+      if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) then
+        next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].is_executed := true;
+        next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := rob_commit_if_head;
+      else
+        error "Controller is not on an expected state for a msg.";
+      end;
       ROB_found_entry := true;
     end;
     if (ROB_offset != ROB_difference) then
@@ -939,7 +938,7 @@ begin
   end;
   if (ROB_found_entry = false) then
   end;
-  next_state.core_[ j ].LQ_.entries[ i ].state := await_committed;
+  next_state.core_[ j ].LQ_.entries[ i ].state := LoadReplay_await_replay_start;
   Sta := next_state;
 
 end;
@@ -1123,7 +1122,7 @@ end;
 
 
 ruleset j : cores_t; i : LQ_idx_t do 
-  rule "LQ replay_issue_load_to_mem ===> replay_generated_await_mem_response" 
+  rule "LQ replay_issue_load_to_mem ===> replay_generated_await_mem_response || await_fwd_check" 
 ((Sta.core_[ j ].LQ_.entries[ i ].state = replay_issue_load_to_mem) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
@@ -1146,7 +1145,7 @@ end;
 
 
 ruleset j : cores_t; i : LQ_idx_t do 
-  rule "LQ replay_compare_and_check_state ===> await_committed" 
+  rule "LQ replay_compare_and_check_state ===> await_committed || await_fwd_check" 
 (Sta.core_[ j ].LQ_.entries[ i ].state = replay_compare_and_check_state)
 ==>
  
@@ -1184,7 +1183,11 @@ begin
   while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
-      next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := original_commit_rob_commit_if_head;
+      if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = ROB_await_replay_complete) then
+        next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := original_commit_rob_commit_if_head;
+      else
+        error "Controller is not on an expected state for a msg.";
+      end;
       next_state.core_[ j ].LQ_.entries[ i ].state := await_committed;
       ROB_found_entry := true;
     end;
@@ -1207,21 +1210,15 @@ ruleset j : cores_t; i : SQ_idx_t do
 (Sta.core_[ j ].SQ_.entries[ i ].state = sq_await_translation)
 ==>
  
-  var loop_break : boolean;
-  var difference : LQ_idx_t;
-  var entry_idx : LQ_idx_t;
-  var offset : LQ_idx_t;
-  var curr_idx : LQ_idx_t;
-  var violating_seq_num : ROB_count_t;
-  var rob_idx : ROB_idx_t;
-  var squash_diff : ROB_idx_t;
-  var squash_offset : ROB_count_t;
+  var violating_seq_num : inst_count_t;
   var rob : ROB;
-  var squash_idx : ROB_idx_t;
-  var squash_ld_id : LQ_idx_t;
-  var squash_st_id : SQ_idx_t;
-  var curr_rob_inst : INST;
   var rob_id : ROB_idx_t;
+  var LQ_while_break : boolean;
+  var LQ_found_entry : boolean;
+  var LQ_entry_idx : LQ_idx_t;
+  var LQ_difference : LQ_idx_t;
+  var LQ_offset : LQ_idx_t;
+  var LQ_curr_idx : LQ_idx_t;
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
@@ -1233,87 +1230,95 @@ ruleset j : cores_t; i : SQ_idx_t do
 begin
   next_state := Sta;
   next_state.core_[ j ].SQ_.entries[ i ].phys_addr := next_state.core_[ j ].SQ_.entries[ i ].virt_addr;
-  rob := Sta.core_[ j ].ROB_;
-  loop_break := false;
+  LQ_while_break := false;
+  LQ_found_entry := false;
   if (next_state.core_[ j ].LQ_.num_entries = 0) then
-    loop_break := true;
+    LQ_while_break := true;
   end;
-  entry_idx := next_state.core_[ j ].LQ_.head;
-  difference := ((((next_state.core_[ j ].LQ_.tail + LQ_NUM_ENTRIES_CONST) - 1) - entry_idx) % LQ_NUM_ENTRIES_CONST);
-  offset := 0;
-  while ((offset <= difference) & ((loop_break = false) & (difference >= 0))) do
-    curr_idx := ((entry_idx + offset) % LQ_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].LQ_.entries[ curr_idx ].phys_addr = next_state.core_[ j ].SQ_.entries[ i ].phys_addr) & (next_state.core_[ j ].LQ_.entries[ curr_idx ].instruction.seq_num > next_state.core_[ j ].SQ_.entries[ i ].instruction.seq_num)) then
-      violating_seq_num := next_state.core_[ j ].LQ_.entries[ curr_idx ].instruction.seq_num;
-      rob_idx := (search_rob_seq_num_idx(rob, violating_seq_num) % (CORE_INST_NUM + 1));
-      squash_diff := (((rob.tail + ((CORE_INST_NUM + 1) - 1)) - rob_idx) % (CORE_INST_NUM + 1));
-      squash_offset := 0;
-      while ((squash_offset <= squash_diff) & (squash_diff >= 0)) do
-        squash_idx := ((rob_idx + squash_offset) % (CORE_INST_NUM + 1));
-        curr_rob_inst := rob.entries[ squash_idx ].instruction;
-        if (curr_rob_inst.op = ld) then
-          squash_ld_id := search_LQ_seq_num_idx(next_state.core_[ j ].LQ_, curr_rob_inst.seq_num);
-          if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = await_committed) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
+  LQ_entry_idx := next_state.core_[ j ].LQ_.head;
+  LQ_difference := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LQ_.head)) % LQ_NUM_ENTRIES_CONST);
+  LQ_offset := 0;
+  while ((LQ_offset <= LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+    LQ_curr_idx := ((LQ_entry_idx + LQ_offset) % LQ_NUM_ENTRIES_CONST);
+    if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].phys_addr = next_state.core_[ j ].SQ_.entries[ i ].phys_addr) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num > next_state.core_[ j ].SQ_.entries[ i ].instruction.seq_num)) then
+      violating_seq_num := next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num;
+      for ROB_squash_idx : ROB_idx_t do
+        if true then
+          if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
+            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+            end;
+          elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = ROB_await_replay_complete) then
+            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+            end;
+           elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = original_commit_rob_commit_if_head) then
+            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+            end;
+          else
+            error "Controller is not on an expected state for a msg.";
+          end;
+        end;
+      endfor;
+      for LQ_squash_idx : LQ_idx_t do
+        if true then
+          if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
               rob := next_state.core_[ j ].ROB_;
-              rob_id := search_rob_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num);
+              rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
               assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
               rob.entries[ rob_id ].is_executed := false;
               next_state.core_[ j ].ROB_ := rob;
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
             end;
-          elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = write_result) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+          elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
             end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = await_mem_response) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := squashed_await_ld_mem_resp;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_mem_response) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := squashed_await_ld_mem_resp;
             end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = build_packet_send_mem_request) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = build_packet_send_mem_request) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
             end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = await_sb_fwd_check_response) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = LoadReplay_await_replay_start) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              rob := next_state.core_[ j ].ROB_;
+              rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
+              assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
+              rob.entries[ rob_id ].is_executed := false;
+              next_state.core_[ j ].ROB_ := rob;
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
             end;
-            -- TODO: Add a case for each of the generated states....
-            -- NOTE: Though it would be better to just change the head_search_squash to just head_search and use the squash API....
-            -- But that API would need to act on all insts that satisfy the condition
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = LoadReplay_await_replay_start) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = replay_issue_load_to_mem) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
             end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = replay_issue_load_to_mem) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = replay_generated_await_mem_response) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := squashed_await_ld_mem_resp;
             end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = replay_generated_await_mem_response) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := await_fwd_check;
-            end;
-           elsif (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state = replay_compare_and_check_state) then
-            if (next_state.core_[ j ].LQ_.entries[ squash_ld_id ].instruction.seq_num >= violating_seq_num) then
-              next_state.core_[ j ].LQ_.entries[ squash_ld_id ].state := squashed_await_ld_mem_resp;
-            end;
+          else
+            error "Controller is not on an expected state for a msg.";
           end;
-        elsif (curr_rob_inst.op = st) then
-          squash_st_id := search_SQ_seq_num_idx(next_state.core_[ j ].SQ_, curr_rob_inst.seq_num);
-        else
-          error "inst should be either ld or st";
         end;
-        squash_offset := (squash_offset + 1);
-      end;
-      loop_break := true;
+      endfor;
+      LQ_found_entry := true;
     end;
-    if (offset != difference) then
-      offset := (offset + 1);
+    if (LQ_offset != LQ_difference) then
+      LQ_offset := (LQ_offset + 1);
     else
-      loop_break := true;
+      LQ_while_break := true;
     end;
   end;
-  next_state.core_[ j ].ROB_ := rob;
+  if (LQ_found_entry = false) then
+  end;
   ROB_while_break := false;
   ROB_found_entry := false;
   if (next_state.core_[ j ].ROB_.num_entries = 0) then
@@ -1325,8 +1330,12 @@ begin
   while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].SQ_.entries[ i ].instruction.seq_num) then
-      next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].is_executed := true;
-      next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := rob_commit_if_head;
+      if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) then
+        next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].is_executed := true;
+        next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state := rob_commit_if_head;
+      else
+        error "Controller is not on an expected state for a msg.";
+      end;
       ROB_found_entry := true;
     end;
     if (ROB_offset != ROB_difference) then
@@ -1452,7 +1461,7 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_commit_if_head ===> ROB_await_replay_complete || original_commit_rob_commit_if_head || rob_commit_if_head" 
+  rule "ROB rob_commit_if_head ===> ROB_await_replay_complete || original_commit_rob_commit_if_head || rob_commit_if_head || rob_await_executed" 
 (Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_if_head)
 ==>
  
@@ -1479,7 +1488,11 @@ begin
       while ((LQ_offset <= LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
         LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
         if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-          next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+          if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+            next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+          else
+            error "Controller is not on an expected state for a msg.";
+          end;
           LQ_found_entry := true;
         end;
         if (LQ_offset != LQ_difference) then
@@ -1522,7 +1535,7 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB original_commit_rob_commit_if_head ===> rob_await_creation || rob_commit_if_head || rob_await_creation" 
+  rule "ROB original_commit_rob_commit_if_head ===> rob_await_creation || rob_commit_if_head || rob_await_creation || rob_await_executed" 
 ((Sta.core_[ j ].ROB_.entries[ i ].state = original_commit_rob_commit_if_head) & (Sta.core_[ j ].SB_.num_entries < SB_NUM_ENTRIES_CONST))
 ==>
  
@@ -1563,17 +1576,21 @@ begin
     while ((LQ_offset <= LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
       LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
       if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].virt_addr := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].phys_addr := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].read_value := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].st_seq_num := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].seq_num := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].instruction.seq_num := 0;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].instruction.op := inval;
-        next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].state := await_creation;
-        next_state.core_[ j ].LQ_.head := ((Sta.core_[ j ].LQ_.head + 1) % LQ_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - 1);
-        next_state.core_[ j ].LQ_.entries[ i ].state := await_creation;
+        if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_committed) then
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].virt_addr := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].phys_addr := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].read_value := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].st_seq_num := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].seq_num := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].instruction.seq_num := 0;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].instruction.op := inval;
+          next_state.core_[ j ].LQ_.entries[ Sta.core_[ j ].LQ_.head ].state := await_creation;
+          next_state.core_[ j ].LQ_.head := ((Sta.core_[ j ].LQ_.head + 1) % LQ_NUM_ENTRIES_CONST);
+          next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - 1);
+          next_state.core_[ j ].LQ_.entries[ i ].state := await_creation;
+        else
+          error "Controller is not on an expected state for a msg.";
+        end;
         next_state.core_[ j ].ROB_.entries[ i ].is_executed := false;
         next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num := 0;
         next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
@@ -1605,12 +1622,9 @@ begin
       while ((SQ_offset <= SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
         SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
         if (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-          -- put "#Sanity1\n";
           if (Sta.core_[ j ].SB_.num_entries = SB_NUM_ENTRIES_CONST) then
-            -- put "#Sanity2\n";
             next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
           else
-            -- put "#Sanity3\n";
             inst_from_sq := next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction;
             write_value_from_sq := next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].write_value;
             phys_addr_from_sq := next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].phys_addr;
@@ -1622,7 +1636,6 @@ begin
             SB_found_entry := false;
             SB_difference := (SB_NUM_ENTRIES_CONST - 1);
             SB_offset := 0;
-            -- put "#Sanity4\n";
             while ((SB_offset <= SB_difference) & ((SB_loop_break = false) & ((SB_found_entry = false) & (SB_difference >= 0)))) do
               SB_curr_idx := ((SB_entry_idx + SB_offset) % SB_NUM_ENTRIES_CONST);
               if (next_state.core_[ j ].SB_.entries[ SB_curr_idx ].state = sb_await_creation) then
@@ -1643,16 +1656,20 @@ begin
             if (SB_found_entry = false) then
               error "Couldn't find an empty entry to insert into";
             end;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].virt_addr := 0;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].phys_addr := 0;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].write_value := 0;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].ld_seq_num := 0;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].instruction.seq_num := 0;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].instruction.op := inval;
-            next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].state := sq_await_creation;
-            next_state.core_[ j ].SQ_.head := ((Sta.core_[ j ].SQ_.head + 1) % SQ_NUM_ENTRIES_CONST);
-            next_state.core_[ j ].SQ_.num_entries := (next_state.core_[ j ].SQ_.num_entries - 1);
-            next_state.core_[ j ].SQ_.entries[ i ].state := sq_await_creation;
+            if (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) then
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].virt_addr := 0;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].phys_addr := 0;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].write_value := 0;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].ld_seq_num := 0;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].instruction.seq_num := 0;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].instruction.op := inval;
+              next_state.core_[ j ].SQ_.entries[ Sta.core_[ j ].SQ_.head ].state := sq_await_creation;
+              next_state.core_[ j ].SQ_.head := ((Sta.core_[ j ].SQ_.head + 1) % SQ_NUM_ENTRIES_CONST);
+              next_state.core_[ j ].SQ_.num_entries := (next_state.core_[ j ].SQ_.num_entries - 1);
+              next_state.core_[ j ].SQ_.entries[ i ].state := sq_await_creation;
+            else
+              error "Controller is not on an expected state for a msg.";
+            end;
             next_state.core_[ j ].ROB_.entries[ i ].is_executed := false;
             next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num := 0;
             next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
@@ -1713,8 +1730,12 @@ begin
     while ((LQ_offset <= LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
       LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
       if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].IQ_.entries[ i ].instruction.seq_num) then
-        next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].virt_addr := next_state.core_[ j ].IQ_.entries[ i ].instruction.imm;
-        next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := await_translation;
+        if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) then
+          next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].virt_addr := next_state.core_[ j ].IQ_.entries[ i ].instruction.imm;
+          next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := await_translation;
+        else
+          error "Controller is not on an expected state for a msg.";
+        end;
         next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
         next_state.core_[ j ].IQ_.entries[ i ].state := iq_await_creation;
         LQ_found_entry := true;
@@ -1740,9 +1761,13 @@ begin
       while ((SQ_offset <= SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
         SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
         if (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].IQ_.entries[ i ].instruction.seq_num) then
-          next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].write_value := next_state.core_[ j ].IQ_.entries[ i ].instruction.write_value;
-          next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].virt_addr := next_state.core_[ j ].IQ_.entries[ i ].instruction.imm;
-          next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state := sq_await_translation;
+          if (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled) then
+            next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].write_value := next_state.core_[ j ].IQ_.entries[ i ].instruction.write_value;
+            next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].virt_addr := next_state.core_[ j ].IQ_.entries[ i ].instruction.imm;
+            next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state := sq_await_translation;
+          else
+            error "Controller is not on an expected state for a msg.";
+          end;
           next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
           next_state.core_[ j ].IQ_.entries[ i ].state := iq_await_creation;
           SQ_found_entry := true;
