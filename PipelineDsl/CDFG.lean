@@ -124,6 +124,16 @@ def Condition.toString : Condition → String
 | .HandleCondition handle_blk => s!"HandleCondition: ({handle_blk})"
 instance : ToString Condition where toString := Condition.toString
 
+def Condition.is_await (condition : Condition) : Bool :=
+  match condition with
+  | .AwaitCondition /- await_stmt -/ _ => true
+  | _ => false
+
+def Condition.await_stmt (condition : Condition) : Except String (Pipeline.Statement) :=
+  match condition with
+  | .AwaitCondition await_stmt => do pure await_stmt
+  | _ => do throw "Expected AwaitCondition"
+
 -- abbrev MessageName := String
 -- abbrev CtrlerName := String
 inductive Message
@@ -339,6 +349,9 @@ str
 instance : ToString Node where toString := Node.toString
 
 def Node.is_from_ctrler (node : Node) (ctrler_name : CtrlerName) : Bool := node.ctrler_name == ctrler_name
+
+def Node.not_reset_transitions (node : Node) : Transitions :=
+  node.transitions.filter (·.trans_type != .Reset)
 
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
