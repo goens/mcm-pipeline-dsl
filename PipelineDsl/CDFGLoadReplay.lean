@@ -7,7 +7,6 @@ import PipelineDsl.DSLtoCDFG
 import PipelineDsl.CDFGAnalysis
 
 import PipelineDsl.LoadReplayHelpers
-import PipelineDsl.CreateDSLHelpers
 
 -- namespace LoadReplay
 
