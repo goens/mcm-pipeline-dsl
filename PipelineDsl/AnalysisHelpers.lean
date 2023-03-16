@@ -2455,3 +2455,9 @@ def controller_info.init_trans_dest_state (ctrler : controller_info)
   let init_trans_dest : StateName ← ctrler.init_trans_dest 
   ctrler.state_from_name init_trans_dest   
 
+def List.isNotEmpty (list : List α) : Bool :=
+  match list with
+  | [] => false
+  | _ => true
+
+def API_msg_names : List MsgName := [load_completed, store_completed]
