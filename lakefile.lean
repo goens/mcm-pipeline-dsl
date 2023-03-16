@@ -23,3 +23,4 @@ lean_exe pipelinedsl {
 }
 
 require murphi from git "https://github.com/goens/lean-murphi.git"@"main"
+require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "master"
