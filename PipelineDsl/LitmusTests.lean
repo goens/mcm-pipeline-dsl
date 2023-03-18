@@ -24,15 +24,19 @@ core_idx : Nat
 insts : List InstInCore
 deriving Inhabited
 
+inductive Addresses where
+| same : Addresses -- ex. ld[x] -> ld[x]
+| any : Addresses -- ex. ld[x] -> ld[y]
+deriving Inhabited, BEq
+
+structure MCMOrdering where
+first_inst : InstType
+second_inst : InstType
+address : Addresses
+deriving Inhabited, BEq
 -- Litmus Test Info
-inductive MCMOrdering where
-| load_to_load : MCMOrdering
-| load_to_store : MCMOrdering
-| store_to_load : MCMOrdering
-| store_to_store : MCMOrdering
 -- There's probably also "(non) multi-copy atomic"
 -- worry about it later when we reach it
-deriving Inhabited
 
 inductive Allowable where
 | permitted : Allowable
@@ -54,13 +58,14 @@ core_idx : Nat
 reg_entries : List RegEntry
 deriving Inhabited
 
-inductive ForbiddenOrRequired
-| forbidden : ForbiddenOrRequired
-| required : ForbiddenOrRequired
+inductive TestResult where
+| forbidden : TestResult
+| required : TestResult
+| permitted : TestResult
 deriving Inhabited
 
 structure ExpectedResult where
-negate_or_not : ForbiddenOrRequired
+negate_or_not : TestResult
 per_core_reg_file : List CoreRegState
 deriving Inhabited
 
@@ -203,8 +208,8 @@ def iwp23b1 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
-    negate_or_not := ForbiddenOrRequired.required}
-  orderings := [MCMOrdering.store_to_load]
+    negate_or_not := TestResult.required}
+  orderings := [⟨store, load, Addresses.same⟩]
 }
 
 def amd1 : LitmusTest := {
@@ -224,8 +229,8 @@ def amd1 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+    negate_or_not := TestResult.forbidden},
+  orderings := [⟨load, load, Addresses.any⟩, ⟨store, store, Addresses.any⟩]
 }
 
 -- ====== 
@@ -246,8 +251,8 @@ def amd2 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+    negate_or_not := TestResult.forbidden},
+  orderings := [⟨load, store, Addresses.any⟩]
 }
 
 -- Do not use until I can generate tests which can check for an existing trace
@@ -280,8 +285,8 @@ def amd3 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+    negate_or_not := TestResult.permitted},
+  orderings := [⟨store, store, Addresses.any⟩, ⟨store, load, Addresses.any⟩]
 }
 
 -- Definition n2
@@ -329,8 +334,8 @@ def n2 : LitmusTest := {
     {core_idx := 2, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 2}]},
     {core_idx := 3, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.load_to_load]
+    negate_or_not := TestResult.permitted},
+  orderings := [⟨load, load, Addresses.same⟩, ⟨load, load, Addresses.any⟩, ⟨store, store, Addresses.any⟩]
 }
 
 -- Definition n4
@@ -367,8 +372,8 @@ def n4 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 2}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 1}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 2}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_store, MCMOrdering.load_to_load]
+    negate_or_not := TestResult.forbidden},
+  orderings := [⟨store, store, Addresses.same⟩, ⟨load, load, Addresses.same⟩]
 }
 
 -- Definition n5
@@ -398,8 +403,8 @@ def n5 : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 2}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_load]
+    negate_or_not := TestResult.forbidden},
+  orderings := [⟨store, load, Addresses.same⟩]
 }
 
 
@@ -451,13 +456,13 @@ def Dekker : LitmusTest := {
     {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
     ],
-    negate_or_not := ForbiddenOrRequired.forbidden},
-  orderings := [MCMOrdering.store_to_load]
+    negate_or_not := TestResult.forbidden},
+  orderings := [⟨store, load, Addresses.any⟩]
 }
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
 amd1,
-n2,
+-- n2, -- permitted test, not yet implemented "permitted"
 n4,
 n5,
 Dekker

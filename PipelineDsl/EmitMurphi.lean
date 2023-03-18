@@ -525,8 +525,11 @@ type ---- Type declarations ----
 
   let cond_to_check : Murϕ.Expr :=
   match litmus_test.expected.negate_or_not with
-  | ForbiddenOrRequired.forbidden => Murϕ.Expr.negation all_reg_file_states
-  | ForbiddenOrRequired.required => all_reg_file_states
+  | TestResult.forbidden => Murϕ.Expr.negation all_reg_file_states
+  | TestResult.required => all_reg_file_states
+  | TestResult.permitted =>
+    dbg_trace "Not handled Litmust Test case: Permitted"
+    panic! "Not handled Litmust Test case: Permitted"
 
   let empty_core_exprs : Murϕ.Expr := litmus_test_core_empty_murphi_expr litmus_test
 
