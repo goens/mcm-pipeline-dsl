@@ -1482,6 +1482,7 @@ def gen_stall_dsl_state
   (ctrler_name : CtrlerName)
   (state_check_cond? : Option Pipeline.Expr)
   (stall_on_inst_type : InstType)
+  (inst_to_stall_type : InstType)
   (original_state's_handleblks : Option ( List HandleBlock ))
   (just_reset : Bool)
   : Except String Description
@@ -1575,18 +1576,26 @@ def gen_stall_dsl_state
     -- TODO: Fill in the when stmts, and the condition in it
     let await_stmt : Pipeline.Statement :=
       Statement.await ctrler_search_call [when_success, when_fail]
+
+    let if_inst_is_of_to_stall_type : Pipeline.Statement :=
+      Pipeline.Statement.conditional_stmt $
+        Pipeline.Conditional.if_else_statement 
+          (Pipeline.Expr.equal (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "op"]))
+            (Pipeline.Term.const (Const.str_lit (inst_to_stall_type.toMurphiString))))
+          await_stmt
+          $ Pipeline.Statement.transition original_state_name
     
     let stall_state_stmt : Pipeline.Statement :=
       if original_state's_handleblks.isSome then
-        Statement.listen_handle (Statement.block [await_stmt]) original_state's_handleblks.get!
+        Statement.listen_handle (Statement.block [if_inst_is_of_to_stall_type]) original_state's_handleblks.get!
       else
-        await_stmt
+        if_inst_is_of_to_stall_type
 
     pure $ Description.state new_stall_state_name (
       Statement.block [stall_state_stmt])
 
 def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : StateOrConstraintToStallOn)
-(ctrlers : List controller_info) (inst_type_to_stall_on : InstType)
+(ctrlers : List controller_info) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
   let new_stall_state_name := String.join [stall_state.ctrler, "_stall_", stall_state.state]
@@ -1610,7 +1619,7 @@ def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : StateOrCo
   dbg_trace s!"not_yet_gotten_mem_resp_state_check?: {not_yet_gotten_mem_resp_state_check?}"
   let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_state_name stall_state.state
-    stall_on_constraint.ctrler not_yet_gotten_mem_resp_state_check? inst_type_to_stall_on
+    stall_on_constraint.ctrler not_yet_gotten_mem_resp_state_check? inst_type_to_stall_on inst_to_stall_type
     handle_blks just_reset
 
   dbg_trace s!"New stall state: \n{new_stall_state}"
