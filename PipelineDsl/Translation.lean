@@ -1831,6 +1831,48 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_is_entry : Bool :=
       h == "entry"
 
+    if ident_is_entry && ident_matches_ident_list then
+      -- special case: we use the entry designator base qualifier, then the ident
+      let entries := "entries"
+      -- let idx : Murϕ.Designator := match specific_murphi_dest_expr with
+      -- | Murϕ.Expr.designator desig =>
+      --   dbg_trace "===== BEGIN The Designator!!! "
+      --   dbg_trace specific_murphi_dest_expr
+      --   -- dbg_trace desig
+      --   dbg_trace "===== END The Designator!!! "
+      --   desig
+      -- | _ => dbg_trace "Throw!!! Didn't pass an expr with a designator!!!"
+      --   default
+
+      let curr_idx_designator_expr :=
+      Murϕ.Expr.designator (Murϕ.Designator.mk "curr_idx" [])
+      -- Murϕ.Expr.designator idx
+
+      let sum_list : List (String ⊕ Murϕ.Expr)
+      := List.append [
+        -- entries
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl (ctrler_name.append "_"),
+        Sum.inl entries,
+        Sum.inr (if specific_murphi_dest_expr.isNone then curr_idx_designator_expr else specific_murphi_dest_expr.get!)
+      ] (list_ident_to_murphi_ID t)
+
+      -- AZ TODO: Use dest ctrler!
+      -- TODO Tuesday, Aug 16, 2022
+      let murphi_designator :=
+      -- Murϕ.Designator.mk dest_ctrler sum_list
+      Murϕ.Designator.mk "next_state" sum_list
+      -- Murϕ.Designator.
+
+        dbg_trace "===== BEGIN OVERALL Designator!!! "
+        dbg_trace specific_murphi_dest_expr
+        dbg_trace "-----------"
+        dbg_trace murphi_designator
+        -- dbg_trace desig
+        dbg_trace "===== END OVERALL Designator!!! "
+      murphi_designator
+    else
     if ident_matches_ident_list
     then
       -- If this matches then i should
