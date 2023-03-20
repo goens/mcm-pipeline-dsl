@@ -992,7 +992,7 @@ def naive_update_add_stall_to_global_perform_ld
 
   let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_state_name state_globally_performing_mem_ld
-    ctrler.name (some not_yet_gotten_mem_resp_state_check) load Option.none false
+    ctrler.name (some not_yet_gotten_mem_resp_state_check) load load Option.none false
 
   -- (4) Update the stall state with these Helper Funcs
   -- Update states which transitioned to the original state:
@@ -1428,7 +1428,7 @@ def more_generic_core_in_order_stall_transform
 
   let new_stall_state : Description ←
     gen_stall_dsl_state new_stall_global_perform_state_name global_perform_state_that_send_mem_req
-    ctrler_that_await_mem_completion.name (some not_yet_gotten_mem_resp_state_check) first_inst
+    ctrler_that_await_mem_completion.name (some not_yet_gotten_mem_resp_state_check) first_inst second_inst
     handle_blks false
   dbg_trace s!"New stall state: \n{new_stall_state}"
 
