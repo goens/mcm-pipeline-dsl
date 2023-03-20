@@ -1720,23 +1720,23 @@ def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers :
 
 -- import Pipeline.DSLtoCDFG
 
-def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
-: Except String (List controller_info) := do
-  dbg_trace "<< Starting CDFGInOrderTfsm"
-  let graph_nodes ← DSLtoCDFG ctrlers
-  dbg_trace "<< Got graph nodes translated"
-  let graph := {nodes := graph_nodes}
-  let stall_point ← find_stall_point_heuristic graph inst_to_stall_type ctrlers
-  dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
-  let ctrler_state_to_stall_on : StateOrConstraintToStallOn ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_on_type ctrlers
-  dbg_trace "<< Found ctrler/state to stall at"
+-- def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
+-- : Except String (List controller_info) := do
+--   dbg_trace "<< Starting CDFGInOrderTfsm"
+--   let graph_nodes ← DSLtoCDFG ctrlers
+--   dbg_trace "<< Got graph nodes translated"
+--   let graph := {nodes := graph_nodes}
+--   let stall_point ← find_stall_point_heuristic graph inst_to_stall_type ctrlers
+--   dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
+--   let ctrler_state_to_stall_on : StateOrConstraintToStallOn ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_on_type ctrlers
+--   dbg_trace "<< Found ctrler/state to stall at"
 
-  let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type inst_to_stall_type
+--   let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type inst_to_stall_type
 
-  let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
-  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
+--   let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
+--   let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
 
-  pure updated_ctrlers
+--   pure updated_ctrlers
 
 def CDFG.Transition.is_has_result_write_labelled (transition : Transition)
 : (Option Pipeline.Statement) :=
@@ -2032,4 +2032,30 @@ def CDFG.Node.wrap_stmt_with_node's_listen_handle_if_exists (node : CDFG.Node) (
   match listen_handle? with
   | none => do pure stmt
   | some listen_handle => do listen_handle.replace_listen_handle_stmts [stmt]
+
+def CDFG.Graph.is_not_transitioned_to (graph : Graph) (node : Node) : Bool :=
+  graph.nodes_transitioning_to_node node == []
+
+def CDFG.Node.is_not_msg'd (node : Node) : Bool :=
+  node.transitions.all (·.messages == [])
+
+-- A place holder, for the finding the instruction source node of a graph
+def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
+  let not_transitioned_to_nodes := graph.nodes.filter (graph.is_not_transitioned_to ·)
+  let not_msg'd_or_transitioned_to := not_transitioned_to_nodes.filter (·.is_not_msg'd)
+
+  match not_msg'd_or_transitioned_to with
+  | [] => throw "Error: No instruction source node found"
+  | [node] => pure node
+  | _ => throw "Error: More than one instruction source node found"
+
+-- TODO: Stub
+def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Graph) (node : Node) (option_node? : Option Node) : Except String Graph := do
+  return default
+
+-- TODO: Stub
+def CDFG.Graph.states_an_inst_can_be_in (graph : Graph) (must_stall_at_node? : Option Node) : Except String Graph := do
+  let inst_source_node ← graph.inst_source_node
+
+  return default
 
