@@ -3388,7 +3388,8 @@ lst_stmts_decls
   dbg_trace "##### END match handle block #####"
   -- This would be the if stmt
   -- to do handle ROB Squash signals
-  let error_if_not_on_expected_state := [murϕ| error "Controller is not on an expected state for a msg."]
+  let error_msg := s!"Controller is not on an expected state for a msg: ({expected_func}) from: ({expected_struct}) to: ({ctrler_name})";
+  let error_if_not_on_expected_state := Murϕ.Statement.errorstmt error_msg
 
   let trans_handle_squash_if_stmt : lst_stmts_decls :=
   match trans_handle_squash_list with
