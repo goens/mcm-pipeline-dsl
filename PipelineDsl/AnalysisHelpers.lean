@@ -1176,6 +1176,29 @@ partial def Pipeline.Expr.is_contains_instruction_not_eq_ld : Pipeline.Expr → 
   | _ => false
 end
 
+mutual
+partial def Pipeline.Term.is_instruction_not_eq_type : Pipeline.Term → InstType → Bool
+| term, inst_type =>
+  match term with
+  | .expr expr' =>
+    expr'.is_contains_instruction_not_eq_type inst_type
+  | _ => false
+
+partial def Pipeline.Expr.is_contains_instruction_not_eq_type : Pipeline.Expr → InstType → Bool
+| expr, inst_type =>
+  match expr with
+  | .equal term1 term2 =>
+    match term1, term2 with
+    | .qualified_var qual_var, .var ident =>
+      (qual_var == [instruction, op].to_qual_name) && (ident != inst_type.toMurphiString)
+    | .var ident, .qualified_var qual_var =>
+      (qual_var == [instruction, op].to_qual_name) && (ident != inst_type.toMurphiString)
+    | _, _ => false
+  | .binand term1 term2 => term1.is_instruction_not_eq_type inst_type || term2.is_instruction_not_eq_type inst_type
+  -- | .binor term1 term2 => term1.is_instruction_not_eq_type || term2.is_instruction_not_eq_type
+  | _ => false
+end
+
 -- partial def Pipeline.Term.is_search_older_seq_num_success : Pipeline.Term → CtrlerName → Bool
 -- | term, ctrler_name =>
 --   match term with
@@ -2470,3 +2493,4 @@ def List.isNotEmpty (list : List α) : Bool :=
   | _ => true
 
 def API_msg_names : List MsgName := [load_completed, store_completed]
+def ficticious_ctrler_API_msg_names : List MsgName := [load_completed, store_completed]
