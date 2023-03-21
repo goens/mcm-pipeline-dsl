@@ -177,72 +177,17 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_ctrler : Node → 
 
 def CDFG.Message.findDestState (cdfg_nodes : List CDFG.Node) (msg : Message) (src_ctrler : String)
 : Except String (List String) := do
-  -- let dest_ctrler ← msg.dest_ctrler
-  -- let msg_name ← msg.name
-  -- let dest_nodes : List Node := cdfg_nodes.filter (λ node =>
-  --   node.ctrler_name == dest_ctrler
-  -- )
-  -- let dest_nodes_waiting_on_msg : List Node := dest_nodes.filter (
-  --   λ node =>
-  --     -- check if node awaits a message with name msg_name 
-  --     -- could have also just checked the list of predicates
-  --     let transition's_preds_await_msg : List Bool :=
-  --       node.transitions.map (λ transition =>
-  --         match transition.trans_type with
-  --         -- TODO: Change to include completion
-  --         | .Completion => false
-  --         | .Transition =>
-  --           -- Check predicates
-  --           let conds_that_await_msg : List Condition :=
-  --             transition.predicate.filter (λ (cond : Condition) =>
-  --               -- check for await stmts
-  --               match cond with
-  --               | .AwaitCondition await_stmt =>
-  --                 match await_stmt with
-  --                 | .await (none) stmts =>
-  --                   let there_is_a_matching_when : List Bool :=
-  --                     stmts.map (λ stmt =>
-  --                       match stmt with
-  --                       | .when qual_name /- args -/ _ /- stmt -/ _ =>
-  --                         match qual_name with
-  --                         | .mk lst_ident =>
-  --                           let src_ctrler' : String := lst_ident[0]!
-  --                           let msg_name' : String := lst_ident[1]!
-  --                           if src_ctrler' == src_ctrler && msg_name == msg_name' then
-  --                             true
-  --                           else
-  --                             false
-  --                       | _ => false
-  --                       )
-  --                   there_is_a_matching_when.any (λ bool => bool == true)
-  --                 | _ => false
-  --               -- Also check listen-handle
-  --               | .HandleCondition handle_stmt =>
-  --                 match handle_stmt with
-  --                 | .mk qual_name /- args -/ _ /- stmt -/ _ =>
-  --                   match qual_name with
-  --                   | .mk lst_ident =>
-  --                     let src_ctrler' : String := lst_ident[0]!
-  --                     let msg_name' : String := lst_ident[1]!
-  --                     if src_ctrler' == src_ctrler && msg_name == msg_name' then
-  --                       true
-  --                     else
-  --                       false
-  --               | _ => false
-  --             )
-  --           conds_that_await_msg.length > 0
-  --         | .Reset => false
-  --       )
-  --     transition's_preds_await_msg.any (λ bool => bool == true)
-  -- )
-  -- let ret := dest_nodes_waiting_on_msg.map (λ node =>
-  --   node.current_state)
-  -- dbg_trace s!">> states awaiting on this msg: {ret}"
-  -- let ctrler_nodes := cdfg_nodes.filter (·.ctrler_name == src_ctrler )
-  -- dbg_trace s!"ctrler_nodes: {ctrler_nodes}"
   let ret_nodes := ← cdfg_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_ctrler msg src_ctrler)
-  let ret_names := ret_nodes.map (·.current_state)
-  pure ret_names
+  match ret_nodes with
+  | [] =>
+    let msg_name := ← msg.name
+    if msg_name ∈ ficticious_ctrler_API_msg_names then
+      pure []
+    else 
+      throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({← msg.name})"
+  | _ :: _ => -- NOTE: Should msgs be named uniquely?
+    let ret_names := ret_nodes.map (·.current_state)
+    pure ret_names
 
 def CDFG.Node.unique_msg'd_states : Node → Graph → Except String (List StateName)
 | node, graph => do
@@ -1998,7 +1943,7 @@ def CDFG.Node.global_perform_load_stmt (node : Node) : Except String Pipeline.St
 
 def CDFG.Condition.is_pred_inst_not_load (cond : Condition) : Bool :=
   match cond with
-  | .DSLExpr expr => expr.is_contains_is_head_api
+  | .DSLExpr expr => expr.is_contains_instruction_not_eq_ld
   | _ => false
 
 def CDFG.Node.is_pred_by_instruction_not_load (node : Node) (dest_node_name : StateName) : Bool :=
@@ -2049,13 +1994,143 @@ def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
   | [node] => pure node
   | _ => throw "Error: More than one instruction source node found"
 
--- TODO: Stub
-def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Graph) (node : Node) (option_node? : Option Node) : Except String Graph := do
-  return default
+def CDFG.Condition.is_pred_inst_not_of_type (cond : Condition) (inst_type : InstType) : Bool :=
+  match cond with
+  | .DSLExpr expr => expr.is_contains_instruction_not_eq_type inst_type
+  | _ => false
+
+def CDFG.Transition.is_trans_pred_by_different_inst_type_than (transition : Transition) (inst_type : InstType) : Bool :=
+  let preds := transition.predicate
+  preds.any (·.is_pred_inst_not_of_type inst_type)
+
+def CDFG.Node.fully_qualified_name (node : Node) : String :=
+  node.ctrler_name ++ "_" ++ node.current_state
+
+def CDFG.Transition.fully_qualified_dest_name (transition : Transition) (ctrler_name : CtrlerName) : String :=
+  ctrler_name ++ "_" ++ transition.dest_state
+
+def CDFG.Transitions.not_visited_transitions (transitions : Transitions) (visited : List Node) (src_ctrler_name : CtrlerName) : List Transition :=
+  let fully_qualified_visited_node_names := visited.map (·.fully_qualified_name)
+  transitions.filter (! ·.fully_qualified_dest_name src_ctrler_name ∈ fully_qualified_visited_node_names)
+
+def CDFG.Node.not_visitied_transitions (node : Node) (visited : List Node) : List Transition :=
+  let trans : Transitions := node.transitions.filter (·.trans_type == .Transition)
+  trans.not_visited_transitions visited node.ctrler_name
+
+def CDFG.Node.not_visitied_transitions_completions (node : Node) (visited : List Node) : List Transition :=
+  let trans : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  trans.not_visited_transitions visited node.ctrler_name
+
+def CDFG.Transitions.trans_that_don't_go_to_node (transitions : Transitions) (ctrler_name : CtrlerName) (node : Node) : List Transition :=
+  transitions.filter (! ·.fully_qualified_dest_name ctrler_name == node.fully_qualified_name)
+
+def CDFG.Transitions.transitions_that_don't_go_to_node (transitions : Transitions) (src_ctrler_name : CtrlerName) (avoid_node? : Option Node) : List Transition :=
+  let trans_don't_go_to_avoid_node :=
+    match avoid_node? with
+    | some avoid_node => transitions.trans_that_don't_go_to_node src_ctrler_name avoid_node
+    | none => transitions
+  trans_don't_go_to_avoid_node
+
+def CDFG.Node.not_visited_transitions_that_don't_go_to_node (node : Node) (visited : List Node) (avoid_node? : Option Node) : List Transition :=
+  let not_visited_trans : Transitions := node.not_visitied_transitions visited
+  not_visited_trans.transitions_that_don't_go_to_node node.ctrler_name avoid_node?
+
+def CDFG.Node.not_visited_transitions_completions_that_don't_go_to_node (node : Node) (visited : List Node) (avoid_node? : Option Node) : List Transition :=
+  let not_visited_trans : Transitions := node.not_visitied_transitions_completions visited
+  not_visited_trans.transitions_that_don't_go_to_node node.ctrler_name avoid_node?
+
+def CDFG.Node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type (node : Node) (visited : List Node) (avoid_node? : Option Node) (inst_type : InstType) : List Transition :=
+  let trans_don't_go_to_avoid_node := node.not_visited_transitions_that_don't_go_to_node visited avoid_node?
+  trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+
+def CDFG.Node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type (node : Node) (visited : List Node) (avoid_node? : Option Node) (inst_type : InstType) : List Transition :=
+  let trans_don't_go_to_avoid_node := node.not_visited_transitions_completions_that_don't_go_to_node visited avoid_node?
+  trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+
+def CDFG.Transition.msg'd_nodes (transition : Transition)  (src_ctrler_name : CtrlerName) (graph : Graph) : Except String (List Node) := do
+  let msg'd_node_names ← ( transition.messages.mapM (·.findDestState graph.nodes src_ctrler_name) ) 
+  msg'd_node_names.join.mapM (graph.node_from_name! ·)
+
+-- find msg'd nodes
+def CDFG.Transitions.msg'd_nodes (transitions : Transitions) (src_ctrler_name : CtrlerName) (graph : Graph) : Except String (List Node) := do
+  let nodes_list ← transitions.mapM (·.msg'd_nodes src_ctrler_name graph)
+  pure nodes_list.join
 
 -- TODO: Stub
-def CDFG.Graph.states_an_inst_can_be_in (graph : Graph) (must_stall_at_node? : Option Node) : Except String Graph := do
+partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Graph) (node : Node) (avoid_node? : Option Node) (inst_type : InstType) (visited : List Node) : Except String (List Node) := do
+  -- Look at 1. nodes that the current node transitions to
+  --  Filter those by inst_type, if they are pred by the right type
+  --  Filter by if it doesn't go to the option_node?
+  -- Look at 2. nodes that the current node messages
+  --  Can use the filter'd transitions from above, just check their messages they send, & the dest nodes of those messages
+  --  One additional caveat, we consider completion transitions as well
+
+  let trans_for_this_inst_type := node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
+
+  let new_visited := visited ++ [node]
+  let dest_node_names := trans_for_this_inst_type.map (·.dest_state) |>.eraseDups
+  let dest_nodes ← dest_node_names.mapM (graph.node_from_name! ·) -- NOTE: at some point remember to switch to using fully qualified names
+  let reachable_nodes_from_transitions := ( ← dest_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
+
+  -- Get dest nodes of msgs, ignore those sending to "API" nodes for now
+  let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
+  let msg'd_nodes := (← trans_compls_for_this_inst_type.msg'd_nodes node.ctrler_name graph) |>.eraseDups
+  let reachable_nodes_from_msgs := ( ← msg'd_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
+
+  return reachable_nodes_from_transitions ++ reachable_nodes_from_msgs
+
+  -- NOTE: If we want to prove termination, show that the graph is a DAG, and that we only visit each node once, so we will eventually terminate
+  -- Or show that the transition type doesn't have any cycles
+  -- Or show that visited ensures we don't visit the same node twice
+  -- termination_by CDFG.Graph.reachable_nodes_from_node_up_to_option_node graph node avoid_node? inst_type visited => graph
+
+-- TODO: Stub
+def CDFG.Graph.states_an_inst_of_type_can_be_in (graph : Graph) (inst_source_node : Node) (must_stall_at_node? : Option Node) (inst_type : InstType) : Except String Graph := do
+  pure { nodes := ← graph.reachable_nodes_from_node_up_to_option_node inst_source_node must_stall_at_node? inst_type [] }
+
+def CDFG.Node.is_match_ctrler_and_state_names (node : Node) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
+  node.ctrler_name == ctrler_name && node.current_state == state_name
+
+def CDFG.Graph.nodes_from_ctrler_and_state (graph : Graph) (ctrler_name : CtrlerName) (state_name : StateName) : List Node :=
+  graph.nodes.filter (·.is_match_ctrler_and_state_names ctrler_name state_name)
+
+def CDFG.Graph.node_from_ctrler_and_state! (graph : Graph) (ctrler_name : CtrlerName) (state_name : StateName) : Except String Node := do
+  let nodes_matching_ctrler_and_state_name := graph.nodes_from_ctrler_and_state ctrler_name state_name
+  match nodes_matching_ctrler_and_state_name with
+  | [node] => do pure node
+  | [] => do throw s!"No nodes found for ctrler_name: ({ctrler_name}) and state_name: ({state_name})"
+  | _ => do throw s!"Multiple nodes found for ctrler_name: ({ctrler_name}) and state_name: ({state_name})"
+
+def CDFG.Graph.node_from_ctrler_and_state? (graph : Graph) (ctrler_name : CtrlerName) (state_name : StateName) : Except String (Option Node) := do
+  let nodes_matching_ctrler_and_state_name := graph.nodes_from_ctrler_and_state ctrler_name state_name
+  match nodes_matching_ctrler_and_state_name with
+  | [node] => do pure $ some node
+  | [] => do pure none
+  | _::_ => do throw s!"Multiple nodes found for ctrler_name: ({ctrler_name}) and state_name: ({state_name})"
+
+def CDFG.Graph.prune_allowable_nodes_by_inst_graph_and_node (graph : Graph) (constraining_graph : Graph) (node_inst_is_stalled_on : Node) : Except String Graph := do
+  -- Check insts that are allowed to be in this graph
+  -- Need to work out the general "algorithm" for how to do this.
+  return default
+
+def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
+(graph : Graph)
+(first_'to_stall_on'_inst_type : InstType)
+(second_'to_stall'_inst_type : InstType)
+(stall_node_of_second_inst_type : CtrlerState)
+: Except String Graph := do
   let inst_source_node ← graph.inst_source_node
+
+  -- 1. Find all nodes that can be reached from the inst_source_node for the inst types
+  let to_stall_on_inst_nodes ← graph.states_an_inst_of_type_can_be_in inst_source_node none first_'to_stall_on'_inst_type 
+
+  let stall_node? := some $ ← graph.node_from_ctrler_and_state! stall_node_of_second_inst_type.ctrler stall_node_of_second_inst_type.state 
+  let stalled_inst_nodes ← graph.states_an_inst_of_type_can_be_in inst_source_node stall_node? second_'to_stall'_inst_type 
+
+  -- 2. Based on the nodes the 2nd inst type can be in, prune the allowable states of the 1st inst type
+  -- Prune based on:
+  -- > if "is_head()"
+  -- > uhh.... anything else?
 
   return default
 
