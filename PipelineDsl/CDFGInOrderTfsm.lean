@@ -5,6 +5,7 @@ import PipelineDsl.DSLtoCDFG
 
 open CDFG
 
+-- TODO: Check for other ctrlers the inst to stall on can be in
 def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
 : Except String (List controller_info) := do
   dbg_trace "<< Starting CDFGInOrderTfsm"
