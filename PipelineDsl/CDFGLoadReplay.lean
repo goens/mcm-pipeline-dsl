@@ -226,7 +226,6 @@ def CDFG.Node.create_when_msg_stmt_that_trans_to_given_dest (node : CDFG.Node) (
   let when_commit_start_msg := Pipeline.Statement.when [ctrler, msg_name].to_qual_name [] transition_to_issue_replay.to_block
   when_commit_start_msg
 
-def insert := "insert"
 def CDFG.Node.UpdateCtrlerFirstStateToAwaitMsgFrom (node : CDFG.Node) (replay_msg_prefix : String) (replay_state_prefix : String) (ctrlers : Ctrlers)
 : Except String Pipeline.Description := do
   -- 1. Get the issue ctrler's first state
