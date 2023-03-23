@@ -2106,8 +2106,6 @@ def CreateDSLDeclAssignExpr (ident : Identifier) (var_name : Identifier) (expr :
 def CreateDSLIfStmt (expr : Pipeline.Expr) (stmt : Pipeline.Statement) : Pipeline.Statement :=
   Pipeline.Statement.conditional_stmt <| Pipeline.Conditional.if_statement expr stmt
 
-def remove := "remove"
-
 def CreateDSLFuncCallStmt (func_name : String) (args : List Pipeline.Expr) : Pipeline.Statement :=
   let qual_name := [func_name].to_qual_name
   Pipeline.Statement.stray_expr $ Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args)
@@ -2492,5 +2490,19 @@ def List.isNotEmpty (list : List α) : Bool :=
   | [] => false
   | _ => true
 
-def API_msg_names : List MsgName := [load_completed, store_completed]
-def ficticious_ctrler_API_msg_names : List MsgName := [load_completed, store_completed]
+-- TODO NOTE: create a namespace and list of these API names somewhere....
+def remove_head := "remove_head"
+def remove := "remove"
+def insert := "insert"
+def insert_tail := "insert_tail"
+-- def API_msg_names : List MsgName := [load_completed, store_completed, remove_head]
+def API_msg_names : List MsgName := [remove_head, remove, insert, insert_tail]
+def API_dest_ctrlers_msg_names : List (CtrlerName × MsgName) := [
+  (memory_interface, load_perform),
+  (memory_interface, store_perform),
+  (memory_interface, load_completed),
+  (memory_interface, store_completed),
+  (reg_file, remove_head),
+  (reg_file, write)
+]
+-- def ficticious_ctrler_API_msg_names : List MsgName := [load_completed, store_completed]
