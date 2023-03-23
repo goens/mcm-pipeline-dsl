@@ -17,4 +17,5 @@ import PipelineDsl.EmitMurphiIO
 import PipelineDsl.CDFG
 import PipelineDsl.DSLtoCDFG
 import PipelineDsl.CDFGAnalysis
+import PipelineDsl.CDFGInOrderTfsm
 import PipelineDsl.CDFGLoadReplay
