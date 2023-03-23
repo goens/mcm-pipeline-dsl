@@ -180,11 +180,11 @@ def CDFG.Message.findDestState (cdfg_nodes : List CDFG.Node) (msg : Message) (sr
   let ret_nodes := ← cdfg_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_ctrler msg src_ctrler)
   match ret_nodes with
   | [] =>
-    let msg_name := ← msg.name
-    if msg_name ∈ ficticious_ctrler_API_msg_names then
+    let (msg_dest, msg_name) := (← msg.dest_ctrler, ← msg.name)
+    if (msg_dest, msg_name) ∈ API_dest_ctrlers_msg_names || msg_name ∈ API_msg_names then
       pure []
     else 
-      throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({← msg.name})"
+      throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({msg_name}) to msg dest: ({msg_dest})"
   | _ :: _ => -- NOTE: Should msgs be named uniquely?
     let ret_names := ret_nodes.map (·.current_state)
     pure ret_names
@@ -260,6 +260,16 @@ def CDFG.Condition.is_awaits_on_msg (cond : Condition) (msg : Message) (src_ctrl
     await_stmt.matches_msg_from_ctrler msg src_ctrler
   | _ => do pure false
 
+def CDFG.Condition.is_awaits_on_any_msg (cond : Condition) : Bool :=
+  match cond with
+  | .AwaitCondition _ => true
+  | _ => false
+def CDFG.Transition.is_awaits_on_any_msg (transition : Transition) : Bool :=
+  transition.predicate.any (·.is_awaits_on_any_msg)
+def CDFG.Transitions.is_all_non_reset_awaits_on_any_msg (transitions : Transitions) : Bool :=
+  transitions.all (·.is_awaits_on_any_msg)
+def CDFG.Node.is_all_non_reset_awaits_on_msg (node : Node) : Bool :=
+  node.not_reset_transitions.is_all_non_reset_awaits_on_any_msg
 
 def CDFG.Message.is_awaited_by_node : Message → Node → CtrlerName → Except String Bool
 | msg, node, src_ctrler => do
@@ -1992,7 +2002,7 @@ def CDFG.Graph.is_not_transitioned_to (graph : Graph) (node : Node) : Bool :=
   graph.nodes_transitioning_to_node node == []
 
 def CDFG.Node.is_not_msg'd (node : Node) : Bool :=
-  node.transitions.all (·.messages == [])
+  ! node.is_all_non_reset_awaits_on_msg
 
 -- A place holder, for the finding the instruction source node of a graph
 def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
@@ -2002,7 +2012,7 @@ def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
   match not_msg'd_or_transitioned_to with
   | [] => throw "Error: No instruction source node found"
   | [node] => pure node
-  | _ => throw "Error: More than one instruction source node found"
+  | _ => throw s!"Error: More than one instruction source node found: ({not_msg'd_or_transitioned_to.map (·.current_state)})"
 
 def CDFG.Condition.is_pred_inst_not_of_type (cond : Condition) (inst_type : InstType) : Bool :=
   match cond with
@@ -2194,13 +2204,25 @@ def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
 (ctrlers : Ctrlers)
 : Except String Graph := do
   let inst_source_node ← graph.inst_source_node
+  dbg_trace s!"======= BEGIN inst_source_node ========"
+  dbg_trace s!"BEGIN inst_source_node: ({inst_source_node.current_state})\nEND inst_source_node"
+  dbg_trace s!"======= END inst_source_node ========"
 
   -- 1. Find all nodes that can be reached from the inst_source_node for the inst types
   let to_stall_on_inst_nodes : Graph ← graph.states_an_inst_of_type_can_be_in inst_source_node none first_'to_stall_on'_inst_type 
+  dbg_trace s!"======= BEGIN to_stall_on_inst_nodes ========"
+  dbg_trace s!"BEGIN to_stall_on_inst_nodes: ({to_stall_on_inst_nodes.nodes.map (·.current_state)})\nEND to_stall_on_inst_nodes"
+  dbg_trace s!"======= END to_stall_on_inst_nodes ========"
 
   let stall_node := ← graph.node_from_ctrler_and_state! stall_node_of_second_inst_type.ctrler stall_node_of_second_inst_type.state 
+  dbg_trace s!"======= BEGIN stall_node ========"
+  dbg_trace s!"BEGIN stall_node: ({stall_node.current_state})\nEND stall_node"
+  dbg_trace s!"======= END stall_node ========"
   let stall_node? : Option Node := some stall_node
   let stalled_inst_nodes : Graph ← graph.states_an_inst_of_type_can_be_in inst_source_node stall_node? second_'to_stall'_inst_type 
+  dbg_trace s!"======= BEGIN stalled_inst_nodes ========"
+  dbg_trace s!"BEGIN stalled_inst_nodes: ({stalled_inst_nodes.nodes.map (·.current_state)})\nEND stalled_inst_nodes"
+  dbg_trace s!"======= END stalled_inst_nodes ========"
 
   -- 2. Based on the nodes the 2nd inst type can be in, prune the allowable states of the 1st inst type
   -- Prune based on:
@@ -2209,6 +2231,9 @@ def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
   -- let 
   let allowable_'to_stall_on'_node_states_when_inst_stalled := ←
     to_stall_on_inst_nodes.prune_allowable_nodes_by_inst_graph_and_node stalled_inst_nodes inst_source_node stall_node ctrlers
+  dbg_trace s!"======= BEGIN allowable_'to_stall_on'_node_states_when_inst_stalled ========"
+  dbg_trace s!"BEGIN allowable_'to_stall_on'_node_states_when_inst_stalled: ({allowable_'to_stall_on'_node_states_when_inst_stalled.nodes.map (·.current_state)})\nEND allowable_'to_stall_on'_node_states_when_inst_stalled"
+  dbg_trace s!"======= END allowable_'to_stall_on'_node_states_when_inst_stalled ========"
 
   return allowable_'to_stall_on'_node_states_when_inst_stalled
 
