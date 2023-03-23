@@ -19,6 +19,11 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : In
 
   let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type inst_to_stall_type
 
+  let graph_constrained_by_second_inst := ← graph.states_the_'to_stall_on'_node_can_be_in inst_to_stall_on_type inst_to_stall_type stall_point ctrlers
+  dbg_trace s!"======= BEGIN graph contrained by second inst ========"
+  dbg_trace s!"BEGIN graph_constrained_by_second_inst: ({graph_constrained_by_second_inst})\nEND graph_constrained_by_second_inst"
+  dbg_trace s!"======= END graph contrained by second inst ========"
+
   let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
   let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
 
