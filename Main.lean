@@ -13,6 +13,7 @@ import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
 import PipelineDsl.CDFG
 import PipelineDsl.DSLtoCDFG
 import PipelineDsl.CDFGAnalysis
+import PipelineDsl.CDFGInOrderTfsm
 import PipelineDsl.CDFGLoadReplay
 
 open Lean Pipeline
