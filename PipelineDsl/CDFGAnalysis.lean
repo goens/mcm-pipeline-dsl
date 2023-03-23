@@ -1040,6 +1040,7 @@ def CDFG.Condition.is_predicated_by_is_head_api (cond : Condition) : Bool :=
     cond_expr.is_contains_is_head_api
   | _ => false
 
+-- NOTE: This is specifically for transitions that send a message to a given ctrler_name
 def CDFG.Node.is_complete_trans_pred_is_head (node : Node ) (ctrler_name : CtrlerName)
 : Except String Bool := do
   let transitions_completes : Transitions := node.transitions.filter (·.trans_type != .Reset)
@@ -1049,6 +1050,12 @@ def CDFG.Node.is_complete_trans_pred_is_head (node : Node ) (ctrler_name : Ctrle
 
 def CDFG.Transitions.is_all_pred_is_head (transitions : Transitions) : Bool :=
   transitions.all (·.predicate.any CDFG.Condition.is_predicated_by_is_head_api)
+
+def CDFG.Node.is_compls_trans_pred_is_head (node : Node ) : Bool :=
+  let transitions := node.transitions.filter (·.trans_type == .Transition)
+  let completions := node.transitions.filter (·.trans_type == .Completion)
+  let compls_trans : Transitions := transitions ++ completions
+  compls_trans.is_all_pred_is_head
 
 def CDFG.Node.ctrler_of_node (node : Node) (ctrlers : List controller_info) : Except String controller_info :=
   get_ctrler_from_ctrlers_list node.ctrler_name ctrlers
@@ -2114,72 +2121,94 @@ def CDFG.Graph.node_from_ctrler_and_state? (graph : Graph) (ctrler_name : Ctrler
 abbrev VisitedNodesOfCurrentCtrler := List Node
 abbrev NodesOlderPOInstsCan'tBeOn := List Node
 
-def CDFG.Graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node
+partial def CDFG.Graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node
 (constraining_graph : Graph) (current_node : Node) (node_inst_is_stalled_on : Node)
 (ctrlers : Ctrlers) (visited : VisitedNodesOfCurrentCtrler) (nodes_older_PO_insts_can't_be_on : NodesOlderPOInstsCan'tBeOn)
-: Except String (VisitedNodesOfCurrentCtrler × NodesOlderPOInstsCan'tBeOn) := do
+: Except String (NodesOlderPOInstsCan'tBeOn) := do
   -- Check insts that are allowed to be in this graph
 
   -- Check if the current node is the node_inst_is_stalled_on
-  -- if it is, then just stop and return the visited nodes and nodes_older_PO_insts_can't_be_on
-  -- put into another match/if branch, don't want to make use of the auto generated code from "return" keyword
-  -- TODO: Implement this ^
+  -- if it is, then just stop and return the nodes_older_PO_insts_can't_be_on
+  match current_node == node_inst_is_stalled_on with
+  | true => pure nodes_older_PO_insts_can't_be_on
+  | false => 
+    -- look at constraining graph, observe how to reach the node_inst_is_stalled_on, and look at constraints imposed by the constraining graph upto the starting node
+    let current_ctrler ← ctrlers.ctrler_from_name current_node.ctrler_name |>.throw_exception_nesting_msg s!"Couldn't get ctrler of name: ({current_node.ctrler_name}) while pruning an inst graph's allowable nodes/states"
+    let ctrler_type ← current_ctrler.type |>.throw_exception_nesting_msg s!"Couldn't get type of ctrler: ({current_ctrler}) while pruning an inst graph's allowable nodes/states" 
 
-  -- look at constraining graph, observe how to reach the node_inst_is_stalled_on, and look at constraints imposed by the constraining graph upto the starting node
-  let current_ctrler ← ctrlers.ctrler_from_name current_node.ctrler_name |>.throw_exception_nesting_msg s!"Couldn't get ctrler of name: ({current_node.ctrler_name}) while pruning an inst graph's allowable nodes/states"
-  let ctrler_type ← current_ctrler.type |>.throw_exception_nesting_msg s!"Couldn't get type of ctrler: ({current_ctrler}) while pruning an inst graph's allowable nodes/states" 
-
-  -- if the ctrler is FIFO, remember to check if the transitions are pred is_head
-  -- if pred is_head, then the first inst cannot be in states upto this state of this ctrler that have been visited so far
-  let transitions := current_node.transitions.filter (·.trans_type == .Transition)
-  let completions := current_node.transitions.filter (·.trans_type == .Completion)
-  let trans_and_compls : Transitions := transitions ++ completions
-  let is_pred_po : Bool :=
-    match ctrler_type with
-    | .FIFO => -- do a check on non-reset transitions for if pred is_head
-      trans_and_compls.is_all_pred_is_head
-    | _ => -- is either BasicCtrler or Unordered, no check for pred is_head
-      -- not bothering with this so far.
-      -- could also do the same check for PO by checking for stalling if "older" insts exist in Unordered queue
-      false
+    -- if the ctrler is FIFO, remember to check if the transitions are pred is_head
+    -- if pred is_head, then the first inst cannot be in states upto this state of this ctrler that have been visited so far
+    let is_pred_po : Bool :=
+      match ctrler_type with
+      | .FIFO => -- do a check on non-reset transitions for if pred is_head
+        current_node.is_compls_trans_pred_is_head
+      | _ => -- is either BasicCtrler or Unordered, no check for pred is_head -- not bothering with this so far.
+        -- could also do the same check for PO by checking for stalling if "older" insts exist in Unordered queue
+        false
   
-  let (after_po_check_visited_nodes, after_po_check_nodes_older_po_insts_can't_be_on) :=
-    match is_pred_po with
-    | true => 
-      ([], visited ++ nodes_older_PO_insts_can't_be_on ++ [current_node])
-    | false =>
-      (visited ++ [current_node], nodes_older_PO_insts_can't_be_on)
+    let (after_po_check_visited_nodes, after_po_check_nodes_older_po_insts_can't_be_on) :=
+      match is_pred_po with
+      | true => 
+        ([], visited ++ nodes_older_PO_insts_can't_be_on ++ [current_node])
+      | false =>
+        (visited ++ [current_node], nodes_older_PO_insts_can't_be_on)
   
-  -- get msg'd & transition'd to nodes, handle accordingly
-  let msg'd_nodes : List StateName := ← current_node.unique_msg'd_states constraining_graph
-  -- recurse with a fresh visited list, and po-check-not-allowed-list
+    -- get msg'd & transition'd to nodes, handle accordingly
+    let msg'd_state_names : List StateName := ← current_node.unique_msg'd_states constraining_graph
+    let msg'd_nodes := ← msg'd_state_names.mapM (constraining_graph.node_from_name! ·)
+    -- recurse with a fresh visited list, and po-check-not-allowed-list
+    let msg'd_constraining_nodes := ← msg'd_nodes.mapM (
+      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node · node_inst_is_stalled_on ctrlers [] [])
 
-  let trans'd_nodes : List StateName := current_node.unique_trans'd_states
-  -- recurse with the same visited list, and po-check-not-allowed-list
+    let trans'd_state_names : List StateName := current_node.unique_trans'd_states
+    let trans'd_nodes := ← trans'd_state_names.mapM (constraining_graph.node_from_name! ·)
+    -- recurse with the same visited list, and po-check-not-allowed-list
+    let trans'd_constraining_nodes := ← trans'd_nodes.mapM (
+      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node · node_inst_is_stalled_on ctrlers after_po_check_visited_nodes []) 
 
--- TODO: Remember to change this..
-  return default
+    let all_nodes_older_po_insts_can't_be_on := List.join $ msg'd_constraining_nodes ++ trans'd_constraining_nodes
 
--- def CDFG.Graph.prune_allowable_nodes_by_inst_graph_and_node
+    return after_po_check_nodes_older_po_insts_can't_be_on ++ all_nodes_older_po_insts_can't_be_on
+    -- termination_by _ => constraining_graph
+
+def CDFG.Graph.remove_nodes_from_graph (graph : Graph) (nodes : List Node) : Graph :=
+  {nodes := graph.nodes.filter (! nodes.contains ·)}
+
+def CDFG.Graph.prune_allowable_nodes_by_inst_graph_and_node
+(first_'to_stall_on'_inst_graph : Graph) (second_'to_stall'_inst_graph : Graph)
+(inst_source_node : Node) (node_inst_is_stalled_on : Node) (ctrlers : Ctrlers)
+: Except String Graph := do
+  let nodes_older_po_insts_can't_be_on := ←
+    second_'to_stall'_inst_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node inst_source_node node_inst_is_stalled_on ctrlers [] []
+    |>.throw_exception_nesting_msg s!"Hit Error while finding states that older PO insts cannot be in."
+  
+  -- remove these nodes from the to stall graph.
+  let constrained_first_inst_graph := first_'to_stall_on'_inst_graph.remove_nodes_from_graph nodes_older_po_insts_can't_be_on
+  return constrained_first_inst_graph
 
 def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
 (graph : Graph)
 (first_'to_stall_on'_inst_type : InstType)
 (second_'to_stall'_inst_type : InstType)
 (stall_node_of_second_inst_type : CtrlerState)
+(ctrlers : Ctrlers)
 : Except String Graph := do
   let inst_source_node ← graph.inst_source_node
 
   -- 1. Find all nodes that can be reached from the inst_source_node for the inst types
-  let to_stall_on_inst_nodes ← graph.states_an_inst_of_type_can_be_in inst_source_node none first_'to_stall_on'_inst_type 
+  let to_stall_on_inst_nodes : Graph ← graph.states_an_inst_of_type_can_be_in inst_source_node none first_'to_stall_on'_inst_type 
 
-  let stall_node? := some $ ← graph.node_from_ctrler_and_state! stall_node_of_second_inst_type.ctrler stall_node_of_second_inst_type.state 
-  let stalled_inst_nodes ← graph.states_an_inst_of_type_can_be_in inst_source_node stall_node? second_'to_stall'_inst_type 
+  let stall_node := ← graph.node_from_ctrler_and_state! stall_node_of_second_inst_type.ctrler stall_node_of_second_inst_type.state 
+  let stall_node? : Option Node := some stall_node
+  let stalled_inst_nodes : Graph ← graph.states_an_inst_of_type_can_be_in inst_source_node stall_node? second_'to_stall'_inst_type 
 
   -- 2. Based on the nodes the 2nd inst type can be in, prune the allowable states of the 1st inst type
   -- Prune based on:
   -- > if "is_head()"
   -- > uhh.... anything else?
+  -- let 
+  let allowable_'to_stall_on'_node_states_when_inst_stalled := ←
+    to_stall_on_inst_nodes.prune_allowable_nodes_by_inst_graph_and_node stalled_inst_nodes inst_source_node stall_node ctrlers
 
-  return default
+  return allowable_'to_stall_on'_node_states_when_inst_stalled
 
