@@ -379,7 +379,7 @@ def Graph.node_from_name! : Graph → StateName → Except String Node
     node.current_state == state_name)
   match current_node! with
   | [node] => pure node
-  | _ => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph})"
+  | _ => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph.nodes.map (·.current_state)})"
 
 -- Work in progress. wanted to use with
 -- Graph.unique_msg'd_states_by_node for a simple functor
