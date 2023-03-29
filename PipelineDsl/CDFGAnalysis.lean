@@ -2293,3 +2293,101 @@ def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
 
   return allowable_'to_stall_on'_node_states_when_inst_stalled
 
+def CDFG.Graph.ctrler_names_of_graph (graph : Graph) : List String :=
+  graph.nodes.map (·.ctrler_name) |>.eraseDup
+
+def CDFG.Graph.ctrler_and_nodes_pairs (graph : Graph) : List (CtrlerName × List Node) :=
+  let ctrler_names := graph.ctrler_names_of_graph
+  ctrler_names.map (
+    let ctrler_name := ·;
+    (ctrler_name, graph.nodes.filter (·.ctrler_name == ctrler_name))
+  )
+
+structure CtrlerNameNodes where
+ctrler_name : CtrlerName
+nodes : List Node
+
+def CDFG.Transition.is_trans_msging_all_these_nodes (trans : Transition) (nodes : List Node) : Except String Bool := do
+  let msgs := ← trans.messages.mapM (·.dest_ctrler);
+  pure $ nodes.all (·.current_state ∈ msgs)
+
+def CDFG.Node.is_node_msging_these_nodes (node : Node) (nodes : List Node) : Except String Bool :=
+  node.not_reset_transitions.anyM (·.is_trans_msging_all_these_nodes nodes)
+
+def CDFG.Graph.nodes_msging_these_nodes (graph : Graph) (nodes : List Node) : Except String (List Node) :=
+  graph.nodes.filterM (·.is_node_msging_these_nodes nodes)
+
+def CDFG.Graph.node_msging_node (graph : Graph) (node : Node) : Except String (Option Node) := do
+  let nodes_msging_node : List Node := ← graph.nodes_msging_these_nodes [node]
+  match nodes_msging_node with
+  | [] => pure none
+  | [node] => pure $ some node
+  | _ => throw s!"More than one node msging node ({node.current_state})"
+
+-- Could probably de-couple this function...
+def CtrlerNameNodes.starts_at_same_or_later_than_given_ctrler
+(this_ctrler_name_nodes : CtrlerNameNodes) (other_ctrler_name_nodes : CtrlerNameNodes) (graph : Graph)
+: Except String ( Bool × Option Node ) := do
+  -- get first node of each ctrler nodes
+  let this_ctrler_graph : Graph := {nodes := this_ctrler_name_nodes.nodes}
+  let other_ctrler_graph : Graph := {nodes := other_ctrler_name_nodes.nodes}
+
+  let this_ctrler_first_node : Node := ← this_ctrler_graph.findNotTransitionedToState
+  let other_ctrler_first_node : Node := ← other_ctrler_graph.findNotTransitionedToState
+
+  let nodes_which_message_both_these_nodes : List Node := ← graph.nodes_msging_these_nodes [this_ctrler_first_node, other_ctrler_first_node]
+  let is_nodes_that_msg_both_nodes : Bool :=
+    match nodes_which_message_both_these_nodes with
+    | [] => false
+    | _ => true
+
+  -- Other condition is if the other ctrler messages this ctrler, i.e. this ctrler is pred on any msg from other ctrler's nodes
+  let is_this_ctrler_msg'd_by_other_ctrler : Option Node := ← other_ctrler_graph.node_msging_node this_ctrler_first_node
+
+  pure (is_nodes_that_msg_both_nodes, is_this_ctrler_msg'd_by_other_ctrler)
+
+def CtrlerNameNodes.finishes_at_same_or_earlier_node_than_given_ctrler
+(this_ctrler_name_nodes : CtrlerNameNodes) (other_ctrler_name_nodes : CtrlerNameNodes) (graph : Graph)
+: Except String ( Option Node ) := do
+  -- TODO:
+  -- implement this high-level overview:
+  -- 1. get last node of each ctrler nodes
+  -- 2. Check if the last node of this ctrler msgs the any node of the other ctrler
+
+  -- Should try to check if there was a node returned by the previous analysis,
+  -- and see if it reaches this found node (if a node was found, that is)
+
+  sorry -- comment out sorry if you want type checking
+  return default
+
+def CtrlerNameNodes.is_a_live_subset_of (this_ctrler_name_nodes : CtrlerNameNodes) (other_ctrler_name_nodes : CtrlerNameNodes) (graph : Graph) : Bool :=
+  -- Check if this_ctrler_name and nodes is a subset of the other ctrler_name and nodes
+
+  -- a few steps to check:
+  -- 1. if the first node of this ctrler "starts" at the same time as the first of the other ctrler, or at one of the later nodes of the other ctrler
+  -- 2. if the last node of this ctrler "completes" at the same time as the last of the other ctrler, or at one of the earlier nodes of the other ctrler
+
+  -- 1.
+  -- let this_ctrler_starts_comparable_to_other_ctrler : Bool := 
+  
+  sorry -- comment out sorry if you want type checking
+  default
+
+def PruneCtrlerNodesAgainstOthersThatAreLiveLonger (list_ctrler_and_nodes : List (CtrlerNameNodes)) (graph : Graph) : List CtrlerNameNodes :=
+  list_ctrler_and_nodes.filter (
+    let ctrler_name_nodes := ·;
+    let other_ctrlers_and_their_nodes := list_ctrler_and_nodes.filter (·.ctrler_name != ctrler_name_nodes.ctrler_name);
+    ! other_ctrlers_and_their_nodes.any (ctrler_name_nodes.is_a_live_subset_of · graph)
+  )
+
+-- Filter out nodes that are live for a subset of another node
+def CDFG.Graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler (graph : Graph) : Graph :=
+  -- group nodes by ctrlers
+  -- check ctrler node set liveness between eachother. Check if each is a subset of any other, then prune it
+  let list_ctrler_and_nodes := graph.ctrler_and_nodes_pairs
+  let ctrler_name_and_nodes_list : List CtrlerNameNodes := list_ctrler_and_nodes.map (let (ctrler_name, nodes) := ·; {ctrler_name := ctrler_name, nodes := nodes})
+
+
+
+  sorry -- comment out sorry if you want type checking
+  return default
