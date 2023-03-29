@@ -171,23 +171,24 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_ctrler : Node → 
 | node, msg, ctrler_name => do
   -- check if any of the node's predicates are on the message's name
   let trans_of_interest : Transitions := node.transitions.filter (·.trans_type != .Reset)
-  dbg_trace s!"trans_of_interest: ({trans_of_interest})"
+  dbg_trace s!"curr ctrler/node: ({node.ctrler_name}, {node.current_state}) trans_of_interest: ({trans_of_interest})"
   let all_conditions : List Condition := List.join $ trans_of_interest.map (·.predicate)
   all_conditions.anyM (·.is_pred_on_msg_from_ctrler msg ctrler_name)
 
 def CDFG.Message.findDestState (cdfg_nodes : List CDFG.Node) (msg : Message) (src_ctrler : String)
 : Except String (List String) := do
   let ret_nodes := ← cdfg_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_ctrler msg src_ctrler)
+  let (msg_dest, msg_name) := (← msg.dest_ctrler, ← msg.name)
   match ret_nodes with
   | [] =>
-    let (msg_dest, msg_name) := (← msg.dest_ctrler, ← msg.name)
     if (msg_dest, msg_name) ∈ API_dest_ctrlers_msg_names || msg_name ∈ API_msg_names then
       pure []
     else 
-      throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({msg_name}) to msg dest: ({msg_dest})"
+      throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({msg_name}) to msg dest: ({msg_dest}) in CDFG nodes: ({cdfg_nodes.map (·.current_state)})"
   | _ :: _ => -- NOTE: Should msgs be named uniquely?
-    let ret_names := ret_nodes.map (·.current_state)
-    pure ret_names
+    let nodes_of_ctrler_type := ret_nodes.filter (·.ctrler_name == msg_dest)
+    let ret_names := nodes_of_ctrler_type.map (·.current_state)
+    pure ret_names.eraseDups
 
 def CDFG.Node.unique_msg'd_states : Node → Graph → Except String (List StateName)
 | node, graph => do
@@ -253,6 +254,7 @@ partial def Pipeline.Statement.matches_msg_from_ctrler (stmt : Statement) (msg :
     dbg_trace s!"$$5 ctrler_name_matches: {ctrler_name_matches}, msg_name_matches: {msg_name_matches}"
     pure (ctrler_name_matches && msg_name_matches)
   | _ => pure false
+  -- termination_by _ => stmt
 
 def CDFG.Condition.is_awaits_on_msg (cond : Condition) (msg : Message) (src_ctrler : CtrlerName) : Except String Bool := do
   match cond with
@@ -2015,9 +2017,15 @@ def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
   | _ => throw s!"Error: More than one instruction source node found: ({not_msg'd_or_transitioned_to.map (·.current_state)})"
 
 def CDFG.Condition.is_pred_inst_not_of_type (cond : Condition) (inst_type : InstType) : Bool :=
+  dbg_trace s!"COMPUTING: is_pred_inst_not_of_type: {cond}"
   match cond with
-  | .DSLExpr expr => expr.is_contains_instruction_not_eq_type inst_type
-  | _ => false
+  | .DSLExpr expr =>
+    let ret := expr.is_contains_instruction_not_eq_type inst_type
+    dbg_trace s!"COMPUTING: return: ({ret})"
+    ret
+  | _ =>
+    dbg_trace s!"COMPUTING: return: false"
+    false
 
 def CDFG.Transition.is_trans_pred_by_different_inst_type_than (transition : Transition) (inst_type : InstType) : Bool :=
   let preds := transition.predicate
@@ -2061,11 +2069,19 @@ def CDFG.Node.not_visited_transitions_completions_that_don't_go_to_node (node : 
 
 def CDFG.Node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type (node : Node) (visited : List Node) (avoid_node? : Option Node) (inst_type : InstType) : List Transition :=
   let trans_don't_go_to_avoid_node := node.not_visited_transitions_that_don't_go_to_node visited avoid_node?
-  trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+  dbg_trace s!"COMPUTING: not_visited_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
+  dbg_trace s!"COMPUTING: Transition Dests: ({trans_don't_go_to_avoid_node.map (·.dest_state)})"
+  let ret := trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+  dbg_trace s!"COMPUTING: trans dests not pred by other inst types: ({ret.map (·.dest_state)}) with messages: ({ret.map (·.messages)})"
+  ret
 
 def CDFG.Node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type (node : Node) (visited : List Node) (avoid_node? : Option Node) (inst_type : InstType) : List Transition :=
   let trans_don't_go_to_avoid_node := node.not_visited_transitions_completions_that_don't_go_to_node visited avoid_node?
-  trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+  dbg_trace s!"COMPUTING: not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
+  dbg_trace s!"COMPUTING: Transition & Completion Dests: ({trans_don't_go_to_avoid_node.map (·.dest_state)})"
+  let ret := trans_don't_go_to_avoid_node.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+  dbg_trace s!"COMPUTING: trans dests not pred by other inst types: ({ret.map (·.dest_state)}) with messages: ({ret.map (·.messages)})"
+  ret
 
 def CDFG.Transition.msg'd_nodes (transition : Transition)  (src_ctrler_name : CtrlerName) (graph : Graph) : Except String (List Node) := do
   let msg'd_node_names ← ( transition.messages.mapM (·.findDestState graph.nodes src_ctrler_name) ) 
@@ -2085,24 +2101,37 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Grap
   --  Can use the filter'd transitions from above, just check their messages they send, & the dest nodes of those messages
   --  One additional caveat, we consider completion transitions as well
 
-  let trans_for_this_inst_type := node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
+  let stop : Bool :=
+    match avoid_node? with
+    | some avoid_node => node == avoid_node
+    | none => false
 
-  let new_visited := visited ++ [node]
-  let dest_node_names := trans_for_this_inst_type.map (·.dest_state) |>.eraseDups
-  let dest_nodes ← dest_node_names.mapM (graph.node_from_name! ·) -- NOTE: at some point remember to switch to using fully qualified names
-  let reachable_nodes_from_transitions := ( ← dest_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
+  if stop then
+    return [node]
+  else
+    dbg_trace s!"REACHABLE COMPUTATION: current node: ({node.current_state}). Type of inst: ({inst_type}). Current Ctrler: ({node.ctrler_name})"
+    let trans_for_this_inst_type := node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
 
-  -- Get dest nodes of msgs, ignore those sending to "API" nodes for now
-  let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
-  let msg'd_nodes := (← trans_compls_for_this_inst_type.msg'd_nodes node.ctrler_name graph) |>.eraseDups
-  let reachable_nodes_from_msgs := ( ← msg'd_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
+    let new_visited := visited ++ [node]
+    let dest_node_names := trans_for_this_inst_type.map (·.dest_state) |>.eraseDups
+    let dest_nodes ← dest_node_names.mapM (graph.node_from_name! ·) -- NOTE: at some point remember to switch to using fully qualified names
+    dbg_trace s!"REACHABLE COMPUTATION: dest_nodes: ({dest_nodes.map (·.current_state)})"
+    let reachable_nodes_from_transitions := ( ← dest_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
 
-  return reachable_nodes_from_transitions ++ reachable_nodes_from_msgs
+    -- Get dest nodes of msgs, ignore those sending to "API" nodes for now
+    let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type visited avoid_node? inst_type
+    dbg_trace s!"REACHABLE COMPUTATION: trans & compl transition msgs: ({trans_compls_for_this_inst_type.map (·.messages)})"
+    let msg'd_nodes := ← trans_compls_for_this_inst_type.msg'd_nodes node.ctrler_name graph
+      |>.throw_exception_nesting_msg s!"Current Inst Type: ({inst_type})"
+    dbg_trace s!"REACHABLE COMPUTATION: msg'd nodes: ({msg'd_nodes.map (·.current_state)})"
+    let reachable_nodes_from_msgs := ( ← msg'd_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
 
-  -- NOTE: If we want to prove termination, show that the graph is a DAG, and that we only visit each node once, so we will eventually terminate
-  -- Or show that the transition type doesn't have any cycles
-  -- Or show that visited ensures we don't visit the same node twice
-  -- termination_by CDFG.Graph.reachable_nodes_from_node_up_to_option_node graph node avoid_node? inst_type visited => graph
+    return [node] ++ reachable_nodes_from_transitions ++ reachable_nodes_from_msgs |>.eraseDups
+
+    -- NOTE: If we want to prove termination, show that the graph is a DAG, and that we only visit each node once, so we will eventually terminate
+    -- Or show that the transition type doesn't have any cycles
+    -- Or show that visited ensures we don't visit the same node twice
+    -- termination_by CDFG.Graph.reachable_nodes_from_node_up_to_option_node graph node avoid_node? inst_type visited => graph
 
 -- TODO: Stub
 def CDFG.Graph.states_an_inst_of_type_can_be_in (graph : Graph) (inst_source_node : Node) (must_stall_at_node? : Option Node) (inst_type : InstType) : Except String Graph := do
@@ -2128,15 +2157,34 @@ def CDFG.Graph.node_from_ctrler_and_state? (graph : Graph) (ctrler_name : Ctrler
   | [] => do pure none
   | _::_ => do throw s!"Multiple nodes found for ctrler_name: ({ctrler_name}) and state_name: ({state_name})"
 
+def CDFG.Node.unique_msg'd_states_not_from_trans_compl_pred_by_other_insts : Node → Graph → InstType → Except String (List StateName)
+| node, graph, desired_inst_type => do
+  let ctrler_name : CtrlerName := node.ctrler_name
+  -- let transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  let trans_compls : Transitions := node.not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type [] none desired_inst_type
+  let messages : Messages := List.join $ trans_compls.map (·.messages)
+  let msg'd_states : List StateName := (← messages.mapM (·.findDestState graph.nodes ctrler_name) ).join
+
+  let unique_msg'd_states : List StateName := msg'd_states.eraseDups
+  pure unique_msg'd_states
+
+def CDFG.Node.unique_trans'd_states_not_from_trans_compl_pred_by_other_insts : Node → InstType → Node → List StateName
+| node, desired_inst_type, avoid_node =>
+  -- let ctrler_name : CtrlerName := node.ctrler_name
+  -- let transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  let trans : Transitions := node.not_visited_transitions_that_don't_go_to_node_and_are_taken_by_inst_type [] (some avoid_node) desired_inst_type
+  trans.map (·.dest_state)
+
 abbrev VisitedNodesOfCurrentCtrler := List Node
 abbrev NodesOlderPOInstsCan'tBeOn := List Node
 
 partial def CDFG.Graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node
-(constraining_graph : Graph) (current_node : Node) (node_inst_is_stalled_on : Node)
+(constraining_graph : Graph) (constraining_graph_inst_type : InstType) (current_node : Node) (node_inst_is_stalled_on : Node)
 (ctrlers : Ctrlers) (visited : VisitedNodesOfCurrentCtrler) (nodes_older_PO_insts_can't_be_on : NodesOlderPOInstsCan'tBeOn)
 : Except String (NodesOlderPOInstsCan'tBeOn) := do
   -- Check insts that are allowed to be in this graph
 
+  dbg_trace s!"current_node: ({current_node.current_state}), node_inst_is_stalled_on: ({node_inst_is_stalled_on.current_state})"
   -- Check if the current node is the node_inst_is_stalled_on
   -- if it is, then just stop and return the nodes_older_PO_insts_can't_be_on
   match current_node == node_inst_is_stalled_on with
@@ -2164,17 +2212,18 @@ partial def CDFG.Graph.not_allowable_nodes_for_older_PO_insts_constrained_by_ins
         (visited ++ [current_node], nodes_older_PO_insts_can't_be_on)
   
     -- get msg'd & transition'd to nodes, handle accordingly
-    let msg'd_state_names : List StateName := ← current_node.unique_msg'd_states constraining_graph
+    let msg'd_state_names : List StateName := ← current_node.unique_msg'd_states_not_from_trans_compl_pred_by_other_insts constraining_graph constraining_graph_inst_type
+      |>.throw_exception_nesting_msg s!"Couldn't get msg'd states of node: ({current_node.current_state}) while pruning an inst graph's allowable nodes/states"
     let msg'd_nodes := ← msg'd_state_names.mapM (constraining_graph.node_from_name! ·)
     -- recurse with a fresh visited list, and po-check-not-allowed-list
     let msg'd_constraining_nodes := ← msg'd_nodes.mapM (
-      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node · node_inst_is_stalled_on ctrlers [] [])
+      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node constraining_graph_inst_type · node_inst_is_stalled_on ctrlers [] [])
 
-    let trans'd_state_names : List StateName := current_node.unique_trans'd_states
+    let trans'd_state_names : List StateName := current_node.unique_trans'd_states_not_from_trans_compl_pred_by_other_insts constraining_graph_inst_type node_inst_is_stalled_on
     let trans'd_nodes := ← trans'd_state_names.mapM (constraining_graph.node_from_name! ·)
     -- recurse with the same visited list, and po-check-not-allowed-list
     let trans'd_constraining_nodes := ← trans'd_nodes.mapM (
-      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node · node_inst_is_stalled_on ctrlers after_po_check_visited_nodes []) 
+      constraining_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node constraining_graph_inst_type · node_inst_is_stalled_on ctrlers after_po_check_visited_nodes []) 
 
     let all_nodes_older_po_insts_can't_be_on := List.join $ msg'd_constraining_nodes ++ trans'd_constraining_nodes
 
@@ -2185,15 +2234,22 @@ def CDFG.Graph.remove_nodes_from_graph (graph : Graph) (nodes : List Node) : Gra
   {nodes := graph.nodes.filter (! nodes.contains ·)}
 
 def CDFG.Graph.prune_allowable_nodes_by_inst_graph_and_node
-(first_'to_stall_on'_inst_graph : Graph) (second_'to_stall'_inst_graph : Graph)
+(first_'to_stall_on'_inst_graph : Graph) (second_'to_stall'_inst_graph : Graph) (second_'to_stall'_inst_type : InstType)
 (inst_source_node : Node) (node_inst_is_stalled_on : Node) (ctrlers : Ctrlers)
 : Except String Graph := do
   let nodes_older_po_insts_can't_be_on := ←
-    second_'to_stall'_inst_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node inst_source_node node_inst_is_stalled_on ctrlers [] []
+    second_'to_stall'_inst_graph.not_allowable_nodes_for_older_PO_insts_constrained_by_inst_graph_and_node second_'to_stall'_inst_type inst_source_node node_inst_is_stalled_on ctrlers [] []
     |>.throw_exception_nesting_msg s!"Hit Error while finding states that older PO insts cannot be in."
   
+  dbg_trace s!"======= BEGIN nodes_older_po_insts_can't_be_on ========"
+  dbg_trace s!"BEGIN nodes_older_po_insts_can't_be_on: ({nodes_older_po_insts_can't_be_on.map (·.current_state)})\nEND nodes_older_po_insts_can't_be_on"
+  dbg_trace s!"======= END nodes_older_po_insts_can't_be_on ========"
+
   -- remove these nodes from the to stall graph.
   let constrained_first_inst_graph := first_'to_stall_on'_inst_graph.remove_nodes_from_graph nodes_older_po_insts_can't_be_on
+  dbg_trace s!"======= BEGIN constrained_first_inst_graph ========"
+  dbg_trace s!"BEGIN constrained_first_inst_graph: ({constrained_first_inst_graph.nodes.map (·.current_state)})\nEND constrained_first_inst_graph"
+  dbg_trace s!"======= END constrained_first_inst_graph ========"
   return constrained_first_inst_graph
 
 def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
@@ -2230,7 +2286,7 @@ def CDFG.Graph.states_the_'to_stall_on'_node_can_be_in
   -- > uhh.... anything else?
   -- let 
   let allowable_'to_stall_on'_node_states_when_inst_stalled := ←
-    to_stall_on_inst_nodes.prune_allowable_nodes_by_inst_graph_and_node stalled_inst_nodes inst_source_node stall_node ctrlers
+    to_stall_on_inst_nodes.prune_allowable_nodes_by_inst_graph_and_node stalled_inst_nodes second_'to_stall'_inst_type inst_source_node stall_node ctrlers
   dbg_trace s!"======= BEGIN allowable_'to_stall_on'_node_states_when_inst_stalled ========"
   dbg_trace s!"BEGIN allowable_'to_stall_on'_node_states_when_inst_stalled: ({allowable_'to_stall_on'_node_states_when_inst_stalled.nodes.map (·.current_state)})\nEND allowable_'to_stall_on'_node_states_when_inst_stalled"
   dbg_trace s!"======= END allowable_'to_stall_on'_node_states_when_inst_stalled ========"
