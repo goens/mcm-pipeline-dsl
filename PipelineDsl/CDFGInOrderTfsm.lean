@@ -24,6 +24,12 @@ def CDFGInOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : In
   dbg_trace s!"BEGIN graph_constrained_by_second_inst: ({graph_constrained_by_second_inst.nodes.map (·.current_state)})\nEND graph_constrained_by_second_inst"
   dbg_trace s!"======= END graph constrained by second inst ========"
 
+  let graph_pruned_of_live_subsets := ← graph_constrained_by_second_inst.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler
+    |>.throw_exception_nesting_msg s!"Error pruning graph of live subsets. Graph: ({graph_constrained_by_second_inst.nodes.map (·.current_state)})"
+  dbg_trace s!"======= BEGIN graph_pruned_of_live_subsets ========"
+  dbg_trace s!"BEGIN graph_pruned_of_live_subsets: ({graph_pruned_of_live_subsets.nodes.map (·.current_state)})\nEND graph_pruned_of_live_subsets"
+  dbg_trace s!"======= END graph_pruned_of_live_subsets ========"
+
   let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
   let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
 
