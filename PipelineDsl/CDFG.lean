@@ -384,6 +384,10 @@ def Graph.node_from_name! : Graph → StateName → Except String Node
   | [node] => pure node
   | _ => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph.nodes.map (·.current_state)})"
 
+def Graph.node_names : Graph → List StateName
+| graph =>
+  graph.nodes.map (·.current_state)
+
 -- Work in progress. wanted to use with
 -- Graph.unique_msg'd_states_by_node for a simple functor
 def Graph.node_mapM {m : Type u → Type v} [Monad m] {α : Type u}
