@@ -1441,7 +1441,10 @@ def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Exp
     -- use recursion
     pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
 
-def CtrlerMatchingName : List controller_info → CtrlerName → Except String controller_info 
+abbrev Ctrlers := List controller_info
+abbrev Ctrler := controller_info
+
+def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info 
 | ctrlers, ctrler_name => do
   match ctrlers.filter (·.name == ctrler_name) with
   | [ctrler] => pure ctrler
@@ -1618,13 +1621,13 @@ def gen_stall_dsl_state
       Statement.block [stall_state_stmt])
 
 def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : StateOrConstraintToStallOn)
-(ctrlers : List controller_info) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
+(ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
   let new_stall_state_name := String.join [stall_state.ctrler, "_stall_", stall_state.state]
 
   /- 5. Generate the new stall state -/
-  let stall_ctrler ← CtrlerMatchingName ctrlers stall_state.ctrler
+  let stall_ctrler ← ctrlers.ctrler_matching_name stall_state.ctrler
   /- Consider if original state has a listen-handle -/
   let handle_blks : Option (List HandleBlock) ←
     get_ctrler_state_handle_blocks stall_ctrler stall_state.state
@@ -2027,9 +2030,6 @@ def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : E
   match e with
   | .ok a => pure a
   | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
-
-abbrev Ctrlers := List controller_info
-abbrev Ctrler := controller_info
 
 -- Newer, better, version of get_ctrler_from_ctrlers_list
 def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
@@ -2496,7 +2496,7 @@ def remove := "remove"
 def insert := "insert"
 def insert_tail := "insert_tail"
 -- def API_msg_names : List MsgName := [load_completed, store_completed, remove_head]
-def API_msg_names : List MsgName := [remove_head, remove, insert, insert_tail]
+def API_msg_names : List MsgName := [remove_head, remove, insert, insert_tail, squash]
 def API_dest_ctrlers_msg_names : List (CtrlerName × MsgName) := [
   (memory_interface, load_perform),
   (memory_interface, store_perform),
@@ -2506,3 +2506,171 @@ def API_dest_ctrlers_msg_names : List (CtrlerName × MsgName) := [
   (reg_file, write)
 ]
 -- def ficticious_ctrler_API_msg_names : List MsgName := [load_completed, store_completed]
+
+-- ============== AZ NOTE: New "correct" stall based on query for un-complete state ==============
+abbrev VarName := String
+-- also return the not-completed-check var_name, so we can OR them together
+def CtrlerStates.to_query (ctrler_states : CtrlerStates) : Except String (List Pipeline.Statement × VarName) := do
+  let var_name := (ctrler_states.ctrler ++ "_not_completed");
+  let not_completed_true := Pipeline.Statement.variable_assignment [var_name].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
+  let not_completed_false := Pipeline.Statement.variable_assignment [var_name].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
+
+  let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states
+  let if_not_completed := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr not_completed_true not_completed_false)
+
+  let ctrler_not_completed := Pipeline.Statement.variable_declaration (Pipeline.TypedIdentifier.mk "bool" var_name)
+
+  -- Based on the ctrler type, if it's a queue, use the search API generation code below
+  -- if it's a ctrler, just access the it's state vars to check if it's an older inst
+  -- Write this in a helper function, pass the if condition to it to fill in the query
+  -- Also, make the if condition expr generator also generate <ctrler_name>.state instead of just "state" since
+  -- basic ctrlers won't be accessed with a await-when api call...
+
+  -- let query
+
+  default
+
+def List.to_queries (states_to_query : List CtrlerStates) : List Pipeline.Statement :=
+  -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
+  states_to_query.map (·.to_query)
+  -- create a var name to hold the result of the query
+
+  -- logic OR the results
+
+  -- sorry
+  default
+
+def stall_state_querying_states
+  (new_stall_state_name : StateName)
+  (original_state_name : StateName)
+  (ctrler_name : CtrlerName)
+  (ctrler_states_to_query : List CtrlerStates)
+  (stall_on_inst_type : InstType)
+  (inst_to_stall_type : InstType)
+  (original_state's_handleblks : Option ( List HandleBlock ))
+  : Except String Description
+  := do
+
+    -- (entry.instruction.seq_num < instruction.seq_num)
+    let entry_is_earlier_than_this_one : Term :=
+      Pipeline.Term.expr (
+      Pipeline.Expr.less_than
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+      )
+    -- (entry.instruction.op == stall_on_inst_type)
+    let entry_is_of_desired_type : Term :=
+      Pipeline.Term.expr (
+      Pipeline.Expr.equal
+      (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "op"]))
+      (Pipeline.Term.const (Const.str_lit (stall_on_inst_type.toMurphiString)))
+      )
+    -- let entry_is_valid : Term :=
+    --   Pipeline.Term.expr (
+    --   Pipeline.Expr.not_equal
+    --   (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"]))
+    --   (Pipeline.Term.const (Const.num_lit (0))) -- using 0 as an "invalid inst"
+    --   )
+
+    let search_condition : Pipeline.Expr := -- ERROR! TODO: Adjust to ignore invalid entries!
+      -- (Pipeline.Expr.binand
+        -- (Pipeline.Term.expr
+        (Pipeline.Expr.binand
+        entry_is_earlier_than_this_one
+        entry_is_of_desired_type)
+        -- )
+        -- entry_is_valid
+      -- )
+
+    --  min(instruction.seq_num - entry.instruction.seq_num)
+    let search_min : Pipeline.Expr :=
+      Pipeline.Expr.some_term (
+        Pipeline.Term.function_call 
+        (QualifiedName.mk ["min"])
+        [(Pipeline.Expr.sub
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
+          (Pipeline.Term.qualified_var (QualifiedName.mk ["entry", "instruction", "seq_num"])))]
+      )
+
+    let ctrler_search_call : Term :=
+      Pipeline.Term.function_call
+      (QualifiedName.mk [ctrler_name, "search"])
+      [search_condition, search_min]
+
+    -- If we just reset, then reset. Else use the Expr check.
+    let when_search_success_stmts : List Pipeline.Statement ←
+      match just_reset with
+      | true => do pure [
+        Pipeline.Statement.reset new_stall_state_name
+      ]
+      | false => do
+        if let some state_check_expr := state_check_cond? then
+          pure [
+            Pipeline.Statement.conditional_stmt (
+            Pipeline.Conditional.if_else_statement
+            state_check_expr
+            (Pipeline.Statement.reset new_stall_state_name)
+            (Pipeline.Statement.transition original_state_name)
+            )
+          ]
+        else
+          throw s!"Error: Trying to generate stall state, but was not given a state check condition!"
+    -- let stall_state_name := ctrler_name ++ "stall" ++ original_state_name
+    let when_success_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block when_search_success_stmts
+
+    let when_success : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_success"])
+      (["curr_state"])
+      when_success_stmt_blk
+
+    let when_fail_stmt_blk : Pipeline.Statement :=
+      Pipeline.Statement.block [
+        (Pipeline.Statement.transition original_state_name)
+      ]
+    let when_fail : Pipeline.Statement :=
+      Pipeline.Statement.when
+      (QualifiedName.mk [ctrler_name, "search_fail"])
+      ([])
+      when_fail_stmt_blk
+
+
+    -- TODO: Fill in the when stmts, and the condition in it
+    let await_stmt : Pipeline.Statement :=
+      Statement.await ctrler_search_call [when_success, when_fail]
+
+    let if_inst_is_of_to_stall_type : Pipeline.Statement :=
+      Pipeline.Statement.conditional_stmt $
+        Pipeline.Conditional.if_else_statement 
+          (Pipeline.Expr.equal (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "op"]))
+            (Pipeline.Term.const (Const.str_lit (inst_to_stall_type.toMurphiString))))
+          await_stmt
+          $ Pipeline.Statement.transition original_state_name
+    
+    let stall_state_stmt : Pipeline.Statement :=
+      if original_state's_handleblks.isSome then
+        Statement.listen_handle (Statement.block [if_inst_is_of_to_stall_type]) original_state's_handleblks.get!
+      else
+        if_inst_is_of_to_stall_type
+
+    pure $ Description.state new_stall_state_name (
+      Statement.block [stall_state_stmt])
+
+def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : CtrlerStates)
+(ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
+: Except String Pipeline.Description := do
+  /- 3. Gen the new stall state's name -/
+  let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
+
+  /- 5. Generate the new stall state -/
+  let stall_ctrler ← ctrlers.ctrler_matching_name stall_ctrler
+  /- Consider if original state has a listen-handle -/
+  let handle_blks : Option (List HandleBlock) ←
+    get_ctrler_state_handle_blocks stall_ctrler stall_state
+
+  let new_stall_state : Description ← stall_state_querying_states
+
+  dbg_trace s!"New stall state: \n{new_stall_state}"
+  pure new_stall_state
+
