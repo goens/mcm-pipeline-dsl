@@ -171,7 +171,7 @@ def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_ctrler : Node → 
 | node, msg, ctrler_name => do
   -- check if any of the node's predicates are on the message's name
   let trans_of_interest : Transitions := node.transitions.filter (·.trans_type != .Reset)
-  dbg_trace s!"curr ctrler/node: ({node.ctrler_name}, {node.current_state}) trans_of_interest: ({trans_of_interest})"
+  dbg_trace s!"curr ctrler/node: ({node.ctrler_name}, {node.current_state}) trans_of_interest: ({trans_of_interest.map (·.src_dest_states)})"
   let all_conditions : List Condition := List.join $ trans_of_interest.map (·.predicate)
   all_conditions.anyM (·.is_pred_on_msg_from_ctrler msg ctrler_name)
 
@@ -189,6 +189,22 @@ def CDFG.Message.findDestState (cdfg_nodes : List CDFG.Node) (msg : Message) (sr
     let nodes_of_ctrler_type := ret_nodes.filter (·.ctrler_name == msg_dest)
     let ret_names := nodes_of_ctrler_type.map (·.current_state)
     pure ret_names.eraseDups
+
+def CDFG.Message.findDestState? (cdfg_nodes : List CDFG.Node) (msg : Message) (src_ctrler : CtrlerName)
+: Except String (Option (List StateName)) := do
+  let ret_nodes := ← cdfg_nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_ctrler msg src_ctrler)
+  let (msg_dest, msg_name) := (← msg.dest_ctrler, ← msg.name)
+  dbg_trace s!">>DestState? ({ret_nodes.map (·.current_state)}), msg: ({msg_name}), src_ctrler: ({src_ctrler})"
+  match ret_nodes with
+  | [] =>
+    if (msg_dest, msg_name) ∈ API_dest_ctrlers_msg_names || msg_name ∈ API_msg_names then
+      pure none -- more accuracte to return []?
+    else 
+      pure none
+  | _ :: _ => -- NOTE: Should msgs be named uniquely?
+    let nodes_of_ctrler_type := ret_nodes.filter (·.ctrler_name == msg_dest)
+    let ret_names := nodes_of_ctrler_type.map (·.current_state)
+    pure $ some ret_names.eraseDups
 
 def CDFG.Node.unique_msg'd_states : Node → Graph → Except String (List StateName)
 | node, graph => do
@@ -2356,12 +2372,15 @@ structure CtrlerNameNodes where
 ctrler_name : CtrlerName
 nodes : List Node
 
-def CDFG.Transition.is_trans_msging_all_these_nodes (trans : Transition) (nodes : List Node) : Except String Bool := do
-  let msgs := ← trans.messages.mapM (·.dest_ctrler);
-  pure $ nodes.all (·.current_state ∈ msgs)
+def CDFG.Transition.is_trans_msging_all_these_nodes (trans : Transition) (nodes : List Node) (src_ctrler : CtrlerName) : Except String Bool := do
+  let msg_dests? := ← trans.messages.mapM (·.findDestState? nodes src_ctrler);
+  let msg_dests := msg_dests?.filterMap id |>.join.eraseDups
+  dbg_trace s!">>is_trans_msging_all_these_nodes: Nodes: ({nodes.map (·.current_state)}), Msg Dests: ({msg_dests}), Trans Dests: ({trans.dest_state})"
+  pure $ nodes.all (·.current_state ∈ msg_dests)
 
 def CDFG.Node.is_node_msging_these_nodes (node : Node) (nodes : List Node) : Except String Bool :=
-  node.not_reset_transitions.anyM (·.is_trans_msging_all_these_nodes nodes)
+  dbg_trace s!">>is_node_msging_these_nodes: Node: ({node.current_state}), Nodes: ({nodes.map (·.current_state)})"
+  node.not_reset_transitions.anyM (·.is_trans_msging_all_these_nodes nodes node.ctrler_name)
 
 def CDFG.Graph.nodes_msging_these_nodes (graph : Graph) (nodes : List Node) : Except String (List Node) :=
   graph.nodes.filterM (·.is_node_msging_these_nodes nodes)
@@ -2516,8 +2535,15 @@ def CtrlerNameNodes.is_a_live_subset_of
   -- a few steps to check:
   -- 1. if the first node of this ctrler "starts" at the same time as the first of the other ctrler, or at one of the later nodes of the other ctrler
   -- 2. if the last node of this ctrler "completes" at the same time as the last of the other ctrler, or at one of the earlier nodes of the other ctrler
+  dbg_trace s!"==== is_a_live_subset_of ===="
+  dbg_trace s!"this_ctrler_name_nodes: ({this_ctrler_name_nodes.ctrler_name})"
+  dbg_trace s!"other_ctrler_name_nodes: ({other_ctrler_name_nodes.ctrler_name})"
   let (is_nodes_that_msg_both_nodes, is_this_ctrler_msg'd_by_other_ctrler?) := ← this_ctrler_name_nodes.starts_at_same_or_later_than_given_ctrler other_ctrler_name_nodes graph 
+  dbg_trace s!">>is_nodes_that_msg_both_nodes: ({is_nodes_that_msg_both_nodes}), This ({this_ctrler_name_nodes.ctrler_name}) Other ({other_ctrler_name_nodes.ctrler_name})})"
+  dbg_trace s!">>is_this_ctrler_msg'd_by_other_ctrler?: ({is_this_ctrler_msg'd_by_other_ctrler?}) This ({this_ctrler_name_nodes.ctrler_name}) Other ({other_ctrler_name_nodes.ctrler_name})"
   let (is_this_last_node_msgs_other, is_this_last_node_msg'd_by_other?) := ← this_ctrler_name_nodes.finishes_at_same_or_earlier_node_than_given_ctrler other_ctrler_name_nodes-- graph
+  dbg_trace s!">>is_this_last_node_msgs_other: ({is_this_last_node_msgs_other}) This ({this_ctrler_name_nodes.ctrler_name}) Other ({other_ctrler_name_nodes.ctrler_name})"
+  dbg_trace s!">>is_this_last_node_msg'd_by_other?: ({is_this_last_node_msg'd_by_other?}) This ({this_ctrler_name_nodes.ctrler_name}) Other ({other_ctrler_name_nodes.ctrler_name})"
 
   let is_this_last_node_msg'd_by_other? : Option Node := ←
     match is_this_last_node_msg'd_by_other? with
@@ -2534,9 +2560,12 @@ def CtrlerNameNodes.is_a_live_subset_of
       | false => do pure is_this_last_node_msg'd_by_other?
 
   match is_nodes_that_msg_both_nodes, is_this_ctrler_msg'd_by_other_ctrler?, is_this_last_node_msgs_other, is_this_last_node_msg'd_by_other? with
-  | true, _, true, _ => do pure true
-  | true, _, _, some _ => do pure true
-  | _, some _, true, _ => do pure true
+  | true, _, true, _ => do
+    pure true
+  | true, _, _, some _ => do
+    pure true
+  | _, some _, true, _ => do
+    pure true
   | _, some node, _, some node' => do
     pure $ other_ctrler_name_nodes.is_there_a_total_order_btn_nodes node node'
   | _, _, _, _ => do pure false
@@ -2556,13 +2585,18 @@ def List.to_graph (list_ctrler_and_nodes : List (CtrlerNameNodes)) : Graph := {
 }
 
 -- Filter out nodes that are live for a subset of another node
-def CDFG.Graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler (graph : Graph) : Except String Graph := do
+def CDFG.Graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler
+(graph : Graph) (first_'to_stall_on'_inst_type : InstType)
+: Except String Graph := do
+  let inst_source_node ← graph.inst_source_node
+  let to_stall_on_inst_nodes : Graph ← graph.states_an_inst_of_type_can_be_in inst_source_node none first_'to_stall_on'_inst_type 
+
   -- group nodes by ctrlers
   -- check ctrler node set liveness between eachother. Check if each is a subset of any other, then prune it
-  let list_ctrler_and_nodes := graph.ctrler_and_nodes_pairs
+  let list_ctrler_and_nodes := to_stall_on_inst_nodes.ctrler_and_nodes_pairs
   let ctrler_name_and_nodes_list : List CtrlerNameNodes := list_ctrler_and_nodes.map (let (ctrler_name, nodes) := ·; {ctrler_name := ctrler_name, nodes := nodes})
 
-  let pruned_ctrler_name_and_nodes_list : (List CtrlerNameNodes) := ← ctrler_name_and_nodes_list.prune_ctrler_nodes_against_others_that_are_live_longer graph
-    |>.throw_exception_nesting_msg s!"Error pruning ctrler nodes that are live for a subset of another ctrler. Inst Graph: ({graph})"
+  let pruned_ctrler_name_and_nodes_list : (List CtrlerNameNodes) := ← ctrler_name_and_nodes_list.prune_ctrler_nodes_against_others_that_are_live_longer to_stall_on_inst_nodes
+    |>.throw_exception_nesting_msg s!"Error pruning ctrler nodes that are live for a subset of another ctrler. Inst Graph: ({to_stall_on_inst_nodes})"
   
   pure pruned_ctrler_name_and_nodes_list.to_graph
