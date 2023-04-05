@@ -1452,17 +1452,23 @@ def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String cont
   | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
 
 def convert_state_names_to_dsl_or_tree_state_check
-( state_names : List StateName )
+( state_names : List StateName ) (ctrler_type : CtrlerType) (ctrler_name : CtrlerName)
 : Except String Pipeline.Expr
 -- : Pipeline.Expr
 := do
+  let term_var : Pipeline.Term :=
+    match ctrler_type with
+    | .BasicCtrler => Pipeline.Term.qualified_var [ctrler_name, "curr_state"].to_qual_name
+    | .FIFO => ( Pipeline.Term.var "curr_state" )
+    | .Unordered => ( Pipeline.Term.var "curr_state" )
+
   match state_names with
   | [a_state_name] => -- just do this one comparison
-    return Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var a_state_name )
+    return Pipeline.Expr.equal term_var ( Pipeline.Term.var a_state_name )
   | h :: t =>
     -- use recursion
-    let head_equal_check : Pipeline.Expr := Pipeline.Expr.equal ( Pipeline.Term.var "curr_state" ) ( Pipeline.Term.var h )
-    let expr : Pipeline.Expr ← (convert_state_names_to_dsl_or_tree_state_check t)
+    let head_equal_check : Pipeline.Expr := Pipeline.Expr.equal term_var ( Pipeline.Term.var h )
+    let expr : Pipeline.Expr ← (convert_state_names_to_dsl_or_tree_state_check t ctrler_type ctrler_name)
     return Pipeline.Expr.binor (Pipeline.Term.expr head_equal_check) (Pipeline.Term.expr expr)
   | [] => throw s!"Blank List of Strings was provided!"
 
@@ -1484,12 +1490,12 @@ def StateOrConstraintToStallOn.is_just_reset : StateOrConstraintToStallOn → Bo
   | _ => false
 | Sum.inr /- ctrler_states_constraint_expr -/ _ => false
 
-def StateOrConstraintToStallOn.stall_condition_expr_from_post_receive_state : StateOrConstraintToStallOn → Except String Pipeline.Expr
-| states_or_constraints => do
+def StateOrConstraintToStallOn.stall_condition_expr_from_post_receive_state : StateOrConstraintToStallOn → CtrlerType → CtrlerName → Except String Pipeline.Expr
+| states_or_constraints, ctrler_type, ctrler_name => do
   let no_longer_stall_cond ←
     match states_or_constraints with
     | Sum.inl ctrler_states => do 
-      convert_state_names_to_dsl_or_tree_state_check ctrler_states.states
+      convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_name
     | Sum.inr ctrler_states_constraint_expr => do
       pure $ ← ExprsToAndTreeExpr ctrler_states_constraint_expr.constraints
   pure $ Pipeline.Expr.some_term (
@@ -1639,7 +1645,7 @@ def CreateStallNode (stall_state : CtrlerState) (stall_on_constraint : StateOrCo
     if just_reset then
       pure none
     else
-      pure $ some $ ← stall_on_constraint.stall_condition_expr_from_post_receive_state
+      pure $ some $ ← stall_on_constraint.stall_condition_expr_from_post_receive_state (← stall_ctrler.type) stall_ctrler.name
   dbg_trace s!"just_reset: ({just_reset})"
   dbg_trace s!"stall_on_constraint: {stall_on_constraint}"
   dbg_trace s!"not_yet_gotten_mem_resp_state_check?: {not_yet_gotten_mem_resp_state_check?}"
@@ -2509,16 +2515,37 @@ def API_dest_ctrlers_msg_names : List (CtrlerName × MsgName) := [
 
 -- ============== AZ NOTE: New "correct" stall based on query for un-complete state ==============
 abbrev VarName := String
--- also return the not-completed-check var_name, so we can OR them together
-def CtrlerStates.to_query (ctrler_states : CtrlerStates) : Except String (List Pipeline.Statement × VarName) := do
-  let var_name := (ctrler_states.ctrler ++ "_not_completed");
-  let not_completed_true := Pipeline.Statement.variable_assignment [var_name].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
-  let not_completed_false := Pipeline.Statement.variable_assignment [var_name].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
+abbrev BoolDecl := Pipeline.Statement
+abbrev BoolSetIfStmt := Pipeline.Statement
 
-  let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states
+def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state : VarName) (ctrlers : Ctrlers) : Except String (BoolDecl × BoolSetIfStmt) := do
+  let not_completed_true := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
+  let not_completed_false := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
+
+  let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
+  let ctrler_type ← ctrler.type 
+  let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_states.ctrler
   let if_not_completed := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr not_completed_true not_completed_false)
 
-  let ctrler_not_completed := Pipeline.Statement.variable_declaration (Pipeline.TypedIdentifier.mk "bool" var_name)
+  let ctrler_not_completed := Pipeline.Statement.variable_declaration (Pipeline.TypedIdentifier.mk "bool" if_at_state)
+  pure (ctrler_not_completed, if_not_completed)
+
+def CtrlerStates.query_for_ctrler_type (ctrler_states : CtrlerStates) (if_stmt : Pipeline.Statement) (ctrlers : Ctrlers)
+: Except String Pipeline.Statement := do
+  let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler => pure if_stmt
+  | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
+  -- TODO: replace default. add helper to create search API with stmts in it
+    default
+  | .Unordered => default
+
+-- also return the not-completed-check var_name, so we can OR them together
+def CtrlerStates.to_query (ctrler_states : CtrlerStates) (ctrlers : Ctrlers)
+-- NOTE: Consider if I actually just need a fixed number of stmts, like a tuple
+: Except String (List Pipeline.Statement × VarName) := do
+  let var_name : VarName := (ctrler_states.ctrler ++ "_not_completed");
 
   -- Based on the ctrler type, if it's a queue, use the search API generation code below
   -- if it's a ctrler, just access the it's state vars to check if it's an older inst
@@ -2526,19 +2553,23 @@ def CtrlerStates.to_query (ctrler_states : CtrlerStates) : Except String (List P
   -- Also, make the if condition expr generator also generate <ctrler_name>.state instead of just "state" since
   -- basic ctrlers won't be accessed with a await-when api call...
 
+  -- This is the if stmt
+  let (ctrler_not_completed_var, if_not_completed) ← ctrler_states.to_if_state_check var_name ctrlers
+
+  -- TODO: Create a helper to check if the ctrler is a queue, and use the right search API
   -- let query
 
   default
 
-def List.to_queries (states_to_query : List CtrlerStates) : List Pipeline.Statement :=
+def List.to_queries (states_to_query : List CtrlerStates) (ctrlers : Ctrlers) : Except String (List (List Pipeline.Statement × VarName)) := do
   -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
-  states_to_query.map (·.to_query)
+  states_to_query.mapM (·.to_query ctrlers)
   -- create a var name to hold the result of the query
 
   -- logic OR the results
 
   -- sorry
-  default
+  -- default
 
 def stall_state_querying_states
   (new_stall_state_name : StateName)
