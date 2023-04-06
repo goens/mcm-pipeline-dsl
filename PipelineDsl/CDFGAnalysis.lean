@@ -1321,7 +1321,7 @@ def get_min_from_tuple_nat_list_CtrlerStates (lst : List (CtrlerStates × Nat)) 
 
 -- NOTE: Don't need pre-receive states...
 partial def CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates
-(post_receive_graph : Graph) (pre_receive_graph : Graph) (total_graph : Graph) (receive_mem_resp_or_later_state : StateName) (ctrlers : List controller_info)
+(post_receive_graph : Graph) (pre_receive_graph : Graph) (total_graph : Graph) (receive_mem_resp_or_later_state : StateName) (ctrlers : Ctrlers)
 (dist : Distance)
 : Except String (Option (CtrlerStates × Distance)) := do
   -- Check the state we're starting at, if:
@@ -1332,7 +1332,7 @@ partial def CDFGCtrlerStatesToStallOnThatAreSeparateFromPreReceiveStates
   dbg_trace s!"!!7"
   let node ← post_receive_graph.node_from_name! receive_mem_resp_or_later_state
   -- 1.
-  let ctrler ← CtrlerMatchingName ctrlers node.ctrler_name
+  let ctrler ← ctrlers.ctrler_from_name node.ctrler_name
   let is_a_queue : Bool := (← ctrler.type).is_a_queue
 
   -- 2.
@@ -1388,7 +1388,7 @@ def get_min_from_α_nat_list {α : Type } (lst : List (α × Nat)) : Except Stri
     if (nat) <= nat' then pure (n,nat) else pure (n',nat')
   | [] => throw "Error: Empty List"
 
-def CDFG.Graph.queue_ctrler_distance_from_node (graph : Graph) (start_name : StateName) (ctrlers : List controller_info)
+def CDFG.Graph.queue_ctrler_distance_from_node (graph : Graph) (start_name : StateName) (ctrlers : Ctrlers)
 : Except String (List (CtrlerName × Distance)) := do
   let nodes_labelled_by_msg_distance : List (StateName × Distance) ← graph.labelNodesByMessageDistance start_name 0
   dbg_trace s!"!!8"
@@ -1396,7 +1396,7 @@ def CDFG.Graph.queue_ctrler_distance_from_node (graph : Graph) (start_name : Sta
   let ctrler_names := graph.nodes.map (·.ctrler_name) |> List.eraseDups
 
   -- filter away ctrler_names that are not queues
-  let queue_ctrler_names : List CtrlerName := ← ctrler_names.filterM (λ ctrler_name => do pure $ (← (← CtrlerMatchingName ctrlers ctrler_name).type) != .BasicCtrler)
+  let queue_ctrler_names : List CtrlerName := ← ctrler_names.filterM (λ ctrler_name => do pure $ (← (← ctrlers.ctrler_from_name ctrler_name).type) != .BasicCtrler)
 
   let ctrler_node_distances : List (CtrlerName × List (Node × Distance)) := queue_ctrler_names.map ( λ ctrler_name => (ctrler_name, node_nodes_by_dist.filter (·.1.ctrler_name == ctrler_name)) )
   let ctrler_distances? := ctrler_node_distances.map (λ (ctrler, node_dist) => (ctrler, node_dist.map (nat_from_node_nat) |> List.maximum? ))
