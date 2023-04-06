@@ -2531,7 +2531,7 @@ def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state :
   pure (ctrler_not_completed, if_not_completed)
 
 
-abbrev when := Pipeline.Statement.when -- when <msg>() from <ctrler> { <stmts> }
+abbrev when_stmt := Pipeline.Statement.when -- when <msg>() from <ctrler> { <stmts> }
 abbrev qualified_var := Pipeline.Term.qualified_var -- i.e. "entry.instruction.seq_num", LQ.tail_search, etc.
 abbrev equal := Pipeline.Expr.equal -- equal
 abbrev sub := Pipeline.Expr.sub -- subtract
@@ -2561,8 +2561,8 @@ def CtrlerName.FIFOYoungerInstSearch (dest_ctrler_name : CtrlerName) (stall_on_i
   --     ld_seq_num = instruction.seq_num
   --   }
   -- }
-  let when_search_fail := when [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
-  let when_search_success := when [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
+  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
 
   let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
   let curr_ctrler_inst := (qualified_var [instruction, seq_num].to_qual_name)
@@ -2582,8 +2582,8 @@ def CtrlerName.UnorderedYoungerInstSearch (dest_ctrler_name : CtrlerName) (stall
   -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
   -- when search_fail() from SB
   -- when search_success(write_value) from SB
-  let when_search_fail := when [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
-  let when_search_success := when [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
+  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
 
   let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
   let curr_ctrler_inst := (qualified_var [instruction, seq_num].to_qual_name)
@@ -2721,7 +2721,7 @@ abbrev state := Pipeline.Description.state
 def stall_state_querying_states
 (new_stall_state_name : StateName)
 (original_state_name : StateName)
-(ctrler_name : CtrlerName) -- current or this ctrler
+-- (ctrler_name : CtrlerName) -- current or this ctrler
 (ctrler_states_to_query : List CtrlerStates)
 (stall_on_inst_type : InstType)
 (inst_to_stall_type : InstType)
@@ -2765,7 +2765,7 @@ def stall_state_querying_states
     new_stall_state_name
     (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
 
-def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : CtrlerStates)
+def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
 (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
@@ -2777,8 +2777,16 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
   let handle_blks : Option (List HandleBlock) ←
     get_ctrler_state_handle_blocks stall_ctrler stall_state
 
+-- (new_stall_state_name : StateName)
+-- (original_state_name : StateName)
+-- (ctrler_states_to_query : List CtrlerStates)
+-- (stall_on_inst_type : InstType)
+-- (inst_to_stall_type : InstType)
+-- (original_state's_handleblks : Option ( List HandleBlock ))
+-- (ctrlers : Ctrlers)
   let new_stall_state : Description ← stall_state_querying_states
+    new_stall_state_name stall_state ctrler_states_to_query inst_type_to_stall_on inst_to_stall_type handle_blks ctrlers
 
-  dbg_trace s!"New stall state: \n{new_stall_state}"
+  dbg_trace s!"=== New Stall State: ===\n({new_stall_state})\n=== End New Stall State ==="
   pure new_stall_state
 
