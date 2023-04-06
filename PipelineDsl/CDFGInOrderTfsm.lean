@@ -6,7 +6,7 @@ import PipelineDsl.DSLtoCDFG
 open CDFG
 
 -- TODO: Check for other ctrlers the inst to stall on can be in
-def CDFG.InOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
+def CDFG.InOrderTfsm (ctrlers : Ctrlers) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
 : Except String (List controller_info) := do
   dbg_trace "<< Starting CDFGInOrderTfsm"
   let graph_nodes ← DSLtoCDFG ctrlers
@@ -24,7 +24,12 @@ def CDFG.InOrderTfsm (ctrlers : List controller_info) (inst_to_stall_on_type : I
 
   -- === New code to find stall state ===
   let nodes_to_query ← graph.find_pre_receive_stall_states inst_to_stall_on_type
+  let query_ctrler_states := nodes_to_query.to_ctrler_states
   
+-- def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
+-- (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
+  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states inst_to_stall_on_type inst_to_stall_type
+    |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the stall state"
   -- === New code to find stall state ===
 
   -- let graph_constrained_by_second_inst := ← graph.states_the_'to_stall_on'_node_can_be_in inst_to_stall_on_type inst_to_stall_type stall_point ctrlers
