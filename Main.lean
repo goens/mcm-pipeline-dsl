@@ -3,7 +3,7 @@ import Lean
 -- import PipelineDsl.Preprocess
 import PipelineDsl.AnalysisHelpers
 import PipelineDsl.LitmusTests
-import PipelineDsl.InOrderTransformation
+-- import PipelineDsl.InOrderTransformation
 -- import PipelineDsl.EmitMurphiNoROB
 -- import PipelineDsl.EmitMurphiNoIQNoROB
 import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
