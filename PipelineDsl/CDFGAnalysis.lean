@@ -2098,7 +2098,8 @@ def CDFG.Node.not_visitied_transitions (node : Node) (visited : List Node) : Lis
   trans.not_visited_transitions visited node.ctrler_name
 
 def CDFG.Node.not_visitied_transitions_completions (node : Node) (visited : List Node) : List Transition :=
-  let trans : Transitions := node.transitions.filter (·.trans_type != .Reset)
+  let completions := node.transitions.filter (·.trans_type == .Completion)
+  let trans : Transitions := node.transitions.filter (·.trans_type != .Reset) ++ completions
   trans.not_visited_transitions visited node.ctrler_name
 
 -- def CDFG.Transitions.trans_that_don't_go_to_node (transitions : Transitions) (ctrler_name : CtrlerName) (node : Node) : List Transition :=
@@ -2181,6 +2182,8 @@ def CDFG.Node.not_visited_transitions_completions (node : Node) (visited : List 
   node.not_visitied_transitions_completions visited
 
 def CDFG.Node.not_visited_transitions_completions_taken_by_inst_type (node : Node) (visited : List Node) (inst_type : InstType) : List Transition :=
+  dbg_trace s!"COMPUTING: all node transitions: ({node.transitions.map (·.src_dest_states)})"
+  dbg_trace s!"COMPUTING: visited states: ({visited.map (·.current_state)})"
   let trans := node.not_visited_transitions_completions visited
   dbg_trace s!"COMPUTING: not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
   dbg_trace s!"COMPUTING: Transition & Completion Dests: ({trans.map (·.dest_state)})"
@@ -2226,8 +2229,9 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Grap
     let reachable_nodes_from_transitions := ( ← dest_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
 
     -- Get dest nodes of msgs, ignore those sending to "API" nodes for now
-    let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_taken_by_inst_type visited inst_type
-    dbg_trace s!"REACHABLE COMPUTATION: trans & compl transition msgs: ({trans_compls_for_this_inst_type.map (·.messages)})"
+    let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_taken_by_inst_type visited inst_type ++ node.completions -- Consider transitions as well for messages
+    dbg_trace s!"REACHABLE COMPUTATION: trans & compl transitions: ({trans_compls_for_this_inst_type.map (·.src_dest_states)})"
+    -- dbg_trace s!"REACHABLE COMPUTATION: trans & compl transition msgs: ({trans_compls_for_this_inst_type.map (·.messages)})"
     let msg'd_nodes := ← trans_compls_for_this_inst_type.msg'd_nodes_reaching_complete node.ctrler_name graph
       |>.throw_exception_nesting_msg s!"Current Inst Type: ({inst_type})"
     dbg_trace s!"REACHABLE COMPUTATION: msg'd nodes: (current node: ({node.current_state})) ({msg'd_nodes.map (·.current_state)})"
@@ -2653,17 +2657,27 @@ def CDFG.Graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler
   
   pure pruned_ctrler_name_and_nodes_list.to_graph
 
+def CDFG.Node.qualified_state_names (node : Node) : StateName := node.ctrler_name ++ "::" ++ node.current_state
+def List.qualified_state_names (nodes : List Node) : List StateName := nodes.map (·.qualified_state_names)
+
 def CDFG.Graph.find_pre_receive_stall_states
 (graph : Graph) (first_'to_stall_on'_inst_type : InstType)
 : Except String (List Node) := do
   let inst_source_node ← graph.inst_source_node
 
+  dbg_trace s!"start INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
   let inst_graph := ← graph.reachable_nodes_from_node_up_to_option_node inst_source_node none first_'to_stall_on'_inst_type []
+  dbg_trace s!"end INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
 
   let receive_response_node : Node ← graph.global_receive_node_of_inst_type first_'to_stall_on'_inst_type
-  let post_receive_inst_graph := ← graph.reachable_nodes_from_node_up_to_option_node receive_response_node none first_'to_stall_on'_inst_type []
+  let post_receive_inst_graph_with_receive_node := ← graph.reachable_nodes_from_node_up_to_option_node receive_response_node none first_'to_stall_on'_inst_type []
+  let post_receive_inst_graph := post_receive_inst_graph_with_receive_node.filter (·.current_state != receive_response_node.current_state)
 
   let pre_receive_inst_graph := inst_graph.filter (·.current_state ∉ post_receive_inst_graph.map (·.current_state) )
+  dbg_trace s!">> inst_graph: ({inst_graph.qualified_state_names})"
+  dbg_trace s!">> receive_response_node: ({receive_response_node.qualified_state_names})"
+  dbg_trace s!">> post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"
+  dbg_trace s!">> pre_receive_inst_graph: ({pre_receive_inst_graph.qualified_state_names})"
 
   return pre_receive_inst_graph
 
