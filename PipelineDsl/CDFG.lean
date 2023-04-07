@@ -224,7 +224,7 @@ deriving Inhabited, BEq
 -- instance : BEq Transition where beq := λ t1 t2 => t1.orig_state == t2.orig_state && t1.dest_state == t2.dest_state
 
 def Transition.src_dest_states (transition : Transition) : String :=
-s!"[Trans ({transition.orig_state}) -> ({transition.dest_state})]"
+s!"[Trans_type ({transition.trans_type}): ({transition.orig_state}) -> ({transition.dest_state})]"
 
 def Transition.is_transition_to_state_name (transition : Transition) (state_name : StateName) : Bool :=
 -- dbg_trace s!"Trans from {transition.orig_state} to {transition.dest_state}, type: ({transition.trans_type}), desired state: {state_name}"
@@ -350,6 +350,8 @@ s!"Transitions: ({cdfg_node.transitions})"  ++ "\n" ++
 "<< End CDFG Node >>\n"
 str
 instance : ToString Node where toString := Node.toString
+
+def Node.completions (node : Node) : Transitions := node.transitions.filter (·.trans_type == .Completion)
 
 def Node.is_from_ctrler (node : Node) (ctrler_name : CtrlerName) : Bool := node.ctrler_name == ctrler_name
 
