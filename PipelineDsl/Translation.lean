@@ -1,4 +1,5 @@
 -- import PipelineDsl
+-- import Mathlib.Tactic.Linarith
 import PipelineDsl.AnalysisHelpers
 
 import Murphi
@@ -1822,6 +1823,30 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     dbg_trace s!"State Var Identifier List: ({state_var_idents})"
     dbg_trace s!"Head Identifier: ({h})"
 
+    let ctrlers_with_h_as_name : List controller_info :=
+      lst_ctrlers.filter (λ ctrl : controller_info => ctrl.name == h)
+    -- have H_is_ctrler := 0 < ctrlers_with_h_as_name.length;
+    let h_is_basic_ctrler : Bool :=
+      match H : ctrlers_with_h_as_name with
+      | [one] =>
+        have one_or_more : 0 < ctrlers_with_h_as_name.length := by simp[H];
+        let h_ctrler := ctrlers_with_h_as_name[0]'one_or_more;
+        let h_ctrler_type! := h_ctrler.type;
+        match h_ctrler_type! with
+        | .ok c_type =>
+          match c_type with
+          | .BasicCtrler => true
+          | .FIFO | .Unordered => false
+        | .error msg =>
+          dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): ({msg})"
+          false
+      | [] =>
+        dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): No ctrlers matching name: ({h})"
+        false
+      | _ :: _ =>
+        dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): Multiple ctrlers matching name: ({ctrlers_with_h_as_name.map (·.name)})"
+        false
+
     -- This is for the second check,
     -- if "entry" is a term identifier,
     -- translate this as <ctrler>.entries[curr_idx]
@@ -1831,7 +1856,24 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_is_entry : Bool :=
       h == "entry"
 
-    if ident_is_entry && ident_matches_ident_list then
+    if h_is_basic_ctrler then
+      let sum_list : List (String ⊕ Murϕ.Expr)
+      := List.append [
+        -- entries
+        Sum.inl "core_",
+        Sum.inr (Murϕ.Expr.designator (Murϕ.Designator.mk "j" [])),
+        Sum.inl (h.append "_")
+      ] (list_ident_to_murphi_ID t)
+
+      -- AZ TODO: Use dest ctrler!
+      -- TODO Tuesday, Aug 16, 2022
+      let murphi_designator :=
+        -- Murϕ.Designator.mk dest_ctrler sum_list
+        Murϕ.Designator.mk "next_state" sum_list
+
+      dbg_trace s!"Translated BasicCtrler member state var/state access: ({qual_name_idents}) to: ({murphi_designator})"
+      murphi_designator
+    else if ident_is_entry && ident_matches_ident_list then
       -- special case: we use the entry designator base qualifier, then the ident
       let entries := "entries"
       -- let idx : Murϕ.Designator := match specific_murphi_dest_expr with
@@ -7407,7 +7449,7 @@ def qualified_name_to_sta_murphi_expr
 structure decl_and_init_list where
 decl_list : List Murϕ.Decl
 init_list : List Murϕ.Statement
-trans : Pipeline.Description
+trans' : Pipeline.Description
 ctrler_names : List Identifier
 lst_ctrlers : List controller_info
 curr_ctrler_name : Identifier
@@ -7423,7 +7465,7 @@ partial def ast_decl_assn_decl_to_murphi_decl
 
   -- The other stuff, but i don't use this here..
   -- { trans := trans, init_list := [], decl_list := simple_ast_murphi_decls, ctrler_names := lst_ctrler_names}
-  let trans := (← get).trans
+  let trans' := (← get).trans'
   let init_list := (← get).init_list
   let decl_list := (← get).decl_list
   let ctrler_names := (← get).ctrler_names
@@ -7750,8 +7792,8 @@ match murphi_stmt with
 --   | putstmtstr : String → Statement
 --   | returnstmt : Option Expr → Statement
 | _ => ([], [])
-modify λ { trans := trans, init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name } =>
-  { trans := trans, init_list := init_list ++ decl_init_tuple.2, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name,
+modify λ { trans' := trans', init_list := init_list, decl_list := decl_list, ctrler_names := ctrler_names, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name } =>
+  { trans' := trans', init_list := init_list ++ decl_init_tuple.2, lst_ctrlers := lst_ctrlers, curr_ctrler_name := curr_ctrler_name,
     decl_list := decl_list ++ decl_init_tuple.1, ctrler_names := ctrler_names }
 return ()
 
@@ -8164,12 +8206,12 @@ def dsl_trans_ctrler_to_murphi
 
   let ast_decl_to_murphi_decl_monad : DeclInitM (List Murϕ.Decl) := ast_decl_assn_decl_to_murphi_decl trans_stmt_blk
   let simple_ast_murphi_decls : List Murϕ.Decl := ast_decl_to_murphi_decl_monad.run
-    { trans := trans, init_list := [], decl_list := [], ctrler_names := lst_ctrler_names,
+    { trans' := trans, init_list := [], decl_list := [], ctrler_names := lst_ctrler_names,
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.1
 
   let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
   let murphi_stmts_decls := murphi_stmts_decls_monad.run {
-    trans := trans, init_list := [],
+    trans' := trans, init_list := [],
     decl_list := simple_ast_murphi_decls ++ decls_from_translation,
     ctrler_names := lst_ctrler_names,
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.2
@@ -8478,12 +8520,12 @@ def dsl_trans_entry_descript_to_murphi_rule
 
   let ast_decl_to_murphi_decl_monad : DeclInitM (List Murϕ.Decl) := ast_decl_assn_decl_to_murphi_decl trans_stmt_blk
   let simple_ast_murphi_decls : List Murϕ.Decl := ast_decl_to_murphi_decl_monad.run
-    { trans := trans, init_list := [], decl_list := [], ctrler_names := lst_ctrler_names,
+    { trans' := trans, init_list := [], decl_list := [], ctrler_names := lst_ctrler_names,
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.1
 
   let murphi_stmts_decls_monad := murphi_stmts_to_murphi_decls lst_murphi_stmt
   let murphi_stmts_decls := murphi_stmts_decls_monad.run {
-    trans := trans, init_list := [],
+    trans' := trans, init_list := [],
     decl_list := simple_ast_murphi_decls ++ decls_from_translation,
     ctrler_names := lst_ctrler_names,
       lst_ctrlers := ctrler_lst, curr_ctrler_name := ctrler_name} |>.run.2
