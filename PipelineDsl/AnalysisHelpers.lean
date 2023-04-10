@@ -2790,3 +2790,21 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
   dbg_trace s!"=== New Stall State: ===\n({new_stall_state})\n=== End New Stall State ==="
   pure new_stall_state
 
+def CtrlerStates.is_member (ctrler_states : CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
+  ctrler_states.ctrler == ctrler_name && state_name ∈ ctrler_states.states 
+
+def List.is_ctrler_state_member (ctrler_states_list : List CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
+  ctrler_states_list.any (·.is_member ctrler_name state_name)
+
+def List.add_ctrler_state (ctrler_states_list : List CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Except String (List CtrlerStates) := do
+  let ctrler_states_matchs : List CtrlerStates := ctrler_states_list.filter (·.ctrler == ctrler_name)
+  let ctrler_states_match : CtrlerStates := ←
+    match ctrler_states_matchs with
+    | [ctrler_states] => do pure ctrler_states
+    | [] => do throw s!"Error, couldn't find ctrler ({ctrler_name}) in list ({ctrler_states_list})"
+    | _ => do throw s!"Error, found multiple ctrlers ({ctrler_name}) in list ({ctrler_states_list})"
+
+  let added_state : CtrlerStates := ⟨ctrler_states_match.ctrler, ctrler_states_match.states ++ [state_name]⟩
+
+  ctrler_states_list.map (let ctrler_states := ·; if ctrler_states.ctrler == ctrler_name then added_state else ctrler_states) |> pure
+
