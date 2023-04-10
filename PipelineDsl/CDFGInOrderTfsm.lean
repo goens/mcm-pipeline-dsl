@@ -24,11 +24,18 @@ def CDFG.InOrderTfsm (ctrlers : Ctrlers) (inst_to_stall_on_type : InstType) (ins
 
   -- === New code to find stall state ===
   let nodes_to_query ← graph.find_pre_receive_stall_states inst_to_stall_on_type
-  let query_ctrler_states := nodes_to_query.to_ctrler_states
+  let query_ctrler_state : List CtrlerStates := nodes_to_query.to_ctrler_states
+
+  let new_stall_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
+  let query_ctrler_states' : List CtrlerStates :=
+    if query_ctrler_state.is_ctrler_state_member stall_point.ctrler stall_point.state then
+      ← query_ctrler_state.add_ctrler_state stall_point.ctrler new_stall_state_name |>.throw_exception_nesting_msg s!"Error adding new_stall_state to query_ctrler_states"
+    else
+      query_ctrler_state
   
 -- def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
 -- (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
-  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states inst_to_stall_on_type inst_to_stall_type
+  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' inst_to_stall_on_type inst_to_stall_type
     |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the stall state"
   -- === New code to find stall state ===
 
@@ -43,7 +50,7 @@ def CDFG.InOrderTfsm (ctrlers : Ctrlers) (inst_to_stall_on_type : InstType) (ins
   -- dbg_trace s!"BEGIN graph_pruned_of_live_subsets: ({graph_pruned_of_live_subsets.nodes.map (·.current_state)})\nEND graph_pruned_of_live_subsets"
   -- dbg_trace s!"======= END graph_pruned_of_live_subsets ========"
 
-  let new_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
-  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_state_name stall_node stall_point.state
+  -- let new_stall_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
+  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_stall_state_name stall_node stall_point.state
 
   pure updated_ctrlers
