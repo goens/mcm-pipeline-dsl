@@ -2798,9 +2798,13 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
   pure new_stall_state
 
 def CtrlerStates.is_member (ctrler_states : CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
-  ctrler_states.ctrler == ctrler_name && state_name ∈ ctrler_states.states 
+  let is_member := (ctrler_states.ctrler == ctrler_name) && (ctrler_states.states.contains state_name)
+  dbg_trace s!"is ctrler ({ctrler_name}) and state ({state_name}) ∈ ctrler_states ({ctrler_states})?"
+  dbg_trace s!"is_member: ({is_member})"
+  is_member
 
 def List.is_ctrler_state_member (ctrler_states_list : List CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
+  dbg_trace s!"test"
   ctrler_states_list.any (·.is_member ctrler_name state_name)
 
 def List.add_ctrler_state (ctrler_states_list : List CtrlerStates) (ctrler_name : CtrlerName) (state_name : StateName) : Except String (List CtrlerStates) := do
