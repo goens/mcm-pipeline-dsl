@@ -177,7 +177,7 @@ partial def CDFG.Node.is_node_reaches_complete : Node → Graph → Except Strin
     | [] => pure false
     | one_or_more =>
       let dest_states := one_or_more.map (·.dest_state )
-      dbg_trace s!"!!2"
+      -- dbg_trace s!"!!2"
       let dest_nodes ← dest_states.mapM (graph.node_from_name! · |>.throw_exception_nesting_msg s!"Error when checking if node ({node.current_state}) reaches complete")
       let dest_nodes_reach_complete ← dest_nodes.mapM (·.is_node_reaches_complete graph)
       pure $ dest_nodes_reach_complete.any (· == true )
@@ -2181,21 +2181,31 @@ def CDFG.Node.unique_trans'd_states_not_pred_by_other_insts : Node → InstType 
 def CDFG.Node.not_visited_transitions_completions (node : Node) (visited : List Node) : List Transition :=
   node.not_visitied_transitions_completions visited
 
-def CDFG.Node.not_visited_transitions_completions_taken_by_inst_type (node : Node) (visited : List Node) (inst_type : InstType) : List Transition :=
-  dbg_trace s!"COMPUTING: all node transitions: ({node.transitions.map (·.src_dest_states)})"
-  dbg_trace s!"COMPUTING: visited states: ({visited.map (·.current_state)})"
-  let trans := node.not_visited_transitions_completions visited
-  dbg_trace s!"COMPUTING: not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
-  dbg_trace s!"COMPUTING: Transition & Completion Dests: ({trans.map (·.dest_state)})"
+-- def CDFG.Node.not_visited_transitions_completions_taken_by_inst_type (node : Node) (visited : List Node) (inst_type : InstType) : List Transition :=
+--   dbg_trace s!"COMPUTING: all node transitions: ({node.transitions.map (·.src_dest_states)})"
+--   dbg_trace s!"COMPUTING: visited states: ({visited.map (·.current_state)})"
+--   let trans := node.not_visited_transitions_completions visited
+--   dbg_trace s!"COMPUTING: not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
+--   dbg_trace s!"COMPUTING: Transition & Completion Dests: ({trans.map (·.dest_state)})"
+--   let ret := trans.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
+--   dbg_trace s!"COMPUTING: trans dests not pred by other inst types: ({ret.map (·.dest_state)}) with messages: ({ret.map (·.messages)})"
+--   ret
+
+def CDFG.Node.not_visited_transitions_all_completions_taken_by_inst_type (node : Node) (visited : List Node) (inst_type : InstType) : List Transition :=
+  dbg_trace s!"COMPUTING: (all_compls) all node transitions: ({node.transitions.map (·.src_dest_states)})"
+  dbg_trace s!"COMPUTING: (all_compls) visited states: ({visited.map (·.current_state)})"
+  let trans := node.not_visited_transitions_completions visited ++ node.completions
+  dbg_trace s!"COMPUTING: (all_compls) not_visited_transitions_completions_that_don't_go_to_node_and_are_taken_by_inst_type: ({node.current_state})"
+  dbg_trace s!"COMPUTING: (all_compls) Transition & Completion Dests: ({trans.map (·.dest_state)})"
   let ret := trans.filter (! ·.is_trans_pred_by_different_inst_type_than inst_type)
-  dbg_trace s!"COMPUTING: trans dests not pred by other inst types: ({ret.map (·.dest_state)}) with messages: ({ret.map (·.messages)})"
+  dbg_trace s!"COMPUTING: (all_compls) trans dests not pred by other inst types: ({ret.map (·.dest_state)}) with messages: ({ret.map (·.messages)})"
   ret
 
 def CDFG.Node.unique_msg'd_states_not_pred_by_other_insts : Node → Graph → InstType → Except String (List StateName)
 | node, graph, desired_inst_type => do
   let ctrler_name : CtrlerName := node.ctrler_name
   -- let transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
-  let trans_compls : Transitions := node.not_visited_transitions_completions_taken_by_inst_type [] desired_inst_type
+  let trans_compls : Transitions := node.not_visited_transitions_all_completions_taken_by_inst_type [] desired_inst_type
   let messages : Messages := List.join $ trans_compls.map (·.messages)
   let msg'd_states : List StateName := (← messages.mapM (·.findDestState graph.nodes ctrler_name |>.throw_exception_nesting_msg s!"Error while finding unique msg'd states not pred by other inst types") ).join
 
@@ -2229,7 +2239,7 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node (graph : Grap
     let reachable_nodes_from_transitions := ( ← dest_nodes.mapM (graph.reachable_nodes_from_node_up_to_option_node · avoid_node? inst_type new_visited) ) |>.join |>.eraseDups
 
     -- Get dest nodes of msgs, ignore those sending to "API" nodes for now
-    let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_completions_taken_by_inst_type visited inst_type ++ node.completions -- Consider transitions as well for messages
+    let trans_compls_for_this_inst_type : Transitions := node.not_visited_transitions_all_completions_taken_by_inst_type visited inst_type -- Consider transitions as well for messages
     dbg_trace s!"REACHABLE COMPUTATION: trans & compl transitions: ({trans_compls_for_this_inst_type.map (·.src_dest_states)})"
     -- dbg_trace s!"REACHABLE COMPUTATION: trans & compl transition msgs: ({trans_compls_for_this_inst_type.map (·.messages)})"
     let msg'd_nodes := ← trans_compls_for_this_inst_type.msg'd_nodes_reaching_complete node.ctrler_name graph
@@ -2272,7 +2282,7 @@ def CDFG.Node.unique_msg'd_states_not_from_trans_compl_pred_by_other_insts : Nod
 | node, graph, desired_inst_type => do
   let ctrler_name : CtrlerName := node.ctrler_name
   -- let transitions : Transitions := node.transitions.filter (·.trans_type != .Reset)
-  let trans_compls : Transitions := node.not_visited_transitions_completions_taken_by_inst_type [] desired_inst_type
+  let trans_compls : Transitions := node.not_visited_transitions_all_completions_taken_by_inst_type [] desired_inst_type
   let messages : Messages := List.join $ trans_compls.map (·.messages)
   let msg'd_states : List StateName := (← messages.mapM (·.findDestState graph.nodes ctrler_name |>.throw_exception_nesting_msg s!"Error finding unique msg'd states from trans & compl transitions not pred by other inst types") ).join
 
@@ -2667,11 +2677,13 @@ def CDFG.Graph.find_pre_receive_stall_states
 
   dbg_trace s!"start INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
   let inst_graph := ← graph.reachable_nodes_from_node_up_to_option_node inst_source_node none first_'to_stall_on'_inst_type []
+  dbg_trace s!"inst_type: ({first_'to_stall_on'_inst_type}) inst_graph: ({inst_graph.qualified_state_names})"
   dbg_trace s!"end INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
 
   let receive_response_node : Node ← graph.global_receive_node_of_inst_type first_'to_stall_on'_inst_type
   let post_receive_inst_graph_with_receive_node := ← graph.reachable_nodes_from_node_up_to_option_node receive_response_node none first_'to_stall_on'_inst_type []
   let post_receive_inst_graph := post_receive_inst_graph_with_receive_node.filter (·.current_state != receive_response_node.current_state)
+  dbg_trace s!"inst_type: ({first_'to_stall_on'_inst_type}) post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"
 
   let pre_receive_inst_graph := inst_graph.filter (·.current_state ∉ post_receive_inst_graph.map (·.current_state) )
   dbg_trace s!">> inst_graph: ({inst_graph.qualified_state_names})"
