@@ -27,11 +27,12 @@ def CDFG.InOrderTfsm (ctrlers : Ctrlers) (inst_to_stall_on_type : InstType) (ins
   let query_ctrler_state : List CtrlerStates := nodes_to_query.to_ctrler_states
 
   let new_stall_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
-  let query_ctrler_states' : List CtrlerStates :=
-    if query_ctrler_state.is_ctrler_state_member stall_point.ctrler stall_point.state then
-      ← query_ctrler_state.add_ctrler_state stall_point.ctrler new_stall_state_name |>.throw_exception_nesting_msg s!"Error adding new_stall_state to query_ctrler_states"
-    else
-      query_ctrler_state
+  let is_stall_point_in_query := query_ctrler_state.is_ctrler_state_member stall_point.ctrler stall_point.state
+  dbg_trace s!"<< Is stall point in query: ({is_stall_point_in_query})"
+  let query_ctrler_states' : List CtrlerStates := ←
+    match is_stall_point_in_query with
+    | true => do query_ctrler_state.add_ctrler_state stall_point.ctrler new_stall_state_name |>.throw_exception_nesting_msg s!"Error adding new_stall_state to query_ctrler_states, assuming we're also stalling on ctrler ({stall_point.ctrler}) state ({stall_point.state})"
+    | false => do pure query_ctrler_state
   
 -- def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
 -- (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
