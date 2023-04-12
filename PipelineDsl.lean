@@ -10,5 +10,11 @@ import PipelineDsl.LitmusTests
 
 import PipelineDsl.AnalysisHelpers
 import PipelineDsl.LitmusTests
-import PipelineDsl.InOrderTransformation
+-- import PipelineDsl.InOrderTransformation
 import PipelineDsl.EmitMurphiIO
+
+-- import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
+import PipelineDsl.CDFG
+import PipelineDsl.DSLtoCDFG
+import PipelineDsl.CDFGAnalysis
+import PipelineDsl.CDFGLoadReplay
