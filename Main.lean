@@ -92,6 +92,11 @@ def transformTesting : AST → Array Nat → IO Unit
       --   | .error msg => 
       --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
       --     []
+      -- let ctrlers := match CDFGInOrderTfsm ctrlers store load with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
+      --     []
       let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
