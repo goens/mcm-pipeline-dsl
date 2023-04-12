@@ -8,6 +8,8 @@ import PipelineDsl.CDFGAnalysis
 
 import PipelineDsl.LoadReplayHelpers
 
+import PipelineDsl.CDFGInOrderTfsm
+
 -- namespace LoadReplay
 
 -- The 4 nodes
@@ -136,12 +138,14 @@ def CreateReplayAwaitLoadState
   let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num inst_seq_num_expr
   -- 3.(b)
   let commit_ctrler_squash := CreateDSLMsgCall four_nodes.commit_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
+  -- AZ NOTE: Need some kind of fix here, make the load controller squash the load without too much human intervention
+  let load_ctrler_squash := CreateDSLMsgCall four_nodes.global_complete_load_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
 
   -- the if cond: old_val != replay_val
   let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value 
   -- the stmts
   let if_old_not_equal_replay_stmts :=
-    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, commit_ctrler_squash]
+    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, commit_ctrler_squash, load_ctrler_squash]
 
   -- the if stmt to handle the mispeculated case
   let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
@@ -205,8 +209,8 @@ def CreateReplayAwaitLoadState
   let compare_and_check_wrapped_stmts : Pipeline.Statement ←
     if is_issue_ctrler_and_await_response_ctrler_same then do
       match issue_ctrler_node_pred_on_commit? with
-      | .some issue_ctrler_node_pred_on_commit => do
-        issue_ctrler_node_pred_on_commit.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
+      | .some /- issue_ctrler_node_pred_on_commit -/ _ => do
+        four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
       | .none => throw "Error, issue ctrler node should be available, since it's set if the bool is true"
     else do
       let await_load_ctrler_node := four_nodes.global_perform_load_node
@@ -215,7 +219,7 @@ def CreateReplayAwaitLoadState
 
       await_load_ctrler_first_state.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block
       
-  let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" compare_and_check_wrapped_stmts
+  let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" compare_and_check_wrapped_stmts.to_block
 
   dbg_trace "##Sanity 2"
   return (await_replay_state, compare_and_check_state)
@@ -425,7 +429,7 @@ def CreateCommitAwaitReplayCompleteState
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
 
-def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) (inst_to_order_load_with : InstType) : Except String (Ctrlers) := do
+def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Except String (Ctrlers × CtrlerState) := do
   -- Get the relevant 4 states & ctrlers
   let commit_node ← graph.commit_state_ctrler
   let global_perform_load_node ← graph.load_global_perform_state_ctrler
@@ -569,7 +573,8 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) (inst_
       | none =>
         throw "Error while adding created await replay response states to ctrlers: Shouldn't reach here, based on the if condition, this should have been set to Option.some"
 
-  return ctrlers_with_await_replay_response_state
+  let commit_start_replay_state_name := ← update_commit_start_replay_state.state_name
+  return (ctrlers_with_await_replay_response_state, ⟨commit_node.ctrler_name, commit_start_replay_state_name⟩)
 
 def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (inst_to_order_load_with : InstType)
 : Except String (List controller_info) := do
@@ -579,9 +584,13 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (inst_to_order_load_with : In
   dbg_trace "$$LoadReplay graph: {graph}"
 
   -- The function should do as the comments below describe.
-  let graph_with_load_replay! := graph.AddLoadReplayToCtrlers ctrlers inst_to_order_load_with
+  let (ctrlers_with_load_replay, commit_start_replay_state_name) := ← graph.AddLoadReplayToCtrlers ctrlers
+    |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
-  graph_with_load_replay!.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
+  let order_with_inst_type := ctrlers_with_load_replay.InOrderTransformParameterized inst_to_order_load_with load (some commit_start_replay_state_name)
+    |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers!"
+  
+  order_with_inst_type
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
   -- 2. Search for where load API is called
