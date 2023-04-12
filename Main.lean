@@ -1,6 +1,6 @@
 import PipelineDsl
-import Lean
 import Cli
+import Lean
 
 open Lean Pipeline
 
