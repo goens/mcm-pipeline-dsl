@@ -425,7 +425,7 @@ def CreateCommitAwaitReplayCompleteState
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
 
-def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Except String (Ctrlers) := do
+def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) (inst_to_order_load_with : InstType) : Except String (Ctrlers) := do
   -- Get the relevant 4 states & ctrlers
   let commit_node ← graph.commit_state_ctrler
   let global_perform_load_node ← graph.load_global_perform_state_ctrler
@@ -571,7 +571,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
 
   return ctrlers_with_await_replay_response_state
 
-def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers)
+def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (inst_to_order_load_with : InstType)
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
@@ -579,7 +579,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers)
   dbg_trace "$$LoadReplay graph: {graph}"
 
   -- The function should do as the comments below describe.
-  let graph_with_load_replay! := graph.AddLoadReplayToCtrlers ctrlers
+  let graph_with_load_replay! := graph.AddLoadReplayToCtrlers ctrlers inst_to_order_load_with
 
   graph_with_load_replay!.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
   -- ** Get info about ctrlers for load replay
