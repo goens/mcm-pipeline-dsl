@@ -18,26 +18,27 @@ def parseFile : Environment → String → IO (Option String × AST)
 def transformTesting : AST → Array Nat → IO Unit
   | ast, tests => do
     println! s!"===== Transform Testing ====="
+    println! s!"Transform Tests: ({tests})"
     -- TODO: make it into array
-    if tests.elem 0 then
-      println!  s!"=== Transform 0 ==="
-      let tsfm0_controllers := ast0002_get_controllers ast
-      println!  s!"controller entries: \n{tsfm0_controllers}"
+    -- if tests.elem 0 then
+    --   println!  s!"=== Transform 0 ==="
+    --   let tsfm0_controllers := ast0002_get_controllers ast
+    --   println!  s!"controller entries: \n{tsfm0_controllers}"
 
-    if tests.elem 1 then
-      println!  s!"=== Transform 1 ==="
-      let tsfm1_last_assn_stmt := ast0004 (ast0002_get_controllers ast)
-      println!  s!"controller inits: \n{tsfm1_last_assn_stmt}"
+    -- if tests.elem 1 then
+    --   println!  s!"=== Transform 1 ==="
+    --   let tsfm1_last_assn_stmt := ast0004 (ast0002_get_controllers ast)
+    --   println!  s!"controller inits: \n{tsfm1_last_assn_stmt}"
 
-    if tests.any (fun x => x == 2 || x == 3) then
-    let tsfm2_entries := ast0010_get_entries ast
-    if tests.elem 2 then
-      println!  s!"=== Transform 2 ==="
-      println!  s!"controller entries: \n{tsfm2_entries}"
-    if tests.elem 3 then
-        let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
-        println!  s!"=== Transform 3 ==="
-        println!  s!"controller entries: \n{tsfm3_last_assn_stmt}"
+    -- if tests.any (fun x => x == 2 || x == 3) then
+    -- let tsfm2_entries := ast0010_get_entries ast
+    -- if tests.elem 2 then
+    --   println!  s!"=== Transform 2 ==="
+    --   println!  s!"controller entries: \n{tsfm2_entries}"
+    -- if tests.elem 3 then
+    --     let tsfm3_last_assn_stmt := ast0013_map_entries tsfm2_entries
+    --     println!  s!"=== Transform 3 ==="
+    --     println!  s!"controller entries: \n{tsfm3_last_assn_stmt}"
 
     if tests.elem 4 then
       -- Controller descriptions in one struct
@@ -74,8 +75,7 @@ def transformTesting : AST → Array Nat → IO Unit
 
       -- let just_one_state : String := in_order_load[0]!
 
-      let cdfg_nodes : Except String (List CDFG.Node) :=
-        DSLtoCDFG ctrlers
+      -- let cdfg_nodes : Except String (List CDFG.Node) := DSLtoCDFG ctrlers
       -- AZ NOTE: Testing in-order-transform
       println! s!"------ begin in-order transformation ------\n"
 
@@ -97,7 +97,7 @@ def transformTesting : AST → Array Nat → IO Unit
       --   | .error msg => 
       --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
       --     []
-      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers with
+      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers load with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
@@ -195,8 +195,6 @@ def transformTesting : AST → Array Nat → IO Unit
 
       println! s!"===== Transform Testing Concluding ====="
 
-      return ()
-
 def runMainCmd : Cli.Parsed → IO UInt32
   | args => do
   let executablePath : System.FilePath ← IO.appPath
@@ -248,7 +246,7 @@ def mainCmd := `[Cli|
       m, "emit-murphi";                      "Emit output Murphi"
       M, "muprhi-testing";                   "Run Murphi-specific tests"
       D, "output-dir" : String;              "Output directory for emitting Murphi"
-      t, "transformer-testing" : Array Nat;  "Print witnesses when exploring"
+      t, "transform-testing" : Array Nat;  "Print witnesses when exploring"
     ARGS:
       input : String;      "Input AQL file"
     ]
