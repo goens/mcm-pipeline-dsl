@@ -1,6 +1,24 @@
 import PipelineDsl
 import Lean
+<<<<<<< HEAD
 import Cli
+=======
+-- import PipelineDsl.Preprocess
+import PipelineDsl.AnalysisHelpers
+import PipelineDsl.LitmusTests
+-- import PipelineDsl.InOrderTransformation
+-- import PipelineDsl.EmitMurphiNoROB
+-- import PipelineDsl.EmitMurphiNoIQNoROB
+import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
+-- import PipelineDsl.Translation
+-- import PipelineDsl.Transformation
+-- -- import PipelineDsl.MurphiTests
+import PipelineDsl.CDFG
+import PipelineDsl.DSLtoCDFG
+import PipelineDsl.CDFGAnalysis
+import PipelineDsl.CDFGInOrderTfsm
+import PipelineDsl.CDFGLoadReplay
+>>>>>>> fb49a0a (comment out old in order transformation import)
 
 open Lean Pipeline
 
