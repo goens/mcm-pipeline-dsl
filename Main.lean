@@ -82,7 +82,7 @@ def transformTesting : AST → Array Nat → IO Unit
       -- println! s!"------ do store -> store in-order transformation ------\n"
 
       -- CDFG Initial Implementation
-      -- let ctrlers := match CDFGInOrderTfsm ctrlers load load with
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers load load with
       --   | .ok ctrler_list => ctrler_list
       --   | .error msg => 
       --     dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
@@ -92,16 +92,16 @@ def transformTesting : AST → Array Nat → IO Unit
       --   | .error msg => 
       --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
       --     []
-      -- let ctrlers := match CDFGInOrderTfsm ctrlers store load with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
-      --     []
-      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers store with
+      let ctrlers := match CDFG.InOrderTfsm ctrlers store load with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
-          dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+          dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
           []
+      -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers store with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+      --     []
           
       println! s!"What ctrlers look like after TFSM:"
       println! s!"Ctrlers: {ctrlers}"
