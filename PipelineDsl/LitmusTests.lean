@@ -104,9 +104,7 @@ def core_insts_to_emit_murphi_alias
   (List.join (core_insts.insts.map (
     fun inst =>
       let queue_idx : String := toString inst.queue_idx
-      let op : String := match inst.inst.inst_type with
-      | .load => "ld"
-      | .store => "st"
+      let op : String := inst.inst.inst_type.toMurphiString
       let seq_num : String := toString inst.seq_num
       let dest_reg : String := toString inst.inst.dest_reg
       let addr : String := toString inst.inst.addr

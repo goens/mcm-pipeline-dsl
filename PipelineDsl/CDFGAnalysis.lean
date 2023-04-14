@@ -58,31 +58,31 @@ def Pipeline.Statement.await_when_ctrler_name_msg_name (stmt : Pipeline.Statemen
 def Pipeline.Statement.is_await_when_global_response (stmt : Pipeline.Statement) (inst_to_check_completion : InstType)
 : Except String Bool := do
   match stmt with
-  | .await (none) lst_stmts =>
+  | .await (none) lst_stmts => do
     let there_is_a_receive_complete : List Bool := (←
-      lst_stmts.mapM (
+      lst_stmts.mapM ( do
         match · with
-        | .when qual_name /- args -/ _ /- stmt -/ _ =>
+        | .when qual_name /- args -/ _ /- stmt -/ _ => do
           let src_ctrler : Except String CtrlerName := qual_name.ctrler_name
           let msg_name : Except String MsgName := qual_name.msg_name
-          let completion_msg_name : String := inst_to_check_completion.completion_msg_name
+          let completion_msg_name : String := ← inst_to_check_completion.completion_msg_name
           match src_ctrler with
-          | .ok src_ctrler' =>
+          | .ok src_ctrler' => do
             match msg_name with
-            | .ok msg_name' =>
-              if src_ctrler' == memory_interface && msg_name' == completion_msg_name then
+            | .ok msg_name' => do
+              if src_ctrler' == memory_interface && msg_name' == completion_msg_name then do
                 pure [true]
-              else
+              else do
                 pure []
             | .error msg => throw s!"Couldn't check when msg_name: ({msg})"
           | .error msg => throw s!"Couldn't check when src_ctrler_name: ({msg})"
-        | _ => pure []
+        | _ => do pure []
         )).join
-    if there_is_a_receive_complete.length > 0 then
+    if there_is_a_receive_complete.length > 0 then do
       pure true
-    else
+    else do
       pure false
-  | _ => pure false
+  | _ => do pure false
   
 def CDFG.Node.has_transition_or_complete_with_msg_name (node : Node) (msg_name : MsgName) : Except String Bool := do
   let transition_or_complete_trans := node.transitions.filter (·.trans_type != .Reset)

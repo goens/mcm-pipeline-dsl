@@ -173,7 +173,7 @@ def Message.is_dest_equals : Message → CtrlerName → Except String Bool
 def Message.is_global_perform_of_type : Message → InstType → Except String Bool
 | ctrler_msg, inst_type => do
   pure (
-    ((← ctrler_msg.name) == inst_type.perform_msg_name) &&
+    ((← ctrler_msg.name) == ( ← inst_type.perform_msg_name )) &&
     ((← ctrler_msg.dest_ctrler) == memory_interface)
     )
 
