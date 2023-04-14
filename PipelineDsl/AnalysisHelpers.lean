@@ -2,12 +2,15 @@ import PipelineDsl.AST
 import Murphi
 import PipelineDsl.LoadReplayHelpers
 
+-- AZ NOTE: Consider placing into a namespace for instruction related things, definitions, etc.
+
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
 -- Inst in Litmus Test
 inductive InstType
 | load : InstType
 | store : InstType
+| mfence : InstType
 deriving Inhabited, BEq
 -- inductive InstType
 -- | load : InstType
@@ -26,25 +29,30 @@ def store_perform : MsgName := "send_store_request"
 -- NOTE: the "name" of the load value from the load response api
 def load_value : Identifier := "load_value"
 
-def InstType.completion_msg_name : InstType → String
-| .load => load_completed
-| .store => store_completed
+def InstType.completion_msg_name : InstType → Except String MsgName
+| .load => do pure load_completed
+| .store => do pure store_completed
+| .mfence => do throw "Error: mFence has no awaited completion message"
 
-def InstType.perform_msg_name : InstType → String
-| .load => load_perform
-| .store => store_perform
+def InstType.perform_msg_name : InstType → Except String MsgName
+| .load => do pure load_perform
+| .store => do pure store_perform
+| .mfence => do throw "Error: mFence has no perform message"
 
 def load : InstType := InstType.load
 def store : InstType := InstType.store
+def mfence : InstType := InstType.mfence
 
 def InstType.toString : InstType → String
 | .load => "Load"
 | .store => "Store"  
+| .mfence => "mfence"
 instance : ToString InstType where toString := InstType.toString
 
 def InstType.toMurphiString : InstType → String
 | .load => "ld"
 | .store => "st"  
+| .mfence => "mfence"
 
 -- #eval InstType.toMurphiString (InstType.load)
 -- #eval (InstType.load).toMurphiString
