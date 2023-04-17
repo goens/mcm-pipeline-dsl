@@ -581,6 +581,19 @@ def CDFG.Graph.earliest_node_by_msg_dist (graph : Graph) (nodes : List Node)
 --       let dest_nodes_reach_complete ← dest_nodes.mapM (·.is_node_reaches_complete graph)
 --       pure $ dest_nodes_reach_complete.any (· == true )
 
+def CDFG.Transition.has_commit_labelled_stmt (transition : Transition) : Bool :=
+  transition.commit
+  -- transition.stmts.any (·.is_commit_labelled)
+
+def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String Node := do
+  let global_perform_nodes : List Node :=
+    (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_stmt)))
+
+  match global_perform_nodes with
+  | [] => throw "Error: No commit state found"
+  | [node] => pure node
+  | _ => throw "Error: More than one commit state found"
+
 def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : InstType)
 : Except String Node := do
   let receive_states_and_transitions : List Node ←
@@ -596,6 +609,15 @@ def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : Ins
     | [] =>
       -- If none found, error!
       throw "Error: No receive state found"
+
+def CDFG.Graph.global_complete_node_of_inst_type (graph : Graph) (inst_type : InstType)
+: Except String Node := do
+  match inst_type with
+  | .load
+  | .store => do
+    graph.global_receive_node_of_inst_type inst_type
+  | .mfence => do
+    graph.commit_transition_state_ctrler
 
 def common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := nodes1.filter (nodes2.contains ·)
 
@@ -1532,7 +1554,7 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
 : Except String (Sum CtrlerStates CtrlerStateExpr) := do
   dbg_trace s!"<< Starting find_ctrler_or_state_to_query_for_stall"
   let receive_state_to_search_from : Node ←
-    graph.global_receive_node_of_inst_type inst_to_check_completion
+    graph.global_complete_node_of_inst_type inst_to_check_completion
 
   /- Use res, find all post-'receive' states -/
   let post_receive_states_with_dups : (List Node) :=
@@ -1648,18 +1670,44 @@ def find_ctrler_or_state_to_query_for_stall (graph : Graph) (inst_to_check_compl
 
 -- #eval [[2],[1]].filter (·.any (· > 1))
 
-def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType)
-: Except String Node := do
-  let global_perform_nodes : List Node :=
-    (← graph.nodes.filterM (·.transitions.anyM (·.messages.anyM (·.is_global_perform_of_type inst_type))))
-  if global_perform_nodes.length == 1 then
-    pure global_perform_nodes[0]!
-  else if global_perform_nodes.length > 1 then
-    -- Label by msg distance, take shortest one
+def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node := do
+  -- Find commit state & ctrler
+  let commit_state! : Except String Node := graph.commit_transition_state_ctrler
+
+  commit_state!.throw_exception_nesting_msg "Error while finding where the Commit State is"
+
+-- -- Trying something
+-- theorem global_perform_of_memory_access (inst_type : InstType) : inst_type ∈ [.load, .store] := by
+--   induction inst_type with
+--   | load => 
+--   | store => exact inst_type ∈ [.load, .store],
+--   | mfence => 
+
+def CDFG.Graph.global_perform_node_of_memory_access (graph : Graph) (inst_type : InstType) : Except String Node := do
+  let global_perform_nodes! : Except String (List Node) := do
+    graph.nodes.filterM (do ·.transitions.anyM (do ·.messages.anyM (do ·.is_global_perform_of_type inst_type)))
+  let global_perform_nodes := ← global_perform_nodes!
+    |>.throw_exception_nesting_msg "Error finding the Global Perform Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
+  match global_perform_nodes with
+  | [global_perform_node] => do pure global_perform_node
+  | _::_ => do 
     graph.earliest_node_by_msg_dist global_perform_nodes
-  else
-    dbg_trace s!"Graph Nodes: ({graph.nodes.map (·.current_state)})"
-    throw "Error: No global perform node found"
+  | [] => do
+    dbg_trace s!"Graph Nodes: ({graph.node_names})"
+    throw "Error: No global perform node found in graph: ({graph.node_names})"
+
+def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType) : Except String ( Node ) := do
+  match inst_type with
+  | .load
+  | .store => do
+    graph.global_perform_node_of_memory_access inst_type
+  | .mfence => do
+    -- Replace, filter for node with commit label
+    -- Use this function
+    -- CDFG.Graph.commit_transition_state_ctrler
+    let commit_node : Node := ← graph.commit_transition_state_ctrler
+      |>.throw_exception_nesting_msg "Error finding the Commit State Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
+    pure commit_node
 
 -- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
 --   match cond with
@@ -1885,7 +1933,7 @@ def CDFG.Graph.old_load_value_stmt_state_ctrler (graph : CDFG.Graph) : Except St
 
 def CDFG.Graph.await_load_receive_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node /- CtrlerName do i want an explicit ctrler_name? -/ := do
   -- Find load receive global response state & ctrler
-  let receive_state_to_search_from! : Except String Node := graph.global_receive_node_of_inst_type load
+  let receive_state_to_search_from! : Except String Node := graph.global_complete_node_of_inst_type load
 
   receive_state_to_search_from!.throw_exception_nesting_msg "Error while finding where the Await Load Receive State is"
 
@@ -1922,26 +1970,6 @@ def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except St
 
 -- def CDFG.Transition.has_commit_labelled_effect (transition : Transition) : Bool :=
 --   transition.effects.any (·.is_commit_labelled)
-
-def CDFG.Transition.has_commit_labelled_stmt (transition : Transition) : Bool :=
-  transition.commit
-  -- transition.stmts.any (·.is_commit_labelled)
-
-def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String Node := do
-  let global_perform_nodes : List Node :=
-    (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_stmt)))
-
-  match global_perform_nodes with
-  | [] => throw "Error: No commit state found"
-  | [node] => pure node
-  | _ => throw "Error: More than one commit state found"
-  
-
-def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Node := do
-  -- Find commit state & ctrler
-  let commit_state! : Except String Node := graph.commit_transition_state_ctrler
-
-  commit_state!.throw_exception_nesting_msg "Error while finding where the Commit State is"
 
 def CDFG.Node.is_node_transition_or_complete_pred_on_msg_from_state : Node → Node → Except String Bool
 | this_node, predicating_node => do
@@ -2082,9 +2110,6 @@ def CDFG.Condition.is_pred_inst_not_of_type (cond : Condition) (inst_type : Inst
 def CDFG.Transition.is_trans_pred_by_different_inst_type_than (transition : Transition) (inst_type : InstType) : Bool :=
   let preds := transition.predicate
   preds.any (·.is_pred_inst_not_of_type inst_type)
-
-def CDFG.Node.fully_qualified_name (node : Node) : String :=
-  node.ctrler_name ++ "_" ++ node.current_state
 
 def CDFG.Transition.fully_qualified_dest_name (transition : Transition) (ctrler_name : CtrlerName) : String :=
   ctrler_name ++ "_" ++ transition.dest_state
@@ -2670,6 +2695,14 @@ def CDFG.Graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler
 def CDFG.Node.qualified_state_names (node : Node) : StateName := node.ctrler_name ++ "::" ++ node.current_state
 def List.qualified_state_names (nodes : List Node) : List StateName := nodes.map (·.qualified_state_names)
 
+-- def CDFG.Graph.completion_state_of_inst_type (graph : Graph) (inst_type : InstType)
+-- : Except String Node := do
+--   match inst_type with
+--   | .load
+--   | .store
+--   | .mfence => do
+--     graph.global_complete_node_of_inst_type inst_type
+
 def CDFG.Graph.find_pre_receive_stall_states
 (graph : Graph) (first_'to_stall_on'_inst_type : InstType)
 : Except String (List Node) := do
@@ -2680,7 +2713,7 @@ def CDFG.Graph.find_pre_receive_stall_states
   dbg_trace s!"inst_type: ({first_'to_stall_on'_inst_type}) inst_graph: ({inst_graph.qualified_state_names})"
   dbg_trace s!"end INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
 
-  let receive_response_node : Node ← graph.global_receive_node_of_inst_type first_'to_stall_on'_inst_type
+  let receive_response_node : Node ← graph.global_complete_node_of_inst_type first_'to_stall_on'_inst_type |>.throw_exception_nesting_msg s!"Error finding 'complete node' of inst_type: ({first_'to_stall_on'_inst_type}), in graph: ({graph.node_names})"
   let post_receive_inst_graph_with_receive_node := ← graph.reachable_nodes_from_node_up_to_option_node receive_response_node none first_'to_stall_on'_inst_type []
   let post_receive_inst_graph := post_receive_inst_graph_with_receive_node.filter (·.current_state != receive_response_node.current_state)
   dbg_trace s!"inst_type: ({first_'to_stall_on'_inst_type}) post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"

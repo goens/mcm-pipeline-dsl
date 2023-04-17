@@ -172,10 +172,9 @@ def Message.is_dest_equals : Message → CtrlerName → Except String Bool
 
 def Message.is_global_perform_of_type : Message → InstType → Except String Bool
 | ctrler_msg, inst_type => do
-  pure (
+  pure <|
     ((← ctrler_msg.name) == ( ← inst_type.perform_msg_name )) &&
     ((← ctrler_msg.dest_ctrler) == memory_interface)
-    )
 
 def Message.term : Message → Pipeline.Term
 | .mk term => term
@@ -358,6 +357,9 @@ def Node.is_from_ctrler (node : Node) (ctrler_name : CtrlerName) : Bool := node.
 def Node.not_reset_transitions (node : Node) : Transitions :=
   node.transitions.filter (·.trans_type != .Reset)
 
+def Node.fully_qualified_name (node : Node) : String :=
+  node.ctrler_name ++ "_" ++ node.current_state
+
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
   be a list and assume there has to be exactly one node with the name of the destination. We should
@@ -388,7 +390,7 @@ def Graph.node_from_name! : Graph → StateName → Except String Node
 
 def Graph.node_names : Graph → List StateName
 | graph =>
-  graph.nodes.map (·.current_state)
+  graph.nodes.map (·.fully_qualified_name)
 
 -- Work in progress. wanted to use with
 -- Graph.unique_msg'd_states_by_node for a simple functor
