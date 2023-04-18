@@ -92,11 +92,36 @@ def transformTesting : AST → Array Nat → IO Unit
       --   | .error msg => 
       --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
       --     []
-      let ctrlers := match CDFG.InOrderTfsm ctrlers store load with
+
+      -- ===== Test Fence =====
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers load mfence with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+      --     []
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers mfence load with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+      --     []
+
+      let ctrlers := match CDFG.InOrderTfsm ctrlers load mfence with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
-          dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
+          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
           []
+      let ctrlers := match CDFG.InOrderTfsm ctrlers mfence load with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+          []
+      -- ===== Test Fence =====
+
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers store load with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
+      --     []
       -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers store with
       --   | .ok ctrler_list => ctrler_list
       --   | .error msg => 
