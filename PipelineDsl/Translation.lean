@@ -6668,7 +6668,8 @@ lst_stmts_decls
       let entries := "entries"
 
       let tail_entry :=
-        if stmt_trans_info.specific_murphi_dest_expr.isSome ||
+        if stmt_trans_info.curr_ctrler_designator_idx.isSome ||
+          stmt_trans_info.specific_murphi_dest_expr.isSome ||
           stmt_trans_info.use_specific_dest_in_transition then
         dbg_trace "CUSTOM ENTRY"
         tail_or_entry.custom_entry
@@ -6967,7 +6968,9 @@ lst_stmts_decls
       let entries := "entries"
 
       let tail_entry :=
-        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        if stmt_trans_info.curr_ctrler_designator_idx.isSome ||
+          stmt_trans_info.specific_murphi_dest_expr.isSome ||
+          stmt_trans_info.use_specific_dest_in_transition then
         dbg_trace "CUSTOM ENTRY"
         tail_or_entry.custom_entry
         else
@@ -7008,7 +7011,11 @@ lst_stmts_decls
         dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
         dbg_trace stmt_trans_info.specific_murphi_dest_expr
 
-        if stmt_trans_info.use_specific_dest_in_transition then
+        if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.curr_ctrler_designator_idx.isSome then
+          stmt_trans_info.curr_ctrler_designator_idx.get!
+        else if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.specific_murphi_dest_expr.isSome then
           stmt_trans_info.specific_murphi_dest_expr.get!
         else
           Murϕ.Expr.designator (
@@ -7102,7 +7109,9 @@ lst_stmts_decls
       let entries := "entries"
 
       let tail_entry :=
-        if stmt_trans_info.specific_murphi_dest_expr.isSome then
+        if stmt_trans_info.curr_ctrler_designator_idx.isSome ||
+          stmt_trans_info.specific_murphi_dest_expr.isSome ||
+          stmt_trans_info.use_specific_dest_in_transition then
         dbg_trace "CUSTOM ENTRY"
         tail_or_entry.custom_entry
         else
@@ -7143,7 +7152,11 @@ lst_stmts_decls
         dbg_trace "SPECIFIC MURPHI EXPR, for transition state!!"
         dbg_trace stmt_trans_info.specific_murphi_dest_expr
 
-        if stmt_trans_info.use_specific_dest_in_transition then
+        if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.curr_ctrler_designator_idx.isSome then
+          stmt_trans_info.curr_ctrler_designator_idx.get!
+        else if stmt_trans_info.use_specific_dest_in_transition &&
+          stmt_trans_info.specific_murphi_dest_expr.isSome then
           stmt_trans_info.specific_murphi_dest_expr.get!
         else
           Murϕ.Expr.designator (
