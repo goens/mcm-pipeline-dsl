@@ -482,7 +482,7 @@ def Dekker : LitmusTest := {
 
 -- =========================== Fence Litmus Tests ===============================
 
--- typical ld -> ld with fence
+-- typical ld -> ld but with fence
 def load_fence : LitmusTest := {
   test_name := "load-fence"
   insts_in_cores := [
@@ -503,6 +503,30 @@ def load_fence : LitmusTest := {
     negate_or_not := TestResult.forbidden}
   orderings := [/- (ternary_ordering load mfence load Addresses.any),-/ (binary_ordering load mfence Addresses.any), (binary_ordering mfence load Addresses.any),
     (binary_ordering store store Addresses.any)]
+}
+
+def load_fence_store_fence : LitmusTest := {
+  test_name := "load-fence"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 3, queue_idx := 2}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+    (binary_ordering load mfence Addresses.any), (binary_ordering mfence load Addresses.any),
+    (binary_ordering store mfence Addresses.any), (binary_ordering mfence store Addresses.any)]
 }
 
 def dekker_fence : LitmusTest := {
