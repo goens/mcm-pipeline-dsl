@@ -2781,10 +2781,10 @@ def stall_state_querying_states
     (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
 
 def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
-(ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
+(ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType) (new_stall_state_name : StateName)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
-  let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
+  -- let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
 
   /- 5. Generate the new stall state -/
   let stall_ctrler ← ctrlers.ctrler_matching_name stall_ctrler

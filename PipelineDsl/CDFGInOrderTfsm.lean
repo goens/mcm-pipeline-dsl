@@ -5,6 +5,8 @@ import PipelineDsl.DSLtoCDFG
 
 open CDFG
 
+-- #eval ( String.intercalate "-" ["1","2"] )
+
 -- start trying to create a parameterized version, if such a thing exists..
 -- first thing to try for LoadReplay St -> Ld: make finding the stall point a parameter
 -- not very paramterized at the moment...
@@ -35,7 +37,8 @@ def Ctrlers.InOrderTransformParameterized
   let nodes_to_query ← graph.find_pre_receive_stall_states inst_to_stall_on_type
   let query_ctrler_state : List CtrlerStates := nodes_to_query.to_ctrler_states
 
-  let new_stall_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
+  -- let new_stall_state_name := stall_point.ctrler ++ inst_to_stall_on_type.toString ++ "_to_" ++ inst_to_stall_type.toString ++ "_stall_" ++ stall_point.state
+  let new_stall_state_name := "_".intercalate [stall_point.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", stall_point.state]
   let is_stall_point_in_query := query_ctrler_state.is_ctrler_state_member stall_point.ctrler stall_point.state
   dbg_trace s!"<< Is stall point in query: ({is_stall_point_in_query})"
   let query_ctrler_states' : List CtrlerStates := ←
@@ -45,7 +48,7 @@ def Ctrlers.InOrderTransformParameterized
   
 -- def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
 -- (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
-  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' inst_to_stall_on_type inst_to_stall_type
+  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' inst_to_stall_on_type inst_to_stall_type new_stall_state_name
     |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the stall state"
   -- === New code to find stall state ===
 
