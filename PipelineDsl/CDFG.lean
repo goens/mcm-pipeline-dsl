@@ -386,7 +386,8 @@ def Graph.node_from_name! : Graph → StateName → Except String Node
     node.current_state == state_name)
   match current_node! with
   | [node] => pure node
-  | _ => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph.nodes.map (·.current_state)})"
+  | [] => throw s!"Error: (Graph get node) No node with name: ({state_name}) in graph: ({graph.nodes.map (·.current_state)})"
+  | _ :: _ => throw s!"Error: (Graph get node) Multiple nodes with name: ({state_name}) in graph: ({graph.nodes.map (·.current_state)})"
 
 def Graph.node_names : Graph → List StateName
 | graph =>
