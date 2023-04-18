@@ -29,11 +29,33 @@ inductive Addresses where
 | any : Addresses -- ex. ld[x] -> ld[y]
 deriving Inhabited, BEq
 
-structure MCMOrdering where
+structure BinaryOrdering where
 first_inst : InstType
 second_inst : InstType
-address : Addresses
 deriving Inhabited, BEq
+
+-- structure TernaryOrdering where
+-- first_inst : InstType
+-- second_inst : InstType
+-- third_inst : InstType
+-- deriving Inhabited, BEq
+
+inductive MCMOrdering where
+| binary_ordering : BinaryOrdering → Addresses → MCMOrdering
+-- | ternary_ordering : TernaryOrdering → Addresses → MCMOrdering 
+
+def binary_ordering (first_inst : InstType) (second_inst : InstType) (address : Addresses) : MCMOrdering :=
+  MCMOrdering.binary_ordering ⟨first_inst, second_inst⟩ address
+
+-- def ternary_ordering (first_inst : InstType) (second_inst : InstType) (third_inst : InstType) (address : Addresses) : MCMOrdering :=
+--   MCMOrdering.ternary_ordering ⟨first_inst, second_inst, third_inst⟩ address
+
+-- structure MCMOrdering where
+-- first_inst : InstType
+-- second_inst : InstType
+-- address : Addresses
+-- deriving Inhabited, BEq
+
 -- Litmus Test Info
 -- There's probably also "(non) multi-copy atomic"
 -- worry about it later when we reach it
@@ -207,7 +229,7 @@ def iwp23b1 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.required}
-  orderings := [⟨store, load, Addresses.same⟩]
+  orderings := [binary_ordering store load Addresses.same]
 }
 
 def amd1 : LitmusTest := {
@@ -228,7 +250,7 @@ def amd1 : LitmusTest := {
     -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [⟨load, load, Addresses.any⟩, ⟨store, store, Addresses.any⟩]
+  orderings := [(binary_ordering load load Addresses.any), (binary_ordering store store Addresses.any)]
 }
 
 -- ====== 
@@ -250,7 +272,7 @@ def amd2 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [⟨load, store, Addresses.any⟩]
+  orderings := [binary_ordering load store Addresses.any]
 }
 
 -- Do not use until I can generate tests which can check for an existing trace
@@ -284,7 +306,7 @@ def amd3 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.permitted},
-  orderings := [⟨store, store, Addresses.any⟩, ⟨store, load, Addresses.any⟩]
+  orderings := [(binary_ordering store store Addresses.any), (binary_ordering store load Addresses.any)]
 }
 
 -- Definition n2
@@ -333,7 +355,7 @@ def n2 : LitmusTest := {
     {core_idx := 3, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.permitted},
-  orderings := [⟨load, load, Addresses.same⟩, ⟨load, load, Addresses.any⟩, ⟨store, store, Addresses.any⟩]
+  orderings := [(binary_ordering load load Addresses.same), (binary_ordering load load Addresses.any), (binary_ordering store store Addresses.any)]
 }
 
 -- Definition n4
@@ -371,7 +393,7 @@ def n4 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 2}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [⟨store, store, Addresses.same⟩, ⟨load, load, Addresses.same⟩]
+  orderings := [(binary_ordering store store Addresses.same), (binary_ordering load load Addresses.same)]
 }
 
 -- Definition n5
@@ -402,7 +424,7 @@ def n5 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [⟨store, load, Addresses.same⟩]
+  orderings := [(binary_ordering store load Addresses.same)]
 }
 
 
@@ -455,13 +477,66 @@ def Dekker : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [⟨store, load, Addresses.any⟩]
+  orderings := [(binary_ordering store load Addresses.any)]
 }
+
+-- =========================== Fence Litmus Tests ===============================
+
+-- typical ld -> ld with fence
+def load_fence : LitmusTest := {
+  test_name := "load-fence"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 2, queue_idx := 1}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/ (binary_ordering load mfence Addresses.any), (binary_ordering mfence load Addresses.any),
+    (binary_ordering store store Addresses.any)]
+}
+
+def dekker_fence : LitmusTest := {
+  test_name := "dekker-fence"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (binary_ordering store mfence Addresses.any), (binary_ordering mfence load Addresses.any)
+    ]
+}
+
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
 amd1,
 -- n2, -- permitted test, not yet implemented "permitted"
 n4,
 n5,
-Dekker
+Dekker,
+load_fence,
+dekker_fence
 ]
