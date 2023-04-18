@@ -6031,7 +6031,7 @@ partial def api_term_func_to_murphi_func
  
     let decls : List Murϕ.Decl := [
       (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
-      (Murϕ.Decl.var ["found_element"] (Murϕ.TypeExpr.previouslyDefined "val_t")),
+      (Murϕ.Decl.var ["found_element"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
       (Murϕ.Decl.var ["found_idx"] (Murϕ.TypeExpr.previouslyDefined dest_ctrler_idx_t))
     ]
 
