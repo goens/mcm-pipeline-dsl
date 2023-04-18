@@ -87,34 +87,35 @@ def transformTesting : AST → Array Nat → IO Unit
       --   | .error msg => 
       --     dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
       --     []
-      -- let ctrlers := match CDFGInOrderTfsm ctrlers store store with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      --     []
 
       -- ===== Test Fence =====
-      -- let ctrlers := match CDFG.InOrderTfsm ctrlers load mfence with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      --     []
-      -- let ctrlers := match CDFG.InOrderTfsm ctrlers mfence load with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      --     []
-
       let ctrlers := match CDFG.InOrderTfsm ctrlers load mfence with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
-          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+          dbg_trace s!"Error applying ld->mfence in CDFG InOrderTfsm: ({msg})"
           []
       let ctrlers := match CDFG.InOrderTfsm ctrlers mfence load with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
+          dbg_trace s!"Error applying mfence->ld in CDFG InOrderTfsm: ({msg})"
+          []
+
+      let ctrlers := match CDFG.InOrderTfsm ctrlers store store with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
           dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
           []
+
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers store mfence with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
+      --     []
+      -- let ctrlers := match CDFG.InOrderTfsm ctrlers mfence store with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying mfence->st in CDFG InOrderTfsm: ({msg})"
+      --     []
       -- ===== Test Fence =====
 
       -- let ctrlers := match CDFG.InOrderTfsm ctrlers store load with
