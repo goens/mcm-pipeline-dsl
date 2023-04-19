@@ -4579,7 +4579,11 @@ lst_stmts_decls
               is_await := stmt_trans_info.is_await,
               entry_keyword_dest := Option.some dest_ctrler_name,
               trans_obj := stmt_trans_info.trans_obj,
-              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              specific_murphi_dest_expr :=
+                if stmt_trans_info.curr_ctrler_designator_idx.isSome then
+                  stmt_trans_info.curr_ctrler_designator_idx
+                else
+                  stmt_trans_info.specific_murphi_dest_expr,
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
               use_specific_dest_in_transition := true
