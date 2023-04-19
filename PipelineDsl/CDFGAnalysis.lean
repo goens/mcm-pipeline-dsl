@@ -154,7 +154,9 @@ def Pipeline.HandleBlock.ctrler_msg_names : Pipeline.HandleBlock → Except Stri
 def CDFG.Condition.is_pred_on_msg_from_ctrler : Condition → Message → CtrlerName  → Except String Bool
 | cond, msg, ctrler_name => do
   -- Checkpoint: something to look at later
-  dbg_trace s!"cond is_pred_on_msg_from_ctrler: src_ctrler: ({ctrler_name}) && msg: ({← msg.name})"
+
+  -- dbg_trace s!"cond is_pred_on_msg_from_ctrler: src_ctrler: ({ctrler_name}) && msg: ({← msg.name})"
+
   match cond with
   | .AwaitCondition await_stmt =>
     let (ctrler_name', msg_name) := ← await_stmt.await_when_ctrler_name_msg_name
@@ -613,11 +615,15 @@ def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : Ins
 def CDFG.Graph.global_complete_node_of_inst_type (graph : Graph) (inst_type : InstType)
 : Except String Node := do
   match inst_type with
-  | .load
-  | .store => do
-    graph.global_receive_node_of_inst_type inst_type
-  | .mfence => do
-    graph.commit_transition_state_ctrler
+  | .memory_access access => do
+    match access with
+    | .load
+    | .store => do
+      graph.global_receive_node_of_inst_type inst_type
+  | .memory_ordering ordering => do
+    match ordering with
+    | .mfence => do
+      graph.commit_transition_state_ctrler
 
 def common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := nodes1.filter (nodes2.contains ·)
 
@@ -1698,16 +1704,20 @@ def CDFG.Graph.global_perform_node_of_memory_access (graph : Graph) (inst_type :
 
 def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType) : Except String ( Node ) := do
   match inst_type with
-  | .load
-  | .store => do
-    graph.global_perform_node_of_memory_access inst_type
-  | .mfence => do
-    -- Replace, filter for node with commit label
-    -- Use this function
-    -- CDFG.Graph.commit_transition_state_ctrler
-    let commit_node : Node := ← graph.commit_transition_state_ctrler
-      |>.throw_exception_nesting_msg "Error finding the Commit State Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
-    pure commit_node
+  | .memory_access access => do
+    match access with
+    | .load
+    | .store => do
+      graph.global_perform_node_of_memory_access inst_type
+  | .memory_ordering ordering => do
+    match ordering with
+    | .mfence => do
+      -- Replace, filter for node with commit label
+      -- Use this function
+      -- CDFG.Graph.commit_transition_state_ctrler
+      let commit_node : Node := ← graph.commit_transition_state_ctrler
+        |>.throw_exception_nesting_msg "Error finding the Commit State Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
+      pure commit_node
 
 -- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
 --   match cond with
@@ -1761,7 +1771,7 @@ partial def CDFG.Graph.PO_inserted_ctrler_node_from_node (graph : Graph) (node :
     -- recursive search
     graph.PO_inserted_ctrler_node_from_node msging_node_of_input_node ctrlers
 
-def find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers : List controller_info)
+def CDFG.Graph.find_stall_point_heuristic (graph : Graph) (inst_type : InstType) (ctrlers : List controller_info)
 : Except String CtrlerState := do
   -- First, find the first state, which is the state that sends the global perform msg
   dbg_trace s! ">> Get global perform node"

@@ -540,7 +540,9 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
       let states_added_to_ctrler_in_ctrlers := ← 
         ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
       let ctrler_with_states_trans_to_given_state_updated :=
-        states_added_to_ctrler_in_ctrlers.update_ctrler_states_trans_to_specific_state global_perform_load_node.ctrler_name issue_ctrler_node_pred_on_commit?.get!.current_state (← await_replay_start_state.state_name)
+        states_added_to_ctrler_in_ctrlers.update_ctrler_states_trans_to_specific_state
+          global_perform_load_node.ctrler_name issue_ctrler_node_pred_on_commit?.get!.current_state (← await_replay_start_state.state_name)
+          (some load) -- should be for transitions taken by a load
       ctrler_with_states_trans_to_given_state_updated
     else
       match issue_ctrler_type with

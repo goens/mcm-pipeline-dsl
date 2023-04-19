@@ -1,58 +1,14 @@
 import PipelineDsl.AST
 import Murphi
 import PipelineDsl.LoadReplayHelpers
+import PipelineDsl.InstructionHelpers
 
 -- AZ NOTE: Consider placing into a namespace for instruction related things, definitions, etc.
 
 -- Just defining as string for now
 -- might be nicer to define them as structs later with meta-data
 -- Inst in Litmus Test
-inductive InstType
-| load : InstType
-| store : InstType
-| mfence : InstType
-deriving Inhabited, BEq
--- inductive InstType
--- | load : InstType
--- | store : InstType
--- deriving Inhabited, BEq
 
-abbrev StateName := String
-abbrev MsgName := String
-abbrev CtrlerName := String
-def memory_interface : CtrlerName := "memory_interface"
-def load_completed : MsgName := "load_completed"
-def load_perform : MsgName := "send_load_request"
-def store_completed : MsgName := "store_completed"
-def store_perform : MsgName := "send_store_request"
-
--- NOTE: the "name" of the load value from the load response api
-def load_value : Identifier := "load_value"
-
-def InstType.completion_msg_name : InstType → Except String MsgName
-| .load => do pure load_completed
-| .store => do pure store_completed
-| .mfence => do throw "Error: mFence has no awaited completion message"
-
-def InstType.perform_msg_name : InstType → Except String MsgName
-| .load => do pure load_perform
-| .store => do pure store_perform
-| .mfence => do throw "Error: mFence has no perform message"
-
-def load : InstType := InstType.load
-def store : InstType := InstType.store
-def mfence : InstType := InstType.mfence
-
-def InstType.toString : InstType → String
-| .load => "Load"
-| .store => "Store"  
-| .mfence => "mfence"
-instance : ToString InstType where toString := InstType.toString
-
-def InstType.toMurphiString : InstType → String
-| .load => "ld"
-| .store => "st"  
-| .mfence => "mfence"
 
 -- #eval InstType.toMurphiString (InstType.load)
 -- #eval (InstType.load).toMurphiString
@@ -1197,12 +1153,40 @@ partial def Pipeline.Expr.is_contains_instruction_not_eq_type : Pipeline.Expr �
   match expr with
   | .equal term1 term2 =>
     match term1, term2 with
-    | .qualified_var qual_var, .var ident =>
-      (qual_var == [instruction, op].to_qual_name) && (ident != inst_type.toMurphiString)
+    | .qualified_var qual_var, .var ident
     | .var ident, .qualified_var qual_var =>
       (qual_var == [instruction, op].to_qual_name) && (ident != inst_type.toMurphiString)
     | _, _ => false
   | .binand term1 term2 => term1.is_instruction_not_eq_type inst_type || term2.is_instruction_not_eq_type inst_type
+  -- | .binor term1 term2 => term1.is_instruction_not_eq_type || term2.is_instruction_not_eq_type
+  -- NOTE: Could also check negation
+  | .not_equal term1 term2 =>
+    match term1, term2 with
+    | .qualified_var qual_var, .var ident
+    | .var ident, .qualified_var qual_var =>
+      (qual_var == [instruction, op].to_qual_name) && (ident == inst_type.toMurphiString)
+    | _, _ => false
+  | _ => false
+end
+
+mutual
+partial def Pipeline.Term.is_instruction_eq_type : Pipeline.Term → InstType → Bool
+| term, inst_type =>
+  match term with
+  | .expr expr' =>
+    expr'.is_contains_instruction_eq_type inst_type
+  | _ => false
+
+partial def Pipeline.Expr.is_contains_instruction_eq_type : Pipeline.Expr → InstType → Bool
+| expr, inst_type =>
+  match expr with
+  | .equal term1 term2 =>
+    match term1, term2 with
+    | .qualified_var qual_var, .var ident
+    | .var ident, .qualified_var qual_var =>
+      (qual_var == [instruction, op].to_qual_name) && (ident == inst_type.toMurphiString)
+    | _, _ => false
+  | .binand term1 term2 => term1.is_instruction_eq_type inst_type || term2.is_instruction_eq_type inst_type
   -- | .binor term1 term2 => term1.is_instruction_not_eq_type || term2.is_instruction_not_eq_type
   | _ => false
 end
@@ -1776,8 +1760,29 @@ def get_states_directly_leading_to_given_state
 
   state_names
 
+mutual
+
+partial def update_transitions_if_else
+(old_name : StateName) (new_name : StateName) (expr : Pipeline.Expr)
+(stmt1 stmt2 : Pipeline.Statement) (inst_type? : Option InstType) : Pipeline.Statement :=
+  Statement.conditional_stmt (
+  Conditional.if_else_statement expr (
+    recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) inst_type?
+  ) (
+    recursively_find_stmt_and_update_transitions (old_name, new_name, stmt2) inst_type?
+  ))
+
+partial def update_transitions_if
+(old_name : StateName) (new_name : StateName) (expr : Pipeline.Expr)
+(stmt1 : Pipeline.Statement) (inst_type? : Option InstType) : Pipeline.Statement :=
+  Statement.conditional_stmt (
+  Conditional.if_statement expr (
+    recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) inst_type?
+  ))
+
 partial def recursively_find_stmt_and_update_transitions
 ( old_name_new_name_and_stmt : String × (String × Pipeline.Statement) )
+(inst_type? : Option InstType)
 : Pipeline.Statement
 :=
   let old_name : String := old_name_new_name_and_stmt.1
@@ -1810,12 +1815,12 @@ partial def recursively_find_stmt_and_update_transitions
       list_statment.map (λ stmt' => (old_name, new_name, stmt'))
     
     let blk_stmt : Pipeline.Statement :=
-    Statement.block ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
+    Statement.block ( stmts_with_name_info.map ( recursively_find_stmt_and_update_transitions · inst_type? ) )
     
     blk_stmt
   | Statement.stray_expr _ => stmt
   | Statement.when q_name list_ident stmt' =>
-    let updated_stmt : Pipeline.Statement := recursively_find_stmt_and_update_transitions (old_name, new_name, stmt')
+    let updated_stmt : Pipeline.Statement := recursively_find_stmt_and_update_transitions (old_name, new_name, stmt') inst_type?
     let new_when : Pipeline.Statement := Statement.when q_name list_ident updated_stmt
     new_when
   | Statement.await term' list_stmt =>
@@ -1823,7 +1828,7 @@ partial def recursively_find_stmt_and_update_transitions
       list_stmt.map (λ stmt' => (old_name, new_name, stmt'))
     
     let await_stmt : Pipeline.Statement :=
-    Statement.await term' ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
+    Statement.await term' ( stmts_with_name_info.map ( recursively_find_stmt_and_update_transitions · inst_type? ) )
     
     await_stmt
   -- | Statement.await none list_stmt =>
@@ -1835,41 +1840,67 @@ partial def recursively_find_stmt_and_update_transitions
     
   --   await_stmt
   | Statement.listen_handle stmt' list_handles =>
-    Statement.listen_handle (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt'))
+    Statement.listen_handle (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt') inst_type?)
       ( list_handles.map
         (
           λ handl =>
           match handl with
           | HandleBlock.mk qual_name list_ident stmt1 =>
-            HandleBlock.mk qual_name list_ident ( recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) )
+            HandleBlock.mk qual_name list_ident ( recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) inst_type? )
         )
       )
   | Statement.conditional_stmt cond =>
     match cond with
     | Conditional.if_else_statement expr stmt1 stmt2 =>
-      Statement.conditional_stmt (
-      Conditional.if_else_statement expr (
-        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1)
-      ) (
-        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt2)
-      ))
+      match inst_type? with
+      | none =>
+        update_transitions_if_else old_name new_name expr stmt1 stmt2 inst_type?
+      | some inst_type =>
+        -- AZ NOTE: Should check if is pred on the inst type as well, then stmt2 can be un-updated
+        let expr_is_not_eq_type : Bool := expr.is_contains_instruction_not_eq_type inst_type
+        match expr_is_not_eq_type with
+        | false => -- control path is either of this inst type or for all insts
+          let expr_is_eq_type : Bool := expr.is_contains_instruction_eq_type inst_type
+          match expr_is_eq_type with
+          | false => -- control path is for all insts
+            update_transitions_if_else old_name new_name expr stmt1 stmt2 inst_type?
+          | true => -- control path is of this inst type, thus in the else case, don't change anything
+            Statement.conditional_stmt (Conditional.if_else_statement
+              expr
+                ( recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1) inst_type? )
+                stmt2
+                )
+        | true => -- control path is of either another inst type or !this_type
+          Statement.conditional_stmt (Conditional.if_else_statement
+            expr
+              stmt1
+              ( recursively_find_stmt_and_update_transitions (old_name, new_name, stmt2) inst_type? ))
+
     | Conditional.if_statement expr stmt1 =>
-      Statement.conditional_stmt (
-      Conditional.if_statement expr (
-        recursively_find_stmt_and_update_transitions (old_name, new_name, stmt1)
-      ) )
+      match inst_type? with
+      | none =>
+        update_transitions_if old_name new_name expr stmt1 inst_type?
+      | some inst_type =>
+        match expr.is_contains_instruction_not_eq_type inst_type with
+        | false =>
+          update_transitions_if old_name new_name expr stmt1 inst_type?
+        | true =>
+          Statement.conditional_stmt (Conditional.if_statement expr stmt1)
   | Statement.variable_assignment _ _ => stmt
   | Statement.value_declaration _ _ => stmt
   | Statement.variable_declaration _ => stmt
-  | Statement.labelled_statement label stmt => Statement.labelled_statement label (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt))
+  | Statement.labelled_statement label stmt => Statement.labelled_statement label (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt) inst_type?)
 
   bool_list
+
+end
 
 def update_state_transitions_matching_name_to_replacement_name
 ( orig_name : String)
 ( replacement_name : String)
 ( list_states_names_to_update : List String)
 ( all_state_descriptions : List Description)
+( inst_type? : Option InstType)
 : (List Description)
 := --do
 
@@ -1891,7 +1922,7 @@ def update_state_transitions_matching_name_to_replacement_name
       match state_descript with
       | Description.state this_state_name stmt =>
         if list_states_names_to_update.contains this_state_name then
-          [Description.state this_state_name (recursively_find_stmt_and_update_transitions (orig_name, replacement_name, stmt))]
+          [Description.state this_state_name (recursively_find_stmt_and_update_transitions (orig_name, replacement_name, stmt) inst_type?)]
         else
           [state_descript]
       | _ => []
@@ -1923,7 +1954,9 @@ def controller_info.update_my_state_list (ctrler : controller_info) (new_state_l
   }
   new_ctrler
 
-def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
+def AddNodeAndUpdateCtrler
+(ctrler : controller_info) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
+(inst_type? : Option InstType)
 : Except String controller_info := do
   /-
   6. Update states that point to the previous perform
@@ -1939,7 +1972,7 @@ def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateNam
 
   let updated_state_list_transition_to_stall_state : List Description :=
     update_state_transitions_matching_name_to_replacement_name
-    old_state_name new_state_name states_transitioning_to_state_to_stall ctrler's_states
+    old_state_name new_state_name states_transitioning_to_state_to_stall ctrler's_states inst_type?
 
   let new_state_machine_with_stall_state : List Description :=
     updated_state_list_transition_to_stall_state ++ [new_state]
@@ -1949,10 +1982,10 @@ def AddNodeAndUpdateCtrler (ctrler : controller_info) (new_state_name : StateNam
   pure new_ctrler
 
 def UpdateCtrlerWithNode
-(ctrlers : List controller_info) (ctrler_name : CtrlerName) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName)
+(ctrlers : List controller_info) (ctrler_name : CtrlerName) (new_state_name : StateName) (new_state : Description) (old_state_name : StateName) (inst_type? : Option InstType)
 : Except String (List controller_info) := do
   ctrlers.mapM (λ ctrler => do
-    if ctrler.name == ctrler_name then (AddNodeAndUpdateCtrler ctrler new_state_name new_state old_state_name)
+    if ctrler.name == ctrler_name then (AddNodeAndUpdateCtrler ctrler new_state_name new_state old_state_name inst_type?)
     else pure ctrler) 
 
 def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Identifier × List Pipeline.Expr) 
@@ -2467,7 +2500,8 @@ def Ctrlers.add_ctrler_states (ctrlers : Ctrlers) (ctrler_name : CtrlerName) (st
 
   return updated_ctrlers
 
-def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement) : Except String Pipeline.Statement :=
+def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement)
+: Except String Pipeline.Statement :=
   match labelled_stmt with
   | .labelled_statement /-label-/ _ stmt => pure stmt
   | _ => throw "Error while trying to get a labelled_stmt's_stmt: input stmt is not a labelled statement"
@@ -2477,20 +2511,22 @@ def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement)
 -- ( replacement_name : String)
 -- ( list_states_names_to_update : List String)
 -- ( all_state_descriptions : List Description)
-def Ctrler.update_ctrler_basic_and_reset_transitions (ctrler : Ctrler) (prev_trans_to_state : StateName) (replacement_state_name : StateName) : Except String Ctrler := do
+def Ctrler.update_ctrler_basic_and_reset_transitions
+(ctrler : Ctrler) (prev_trans_to_state : StateName) (replacement_state_name : StateName) (inst_type? : Option InstType)
+: Except String Ctrler := do
   let all_states : List Description ← ctrler.state_list 
   let states_transitioning_to_state_to_stall : List StateName :=
     get_states_directly_leading_to_given_state (prev_trans_to_state, all_states)
-  let new_states_trans_to_new_state_name := update_state_transitions_matching_name_to_replacement_name prev_trans_to_state replacement_state_name states_transitioning_to_state_to_stall all_states
+  let new_states_trans_to_new_state_name := update_state_transitions_matching_name_to_replacement_name prev_trans_to_state replacement_state_name states_transitioning_to_state_to_stall all_states inst_type?
 
   let updated_ctrler := ctrler.update_my_state_list new_states_trans_to_new_state_name
   pure updated_ctrler
 
 def Ctrlers.update_ctrler_states_trans_to_specific_state (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
-(prev_trans_to_state : StateName) (replacement_state_name : StateName)
+(prev_trans_to_state : StateName) (replacement_state_name : StateName) (inst_type? : Option InstType)
 : Except String Ctrlers := do
   let ctrler ← ctrlers.ctrler_from_name ctrler_name
-  let updated_ctrler ← ctrler.update_ctrler_basic_and_reset_transitions prev_trans_to_state replacement_state_name
+  let updated_ctrler ← ctrler.update_ctrler_basic_and_reset_transitions prev_trans_to_state replacement_state_name inst_type?
   ctrlers.update_ctrler updated_ctrler
   
 def controller_info.init_trans_dest_state (ctrler : controller_info)

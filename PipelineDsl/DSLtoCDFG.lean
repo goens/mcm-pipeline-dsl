@@ -657,6 +657,12 @@ def CtrlersToCDFG
 
   return graph_with_init_node_constraints
 
+def List.nodes_list_to_nodes (nodes : List (List Node)) : List Node :=
+  nodes.join
+
+def List.nodes_to_instruction_graph (nodes : List Node) : Graph :=
+  {nodes := nodes}
+
 def DSLtoCDFG
 (ctrlers : List controller_info)
 : Except String (List Node)
@@ -684,3 +690,6 @@ Do I need to iterate through states?
 -- TODO: Function to identify post-"receive" states
 -- TODO: We can include a field in the Node type for
 -- marking a state is a "receive state" or "send state"
+
+def Ctrlers.to_simple_instruction_graph (ctrlers : Ctrlers) : Except String Graph := do
+  pure (← DSLtoCDFG ctrlers).nodes_to_instruction_graph
