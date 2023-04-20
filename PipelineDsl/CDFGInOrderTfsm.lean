@@ -3,6 +3,8 @@ import PipelineDsl.CDFG
 import PipelineDsl.CDFGAnalysis
 import PipelineDsl.DSLtoCDFG
 
+import PipelineDsl.InstructionHelpers
+
 open CDFG
 
 -- #eval ( String.intercalate "-" ["1","2"] )
@@ -102,8 +104,13 @@ def CtrlerState.append_if_in_list (ctrler_state : CtrlerState) (ctrler_states : 
   | false => do pure ctrler_states
 
 -- def CtrlerState.add_state
-def CtrlerState.new_stall_state_name (ctrler_state : CtrlerState) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
-: StateName := "_".intercalate [ctrler_state.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", ctrler_state.state]
+def CtrlerState.new_stall_state_name (ctrler_state : CtrlerState) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType) (suffix? : Option String)
+: StateName :=
+  match suffix? with
+  | some suffix =>
+    "_".intercalate [ctrler_state.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", ctrler_state.state, suffix]
+  | none =>
+    "_".intercalate [ctrler_state.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", ctrler_state.state]
 
 def get_stall_point (stall_point? : Option CtrlerState) (graph : Graph) (inst_to_stall_type : InstType) (ctrlers : Ctrlers)
 : Except String CtrlerState := do
@@ -126,7 +133,7 @@ def CDFG.Graph.BinaryInOrderTransform
   let query_ctrler_state : List CtrlerStates := ← graph.pre_receive_state inst_to_stall_on_type
     |>.throw_exception_nesting_msg s!"Error finding states to query in BinaryInOrderTransform"
 
-  let new_stall_state_name := stall_point.new_stall_state_name inst_to_stall_on_type inst_to_stall_type
+  let new_stall_state_name := stall_point.new_stall_state_name inst_to_stall_on_type inst_to_stall_type none
   let query_ctrler_states' : List CtrlerStates := ← stall_point.append_if_in_list query_ctrler_state new_stall_state_name
     |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
   
@@ -174,8 +181,9 @@ def CDFG.Graph.TernaryInOrderTransform
   let query_ordering_ctrler_state : List CtrlerStates := ← graph.pre_receive_state memory_ordering_type
     |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in BinaryInOrderTransform"
 
-  let ordering_stall_state_name := ordering_stall_point.new_stall_state_name inst_to_stall_on_type memory_ordering_type
-  let access_stall_state_name := ordering_stall_point.new_stall_state_name memory_ordering_type inst_to_stall_type
+  let ternary_suffix := "_".intercalate <| [inst_to_stall_on_type, memory_ordering_type, inst_to_stall_type].map (·.toString)
+  let ordering_stall_state_name := ordering_stall_point.new_stall_state_name inst_to_stall_on_type memory_ordering_type (some ternary_suffix)
+  let access_stall_state_name := ordering_stall_point.new_stall_state_name memory_ordering_type inst_to_stall_type (some ternary_suffix)
 
   let stall_points : List (CtrlerState × StateName) := [( ordering_stall_point, ordering_stall_state_name ), ( access_stall_point, access_stall_state_name )]
 
