@@ -19,3 +19,5 @@ import PipelineDsl.DSLtoCDFG
 import PipelineDsl.CDFGAnalysis
 import PipelineDsl.CDFGInOrderTfsm
 import PipelineDsl.CDFGLoadReplay
+
+import PipelineDsl.InstructionHelpers
