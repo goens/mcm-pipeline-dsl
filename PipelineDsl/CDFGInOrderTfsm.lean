@@ -205,7 +205,9 @@ def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
 
   match mcm_ordering with
   | .binary_ordering ⟨/- BinaryOrdering -/ access₁, access₂, /- address -/ _ ⟩ => do
+    dbg_trace s!"<< In-Order-Transform binary ordering: ({mcm_ordering})"
     graph.BinaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_access access₂ ) none
   | .ternary_ordering ⟨ /- TernaryOrdering -/ access₁, ordering₂, access₃, /- address -/ _⟩ => do
+    dbg_trace s!"<< In-Order-Transform ternary ordering: ({mcm_ordering})"
     graph.TernaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_ordering ordering₂ ) ( InstType.memory_access access₃ ) -- none
 
