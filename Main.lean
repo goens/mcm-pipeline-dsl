@@ -106,11 +106,11 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying mfence->ld in CDFG InOrderTfsm: ({msg})"
       --     []
 
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers  ( MCMOrdering.ternary_ordering (TernaryOrdering.mk store' mfence' store' Addresses.any) ) with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
-      --     []
+      let ctrlers := match CDFG.InOrderTransform ctrlers  ( MCMOrdering.ternary_ordering (TernaryOrdering.mk store' mfence' store' Addresses.any) ) with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
+          []
 
       -- let ctrlers := match CDFG.InOrderTransform ctrlers mfence store with
       --   | .ok ctrler_list => ctrler_list
