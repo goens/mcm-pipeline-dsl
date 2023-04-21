@@ -102,6 +102,8 @@ def BinaryOrdering.toString : BinaryOrdering → String
 | ⟨access₁, access₂, address⟩ =>
   s!"Binary Ordering ({access₁}) -> ({access₂}) | ({address})"
 
+instance : ToString BinaryOrdering where toString := BinaryOrdering.toString
+
 structure TernaryOrdering where
 αccess₁ : MemoryAccess
 ordering₁ : MemoryOrdering
@@ -112,6 +114,8 @@ deriving Inhabited, BEq
 def TernaryOrdering.toString : TernaryOrdering → String
 | ⟨access₁, ordering₁, access₂, address⟩ =>
   s!"Ternary Ordering ({access₁}) -> ({ordering₁}) -> ({access₂}) | ({address})"
+
+instance : ToString TernaryOrdering where toString := TernaryOrdering.toString
 
 inductive MCMOrdering where
 | binary_ordering : BinaryOrdering → MCMOrdering
