@@ -81,7 +81,7 @@ def transformTesting : AST → Array Nat → IO Unit
 
       -- println! s!"------ do store -> store in-order transformation ------\n"
 
-      -- CDFG Initial Implementation
+      -- ===== CDFG Initial Implementation =====
       -- let ctrlers := match CDFG.InOrderTfsm ctrlers load load with
       --   | .ok ctrler_list => ctrler_list
       --   | .error msg => 
@@ -100,23 +100,26 @@ def transformTesting : AST → Array Nat → IO Unit
         | .error msg => 
           dbg_trace s!"Error applying ld->mfence in CDFG InOrderTfsm: ({msg})"
           []
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers mfence load with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying mfence->ld in CDFG InOrderTfsm: ({msg})"
-      --     []
 
-      let ctrlers := match CDFG.InOrderTransform ctrlers  ( MCMOrdering.ternary_ordering (TernaryOrdering.mk store' mfence' store' Addresses.any) ) with
+      let st_fence_st := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk store' mfence' store' Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers st_fence_st with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
           []
 
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers mfence store with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying mfence->st in CDFG InOrderTfsm: ({msg})"
-      --     []
+      let ctrlers := match CDFG.InOrderTransform ctrlers ( MCMOrdering.ternary_ordering (TernaryOrdering.mk store' mfence' load' Addresses.any) ) with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying ld->mfence in CDFG InOrderTfsm: ({msg})"
+          []
+
+      -- just for sanity, shouldn't break anything
+      let ctrlers := match CDFG.InOrderTransform ctrlers ( MCMOrdering.ternary_ordering (TernaryOrdering.mk load' mfence' store' Addresses.any) ) with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying ld->mfence in CDFG InOrderTfsm: ({msg})"
+          []
       -- ===== Test Fence =====
 
       -- let ctrlers := match CDFG.InOrderTfsm ctrlers store load with

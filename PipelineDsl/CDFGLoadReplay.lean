@@ -10,6 +10,8 @@ import PipelineDsl.LoadReplayHelpers
 
 import PipelineDsl.CDFGInOrderTfsm
 
+import PipelineDsl.InstructionHelpers
+
 -- namespace LoadReplay
 
 -- The 4 nodes
@@ -578,21 +580,21 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   let commit_start_replay_state_name := ← update_commit_start_replay_state.state_name
   return (ctrlers_with_await_replay_response_state, ⟨commit_node.ctrler_name, commit_start_replay_state_name⟩)
 
-def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (inst_to_order_load_with : InstType)
+def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
   dbg_trace "$$LoadReplay ctrlers: {ctrlers}"
   dbg_trace "$$LoadReplay graph: {graph}"
 
-  -- The function should do as the comments below describe.
   let (ctrlers_with_load_replay, commit_start_replay_state_name) := ← graph.AddLoadReplayToCtrlers ctrlers
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
-  let order_with_inst_type := ctrlers_with_load_replay.InOrderTransformParameterized inst_to_order_load_with load (some commit_start_replay_state_name)
-    |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers!"
+  dbg_trace s!"LoadReplay: MCM Ordering: ( {mcm_ordering} )"
+
+  CDFG.InOrderTransform ctrlers_with_load_replay mcm_ordering (some commit_start_replay_state_name)
+  |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers!"
   
-  order_with_inst_type
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
   -- 2. Search for where load API is called

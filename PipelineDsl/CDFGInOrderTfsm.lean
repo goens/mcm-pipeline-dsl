@@ -160,6 +160,7 @@ def CDFG.Graph.TernaryInOrderTransform
 (inst_to_stall_on_type : InstType)
 (memory_ordering_type : InstType)
 (inst_to_stall_type : InstType)
+(provided_stall_point? : Option CtrlerState)
 -- (stall_point_param? : Option CtrlerState) -- Could try to add a fence to load-replay, so the replay is stalled on the memory-ordering-fence
 : Except String (List controller_info) := do
   -- Simple implementation, break down this MCM-Ordering: stall_on -> ordering -> to_stall,
@@ -168,7 +169,7 @@ def CDFG.Graph.TernaryInOrderTransform
   let ordering_stall_point := ← get_stall_point none graph memory_ordering_type ctrlers
     |>.throw_exception_nesting_msg s!"Error finding ordering inst ({memory_ordering_type}) stall point in BinaryInOrderTransform"
   -- ordering -> to_stall
-  let access_stall_point := ← get_stall_point none graph inst_to_stall_type ctrlers
+  let access_stall_point := ← get_stall_point provided_stall_point? graph inst_to_stall_type ctrlers
     |>.throw_exception_nesting_msg s!"Error finding ordering inst ({inst_to_stall_type}) stall point in BinaryInOrderTransform"
 
   dbg_trace s!"<< Found ordering stall point from heuristic: ({ordering_stall_point})"
@@ -200,7 +201,7 @@ def CDFG.Graph.TernaryInOrderTransform
 
   pure updated_ctrlers''
 
-def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
+def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering) (provided_stall_point? : Option CtrlerState)
 : Except String Ctrlers := do
   -- induct on mcm-ordering type
   -- Handle cases:
@@ -214,8 +215,8 @@ def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
   match mcm_ordering with
   | .binary_ordering ⟨/- BinaryOrdering -/ access₁, access₂, /- address -/ _ ⟩ => do
     dbg_trace s!"<< In-Order-Transform binary ordering: ({mcm_ordering})"
-    graph.BinaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_access access₂ ) none
+    graph.BinaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_access access₂ ) provided_stall_point?
   | .ternary_ordering ⟨ /- TernaryOrdering -/ access₁, ordering₂, access₃, /- address -/ _⟩ => do
     dbg_trace s!"<< In-Order-Transform ternary ordering: ({mcm_ordering})"
-    graph.TernaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_ordering ordering₂ ) ( InstType.memory_access access₃ ) -- none
+    graph.TernaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_ordering ordering₂ ) ( InstType.memory_access access₃ ) provided_stall_point?
 
