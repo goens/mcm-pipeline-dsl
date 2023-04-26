@@ -176,9 +176,11 @@ def CDFG.Graph.TernaryInOrderTransform
   dbg_trace s!"<< Found access stall point from heuristic: ({access_stall_point})"
 
   -- stall_on -> ordering
+  dbg_trace s!"<< Find stall_on states to query"
   let query_stall_on_ctrler_state : List CtrlerStates := ← graph.pre_receive_state inst_to_stall_on_type
     |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in BinaryInOrderTransform"
   -- ordering -> to_stall
+  dbg_trace s!"<< Find ordering states to query"
   let query_ordering_ctrler_state : List CtrlerStates := ← graph.pre_receive_state memory_ordering_type
     |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in BinaryInOrderTransform"
 
@@ -188,15 +190,21 @@ def CDFG.Graph.TernaryInOrderTransform
 
   let stall_points : List (CtrlerState × StateName) := [( ordering_stall_point, ordering_stall_state_name ), ( access_stall_point, access_stall_state_name )]
 
+  dbg_trace s!"<< Add the generated stall state to the 'stall on' states to query"
   let query_stall_on_ctrler_states' : List CtrlerStates := ← append_created_states_if_needed stall_points query_stall_on_ctrler_state
+  dbg_trace s!"<< Add the generated stall state to the 'ordering' states to query"
   let query_ordering_ctrler_states' : List CtrlerStates := ← append_created_states_if_needed stall_points query_ordering_ctrler_state
   
+  dbg_trace s!"<< Generate the ordering_inst stall state"
   let ordering_stall_node := ← ctrlers.StallNode ordering_stall_point.state ordering_stall_point.ctrler query_stall_on_ctrler_states' inst_to_stall_on_type memory_ordering_type ordering_stall_state_name
     |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the ordering_inst stall state"
+  dbg_trace s!"<< Generate the access_inst stall state"
   let access_stall_node := ← ctrlers.StallNode access_stall_point.state access_stall_point.ctrler query_ordering_ctrler_states' memory_ordering_type inst_to_stall_type access_stall_state_name
     |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the ordering_inst stall state"
 
+  dbg_trace s!"<< Update the controllers with the new ordering stall states"
   let updated_ctrlers'  ← UpdateCtrlerWithNode ctrlers          ordering_stall_point.ctrler ordering_stall_state_name ordering_stall_node ordering_stall_point.state (some memory_ordering_type)
+  dbg_trace s!"<< Update the controllers with the new access stall states"
   let updated_ctrlers'' ← UpdateCtrlerWithNode updated_ctrlers' access_stall_point.ctrler   access_stall_state_name   access_stall_node   access_stall_point.state   (some inst_to_stall_type)
 
   pure updated_ctrlers''

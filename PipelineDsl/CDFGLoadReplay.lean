@@ -210,10 +210,11 @@ def CreateReplayAwaitLoadState
 
   let compare_and_check_wrapped_stmts : Pipeline.Statement ←
     if is_issue_ctrler_and_await_response_ctrler_same then do
-      match issue_ctrler_node_pred_on_commit? with
-      | .some /- issue_ctrler_node_pred_on_commit -/ _ => do
+      -- match issue_ctrler_node_pred_on_commit? with
+      -- | .some /- issue_ctrler_node_pred_on_commit -/ _ => do
         four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
-      | .none => throw "Error, issue ctrler node should be available, since it's set if the bool is true"
+      -- | .none =>
+        -- four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
     else do
       let await_load_ctrler_node := four_nodes.global_perform_load_node
       let await_load_ctrler ← ctrlers.ctrler_from_name await_load_ctrler_node.ctrler_name 
@@ -591,6 +592,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
   dbg_trace s!"LoadReplay: MCM Ordering: ( {mcm_ordering} )"
+  dbg_trace s!"LoadReplay: Commit Start Replay State Name: ( {commit_start_replay_state_name} )"
 
   CDFG.InOrderTransform ctrlers_with_load_replay mcm_ordering (some commit_start_replay_state_name)
   |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers!"
