@@ -1716,7 +1716,7 @@ def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : Ins
       -- Use this function
       -- CDFG.Graph.commit_transition_state_ctrler
       let commit_node : Node := ← graph.commit_transition_state_ctrler
-        |>.throw_exception_nesting_msg "Error finding the Commit State Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
+        |>.throw_exception_nesting_msg s!"Error finding the Commit State Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
       pure commit_node
 
 -- def CDFG.Condition.is_predicated_by_search_older_seq_num (cond : Condition) : Bool :=
