@@ -2249,7 +2249,7 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       match label with
       | .commit =>
         -- return the two stmt & t
-        pure (stmts_to_inject, [stmt] ++ t)
+        pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label
       | _ =>
         pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
     | .block stmts' =>
