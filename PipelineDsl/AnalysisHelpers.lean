@@ -1146,6 +1146,18 @@ partial def Pipeline.Term.is_instruction_not_eq_type : Pipeline.Term → InstTyp
   match term with
   | .expr expr' =>
     expr'.is_contains_instruction_not_eq_type inst_type
+  | .logical_negation term' =>
+    match term' with
+    | .expr expr' =>
+      match expr' with
+      | .equal term1 term2 =>
+        match term1, term2 with
+        | .qualified_var qual_var, .var ident
+        | .var ident, .qualified_var qual_var =>
+          (qual_var == [instruction, op].to_qual_name) && (ident == inst_type.toMurphiString)
+        | _, _ => false
+      | _ => false
+    | _ => false
   | _ => false
 
 partial def Pipeline.Expr.is_contains_instruction_not_eq_type : Pipeline.Expr → InstType → Bool
@@ -1159,13 +1171,14 @@ partial def Pipeline.Expr.is_contains_instruction_not_eq_type : Pipeline.Expr �
     | _, _ => false
   | .binand term1 term2 => term1.is_instruction_not_eq_type inst_type || term2.is_instruction_not_eq_type inst_type
   -- | .binor term1 term2 => term1.is_instruction_not_eq_type || term2.is_instruction_not_eq_type
-  -- NOTE: Could also check negation
   | .not_equal term1 term2 =>
     match term1, term2 with
     | .qualified_var qual_var, .var ident
     | .var ident, .qualified_var qual_var =>
       (qual_var == [instruction, op].to_qual_name) && (ident == inst_type.toMurphiString)
     | _, _ => false
+  -- NOTE: Could also check negation
+  | .some_term term => term.is_instruction_not_eq_type inst_type
   | _ => false
 end
 
@@ -1175,6 +1188,18 @@ partial def Pipeline.Term.is_instruction_eq_type : Pipeline.Term → InstType �
   match term with
   | .expr expr' =>
     expr'.is_contains_instruction_eq_type inst_type
+  | .logical_negation term' =>
+    match term' with
+    | .expr expr' =>
+      match expr' with
+      | .not_equal term1 term2 =>
+        match term1, term2 with
+        | .qualified_var qual_var, .var ident
+        | .var ident, .qualified_var qual_var =>
+          (qual_var == [instruction, op].to_qual_name) && (ident == inst_type.toMurphiString)
+        | _, _ => false
+      | _ => false
+    | _ => false
   | _ => false
 
 partial def Pipeline.Expr.is_contains_instruction_eq_type : Pipeline.Expr → InstType → Bool
@@ -1188,6 +1213,7 @@ partial def Pipeline.Expr.is_contains_instruction_eq_type : Pipeline.Expr → In
     | _, _ => false
   | .binand term1 term2 => term1.is_instruction_eq_type inst_type || term2.is_instruction_eq_type inst_type
   -- | .binor term1 term2 => term1.is_instruction_not_eq_type || term2.is_instruction_not_eq_type
+  | .some_term term => term.is_instruction_eq_type inst_type
   | _ => false
 end
 

@@ -167,10 +167,10 @@ def CDFG.Graph.TernaryInOrderTransform
   -- into: stall_on -> ordering, ordering -> to_stall
   -- stall_on -> ordering
   let ordering_stall_point := ← get_stall_point none graph memory_ordering_type ctrlers
-    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({memory_ordering_type}) stall point in BinaryInOrderTransform"
+    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({memory_ordering_type}) stall point in TernaryInOrderTransform"
   -- ordering -> to_stall
   let access_stall_point := ← get_stall_point provided_stall_point? graph inst_to_stall_type ctrlers
-    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({inst_to_stall_type}) stall point in BinaryInOrderTransform"
+    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({inst_to_stall_type}) stall point in TernaryInOrderTransform"
 
   dbg_trace s!"<< Found ordering stall point from heuristic: ({ordering_stall_point})"
   dbg_trace s!"<< Found access stall point from heuristic: ({access_stall_point})"
@@ -178,11 +178,11 @@ def CDFG.Graph.TernaryInOrderTransform
   -- stall_on -> ordering
   dbg_trace s!"<< Find stall_on states to query"
   let query_stall_on_ctrler_state : List CtrlerStates := ← graph.pre_receive_state inst_to_stall_on_type
-    |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in BinaryInOrderTransform"
+    |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in TernaryInOrderTransform"
   -- ordering -> to_stall
   dbg_trace s!"<< Find ordering states to query"
   let query_ordering_ctrler_state : List CtrlerStates := ← graph.pre_receive_state memory_ordering_type
-    |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in BinaryInOrderTransform"
+    |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in TernaryInOrderTransform"
 
   let ternary_suffix := "_".intercalate <| [inst_to_stall_on_type, memory_ordering_type, inst_to_stall_type].map (·.toString)
   let ordering_stall_state_name := ordering_stall_point.new_stall_state_name inst_to_stall_on_type memory_ordering_type (some ternary_suffix)

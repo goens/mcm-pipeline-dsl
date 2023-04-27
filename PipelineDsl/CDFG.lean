@@ -225,6 +225,16 @@ deriving Inhabited, BEq
 def Transition.src_dest_states (transition : Transition) : String :=
 s!"[Trans_type ({transition.trans_type}): ({transition.orig_state}) -> ({transition.dest_state})]"
 
+def Transition.expr_predicates (transition : Transition) : Predicate :=
+  let expr_predicates := transition.predicate.filter (match · with
+    | .DSLExpr _ => true
+    | _ => false
+  )
+  expr_predicates
+
+def Transition.if_expr_src_dest (transition : Transition) : String :=
+s!"[Trans_type ({transition.trans_type})}): Guard: ({transition.expr_predicates}), ({transition.orig_state}) -> ({transition.dest_state})]"
+
 def Transition.is_transition_to_state_name (transition : Transition) (state_name : StateName) : Bool :=
 -- dbg_trace s!"Trans from {transition.orig_state} to {transition.dest_state}, type: ({transition.trans_type}), desired state: {state_name}"
 transition.dest_state == state_name && transition.trans_type == .Transition
