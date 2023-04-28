@@ -2197,11 +2197,11 @@ def String.to_dsl_var_expr : String → Pipeline.Expr
 | var_name =>
   Pipeline.Expr.some_term (Pipeline.Term.var var_name)
 
-def Ctrlers.transition_to_ctrler's_first_state_stmt : Ctrlers → CtrlerName → Except String Pipeline.Statement
+def Ctrlers.complete_to_ctrler's_first_state_stmt : Ctrlers → CtrlerName → Except String Pipeline.Statement
 | ctrlers, ctrler_name => do
   let ctrler : Ctrler ← ctrlers.ctrler_from_name ctrler_name
   let ctrler_first_state : StateName ← ctrler.init_trans_dest
-  pure $ Pipeline.Statement.transition ctrler_first_state
+  pure $ Pipeline.Statement.complete ctrler_first_state
   
 def Pipeline.Statement.to_block : Pipeline.Statement → Pipeline.Statement
 | stmt => match stmt with
@@ -2275,7 +2275,8 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       match label with
       | .commit =>
         -- return the two stmt & t
-        pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label
+        -- pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label by using 'stmts'
+        pure ( [Pipeline.Statement.labelled_statement label (stmts_to_inject.to_block)] , [stmt] ++ t)
       | _ =>
         pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
     | .block stmts' =>
@@ -2707,10 +2708,10 @@ def CtrlerStates.query_older_insts (ctrler_states : CtrlerStates) (stall_on_inst
     pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt]
 
 -- also return the not-completed-check var_name, so we can OR them together
-def CtrlerStates.to_query (ctrler_states : CtrlerStates) (stall_on_inst_type : InstType) (original_state_name : StateName) (ctrlers : Ctrlers)
+def CtrlerStates.to_query (ctrler_states : CtrlerStates) (inst_type : InstType) /- (stall_on_inst_type : InstType) -/ (original_state_name : StateName) (ctrlers : Ctrlers)
 -- NOTE: Consider if I actually just need a fixed number of stmts, like a tuple
 : Except String (BoolDecl × SearchStatement × VarName) := do
-  let var_name : VarName := (ctrler_states.ctrler ++ "_is_in_state_set");
+  let var_name : VarName := ("_".intercalate [ctrler_states.ctrler, inst_type.toString, "is_in_state_set"]);
 
   -- Based on the ctrler type, if it's a queue, use the search API generation code below
   -- if it's a ctrler, just access the it's state vars to check if it's an older inst
@@ -2722,7 +2723,7 @@ def CtrlerStates.to_query (ctrler_states : CtrlerStates) (stall_on_inst_type : I
   let (ctrler_not_completed_var, if_not_completed) ← ctrler_states.to_if_state_check var_name ctrlers
 
   -- TODO: Create a helper to check if the ctrler is a queue, and use the right search API
-  let query_older_insts ← ctrler_states.query_older_insts stall_on_inst_type original_state_name if_not_completed ctrlers
+  let query_older_insts ← ctrler_states.query_older_insts inst_type original_state_name if_not_completed ctrlers
 
   pure (ctrler_not_completed_var, query_older_insts, var_name)
 
@@ -2757,10 +2758,18 @@ def Prod.to_typed_identifier ( tuple : Prod String String) : TypedIdentifier :=
 
 abbrev bool_decl := Pipeline.Statement.variable_declaration
 abbrev variable_assignment := Pipeline.Statement.variable_assignment
-def List.to_queries (states_to_query : List CtrlerStates) (stall_on_inst_type : InstType) (original_state_name : StateName) (ctrlers : Ctrlers) : Except String (List (BoolDecl × SearchStatement × VarName)) := do
+def List.to_queries (states_to_query : List (List CtrlerStates × InstType)) /-(stall_on_inst_type : InstType)-/ (original_state_name : StateName) (ctrlers : Ctrlers) : Except String (List (BoolDecl × SearchStatement × VarName)) := do
   -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
-  let decl_search_var : Except String $ List (BoolDecl × SearchStatement × VarName) := states_to_query.mapM (·.to_query stall_on_inst_type original_state_name ctrlers)
-  decl_search_var |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
+  let decl_search_var : List (BoolDecl × SearchStatement × VarName) := List.join $ ← states_to_query.mapM (do
+    let (states_list, stall_on_inst_type') := ·;
+    let gen_checks := states_list.mapM (do
+      let states := ·;
+      CtrlerStates.to_query states stall_on_inst_type' /-stall_on_inst_type-/ original_state_name ctrlers
+      )
+      |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
+    gen_checks
+    )
+  pure decl_search_var 
 
 def List.to_query_result (vars : List VarName) : Except String (BoolDecl × Pipeline.Statement) := do
   -- logic OR the results
@@ -2799,14 +2808,14 @@ def stall_state_querying_states
 (new_stall_state_name : StateName)
 (original_state_name : StateName)
 -- (ctrler_name : CtrlerName) -- current or this ctrler
-(ctrler_states_to_query : List CtrlerStates)
-(stall_on_inst_type : InstType)
+(ctrler_states_to_query : List (List CtrlerStates × InstType))
+/- (stall_on_inst_type : InstType) -/
 (inst_to_stall_type : InstType)
 (original_state's_handleblks : Option ( List HandleBlock ))
 (ctrlers : Ctrlers)
 : Except String Description
 := do
-  let query_stmts := ← ctrler_states_to_query.to_queries stall_on_inst_type original_state_name ctrlers |>.throw_exception_nesting_msg s!"Error (gen stall state) converting ctrler_states to queries, ctrler_states: ({ctrler_states_to_query})"
+  let query_stmts := ← ctrler_states_to_query.to_queries /-stall_on_inst_type-/ original_state_name ctrlers |>.throw_exception_nesting_msg s!"Error (gen stall state) converting ctrler_states to queries, ctrler_states: ({ctrler_states_to_query})"
 
   -- result of querying the states
   let query_vars := query_stmts.map (·.2.2)
@@ -2842,8 +2851,8 @@ def stall_state_querying_states
     new_stall_state_name
     (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
 
-def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
-(ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType) (new_stall_state_name : StateName)
+def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List (List CtrlerStates × InstType))
+(ctrlers : Ctrlers) /- (inst_type_to_stall_on : InstType) -/ (inst_to_stall_type : InstType) (new_stall_state_name : StateName)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
   -- let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
@@ -2862,7 +2871,7 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
 -- (original_state's_handleblks : Option ( List HandleBlock ))
 -- (ctrlers : Ctrlers)
   let new_stall_state : Description ← stall_state_querying_states
-    new_stall_state_name stall_state ctrler_states_to_query inst_type_to_stall_on inst_to_stall_type handle_blks ctrlers
+    new_stall_state_name stall_state ctrler_states_to_query /- inst_type_to_stall_on -/ inst_to_stall_type handle_blks ctrlers
 
   dbg_trace s!"=== New Stall State: ===\n({new_stall_state})\n=== End New Stall State ==="
   pure new_stall_state

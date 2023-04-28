@@ -370,6 +370,8 @@ def Node.not_reset_transitions (node : Node) : Transitions :=
 def Node.fully_qualified_name (node : Node) : String :=
   node.ctrler_name ++ "_" ++ node.current_state
 
+def Transitions.basic_transitions (transitions : Transitions) : Transitions := transitions.filter (·.trans_type == .Transition)
+
 /- As-is, nodes (vertices) and transitions (edges) are not technically related as data structures,
   i.e., an edge does not have pointers to its destination, just the name. For now we can take this to
   be a list and assume there has to be exactly one node with the name of the destination. We should

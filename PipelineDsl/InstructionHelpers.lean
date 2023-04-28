@@ -93,8 +93,8 @@ def Addresses.toString : Addresses → String
 instance : ToString Addresses where toString := Addresses.toString
 
 structure BinaryOrdering where
-access₁ : MemoryAccess
-access₂ : MemoryAccess
+accesses₁ : List MemoryAccess
+accesses₂ : List MemoryAccess
 address : Addresses
 deriving Inhabited, BEq
 
@@ -105,9 +105,9 @@ def BinaryOrdering.toString : BinaryOrdering → String
 instance : ToString BinaryOrdering where toString := BinaryOrdering.toString
 
 structure TernaryOrdering where
-αccess₁ : MemoryAccess
+αccesses₁ : List MemoryAccess
 ordering₁ : MemoryOrdering
-access₂ : MemoryAccess
+accesses₂ : List MemoryAccess
 address : Addresses
 deriving Inhabited, BEq
 
@@ -129,8 +129,12 @@ def MCMOrdering.toString : MCMOrdering → String
 
 instance : ToString MCMOrdering where toString := MCMOrdering.toString
 
-def binary_ordering (first_inst : MemoryAccess) (second_inst : MemoryAccess) (address : Addresses) : MCMOrdering :=
+def binary_ordering (first_inst : List MemoryAccess) (second_inst : List MemoryAccess) (address : Addresses) : MCMOrdering :=
   MCMOrdering.binary_ordering ⟨first_inst, second_inst, address⟩
 
-def ternary_ordering (first_inst : MemoryAccess) (second_inst : MemoryOrdering) (third_inst : MemoryAccess) (address : Addresses) : MCMOrdering :=
+def ternary_ordering (first_inst : List MemoryAccess) (second_inst : MemoryOrdering) (third_inst : List MemoryAccess) (address : Addresses) : MCMOrdering :=
   MCMOrdering.ternary_ordering ⟨first_inst, second_inst, third_inst, address⟩
+
+def List.to_inst_type_list : List MemoryAccess → List InstType
+| [] => []
+| h::t => (InstType.memory_access h)::(List.to_inst_type_list t)

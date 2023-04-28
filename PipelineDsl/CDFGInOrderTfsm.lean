@@ -12,77 +12,6 @@ open CDFG
 -- start trying to create a parameterized version, if such a thing exists..
 -- first thing to try for LoadReplay St -> Ld: make finding the stall point a parameter
 -- not very paramterized at the moment...
-def Ctrlers.InOrderTransformParameterized
-(ctrlers : Ctrlers)
-(inst_to_stall_on_type : InstType)
-(inst_to_stall_type : InstType)
-(stall_point_param? : Option CtrlerState)
-: Except String (List controller_info) := do
-  dbg_trace "<< Starting CDFGInOrderTfsm"
-  let graph_nodes ← DSLtoCDFG ctrlers
-  dbg_trace "<< Got graph nodes translated"
-  let graph : Graph := {nodes := graph_nodes}
-  let stall_point := ←
-    match stall_point_param? with
-    | some ctrler_state => do pure ctrler_state
-    | none => do graph.find_stall_point_heuristic inst_to_stall_type ctrlers
-  dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
-
-  -- === Old code to find stall state ===
-  -- let ctrler_state_to_stall_on : StateOrConstraintToStallOn ← find_ctrler_or_state_to_query_for_stall graph inst_to_stall_on_type ctrlers
-  -- dbg_trace "<< Found ctrler/state to stall at"
-
-  -- let stall_node ← CreateStallNode stall_point ctrler_state_to_stall_on ctrlers inst_to_stall_on_type inst_to_stall_type
-  -- === Old code to find stall state ===
-
-  -- === New code to find stall state ===
-  let nodes_to_query ← graph.find_pre_receive_stall_states inst_to_stall_on_type
-  let query_ctrler_state : List CtrlerStates := nodes_to_query.to_ctrler_states
-
-  -- let new_stall_state_name := stall_point.ctrler ++ inst_to_stall_on_type.toString ++ "_to_" ++ inst_to_stall_type.toString ++ "_stall_" ++ stall_point.state
-  let new_stall_state_name := "_".intercalate [stall_point.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", stall_point.state]
-  let is_stall_point_in_query := query_ctrler_state.is_ctrler_state_member stall_point.ctrler stall_point.state
-  dbg_trace s!"<< Is stall point in query: ({is_stall_point_in_query})"
-  let query_ctrler_states' : List CtrlerStates := ←
-    match is_stall_point_in_query with
-    | true => do query_ctrler_state.add_ctrler_state stall_point.ctrler new_stall_state_name |>.throw_exception_nesting_msg s!"Error adding new_stall_state to query_ctrler_states, assuming we're also stalling on ctrler ({stall_point.ctrler}) state ({stall_point.state})"
-    | false => do pure query_ctrler_state
-  
--- def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List CtrlerStates)
--- (ctrlers : Ctrlers) (inst_type_to_stall_on : InstType) (inst_to_stall_type : InstType)
-  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' inst_to_stall_on_type inst_to_stall_type new_stall_state_name
-    |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the stall state"
-  -- === New code to find stall state ===
-
-  -- let graph_constrained_by_second_inst := ← graph.states_the_'to_stall_on'_node_can_be_in inst_to_stall_on_type inst_to_stall_type stall_point ctrlers
-  -- dbg_trace s!"======= BEGIN graph constrained by second inst ========"
-  -- dbg_trace s!"BEGIN graph_constrained_by_second_inst: ({graph_constrained_by_second_inst.nodes.map (·.current_state)})\nEND graph_constrained_by_second_inst"
-  -- dbg_trace s!"======= END graph constrained by second inst ========"
-
-  -- let graph_pruned_of_live_subsets := ← graph.prune_ctrler_nodes_that_are_live_for_a_subset_of_another_ctrler inst_to_stall_on_type
-  --   |>.throw_exception_nesting_msg s!"Error pruning graph of live subsets. Graph: ({graph_constrained_by_second_inst.nodes.map (·.current_state)})"
-  -- dbg_trace s!"======= BEGIN graph_pruned_of_live_subsets ========"
-  -- dbg_trace s!"BEGIN graph_pruned_of_live_subsets: ({graph_pruned_of_live_subsets.nodes.map (·.current_state)})\nEND graph_pruned_of_live_subsets"
-  -- dbg_trace s!"======= END graph_pruned_of_live_subsets ========"
-
-  -- let new_stall_state_name := stall_point.ctrler ++ "_stall_" ++ stall_point.state
-  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_type)
-    |>.throw_exception_nesting_msg s!"Error updating ctrler ({stall_point.ctrler}) with stall node ({stall_node})"
-
-  pure updated_ctrlers
-
--- TODO: Check for other ctrlers the inst to stall on can be in
-def CDFG.InOrderTfsm (ctrlers : Ctrlers) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType)
-: Except String Ctrlers := do
-
-  -- def Ctrlers.InOrderTransformParameterized
-  -- (ctrlers : Ctrlers)
-  -- (inst_to_stall_on_type : InstType)
-  -- (inst_to_stall_type : InstType)
-  -- (stall_point_param? : Option CtrlerState)
-  -- : Except String (List controller_info) := do
-
-  ctrlers.InOrderTransformParameterized inst_to_stall_on_type inst_to_stall_type none
 
 -- #check Lean.Expr
 
@@ -104,44 +33,102 @@ def CtrlerState.append_if_in_list (ctrler_state : CtrlerState) (ctrler_states : 
   | false => do pure ctrler_states
 
 -- def CtrlerState.add_state
-def CtrlerState.new_stall_state_name (ctrler_state : CtrlerState) (inst_to_stall_on_type : InstType) (inst_to_stall_type : InstType) (suffix? : Option String)
+def CtrlerState.new_stall_state_name (ctrler_state : CtrlerState) (inst_to_stall_on_types : List InstType) (inst_to_stall_type : InstType) (suffix? : Option String)
 : StateName :=
-  match suffix? with
-  | some suffix =>
-    "_".intercalate [ctrler_state.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", ctrler_state.state, suffix]
-  | none =>
-    "_".intercalate [ctrler_state.ctrler, inst_to_stall_on_type.toString, "to", inst_to_stall_type.toString, "stall", ctrler_state.state]
+  let stall_on_type_names := "_".intercalate <| inst_to_stall_on_types.map (·.toString)
+  let tail := match suffix? with
+    | some suffix => "_".append suffix
+    | none => ""
+  "_".intercalate [ctrler_state.ctrler, stall_on_type_names, "to", inst_to_stall_type.toString, "stall", ctrler_state.state] |>.append tail
 
-def get_stall_point (stall_point? : Option CtrlerState) (graph : Graph) (inst_to_stall_type : InstType) (ctrlers : Ctrlers)
-: Except String CtrlerState := do
+def get_stall_point (stall_point? : Option (CtrlerState × InstType) ) (graph : Graph) (inst_to_stall_types : List InstType) (ctrlers : Ctrlers)
+: Except String ( List ( CtrlerState × ( InstType) ) ) := do
   match stall_point? with
-  | some ctrler_state => do pure ctrler_state
-  | none => do graph.find_stall_point_heuristic inst_to_stall_type ctrlers
+  | some (ctrler_state, inst_type') => do
+    pure [( ctrler_state, inst_type' )]
+  | none => do inst_to_stall_types.mapM (do
+    let inst_to_stall_type := ·;
+    let stall_point_heuristic :=  ← graph.find_stall_point_heuristic inst_to_stall_type ctrlers;
+    pure (stall_point_heuristic, inst_to_stall_type ) )
+
+def Prod.new_stall_state_name
+(prod : Prod CtrlerState (Option InstType)) (inst_to_stall_on_types : List InstType) (inst_to_stall_type : InstType) (suffix? : Option String)
+: (StateName × (Option InstType)) :=
+  let stalled_inst_type := match prod.snd with
+    | some inst_type => inst_type
+    | none => inst_to_stall_type
+  let new_stall_state_name := prod.fst.new_stall_state_name inst_to_stall_on_types stalled_inst_type suffix?
+
+  (new_stall_state_name, prod.snd)
 
 def CDFG.Graph.BinaryInOrderTransform
 (graph : Graph)
 (ctrlers : Ctrlers)
-(inst_to_stall_on_type : InstType)
-(inst_to_stall_type : InstType)
-(stall_point_param? : Option CtrlerState)
+(inst_to_stall_on_types : List InstType)
+(inst_to_stall_types : List InstType)
+(stall_point_param? : Option ( CtrlerState × InstType))
 : Except String (List controller_info) := do
-  let stall_point := ← get_stall_point stall_point_param? graph inst_to_stall_type ctrlers
+  let stall_points : List (CtrlerState × (InstType)) := ← get_stall_point stall_point_param? graph inst_to_stall_types ctrlers
     |>.throw_exception_nesting_msg s!"Error finding stall point in BinaryInOrderTransform"
 
-  dbg_trace s!"<< Found stall point from heuristic: ({stall_point})"
+  dbg_trace s!"<< Found stall point from heuristic: ({stall_points})"
 
-  let query_ctrler_state : List CtrlerStates := ← graph.pre_receive_state inst_to_stall_on_type
-    |>.throw_exception_nesting_msg s!"Error finding states to query in BinaryInOrderTransform"
+  let query_ctrler_state : List ( (List CtrlerStates) × InstType) := ← inst_to_stall_on_types.mapM (do
+    let inst_type' := ·;
+    let ctrler_states := ← graph.pre_receive_state inst_type'
+      |>.throw_exception_nesting_msg s!"Error finding states to query in BinaryInOrderTransform"
+    pure (ctrler_states, inst_type')
+    )
 
-  let new_stall_state_name := stall_point.new_stall_state_name inst_to_stall_on_type inst_to_stall_type none
-  let query_ctrler_states' : List CtrlerStates := ← stall_point.append_if_in_list query_ctrler_state new_stall_state_name
-    |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
+  dbg_trace s!"<< States to query: ({query_ctrler_state})"
+
+  let new_stall_state_names : List (CtrlerState × StateName × InstType) := stall_points.map (
+    let (stall_point, inst_type) := ·; 
+    let new_state_name := stall_point.new_stall_state_name inst_to_stall_on_types inst_type none
+    ( stall_point, new_state_name, inst_type)
+  )
+
+  dbg_trace s!"<< New stall state names: ({new_stall_state_names})"
+
+  -- let query_ctrler_states' : List CtrlerStates := ← stall_points.map (·.append_if_in_list query_ctrler_state new_stall_state_name)
+  --   |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
+  let query_ctrler_states' : List ( (List CtrlerStates) × InstType) := ←
+    query_ctrler_state.mapM (do
+      let (query_ctrler_state, inst_type) := ·;
+      let updated_states := ← new_stall_state_names.foldlM (
+        λ query_states new_names => do 
+          let (stall_point, new_name, /- stalled_inst_type -/ _) := new_names;
+
+          let updated_query_states := ← stall_point.append_if_in_list query_states new_name
+            |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
+      
+          pure (updated_query_states)
+      ) query_ctrler_state
+
+      pure (updated_states, inst_type)
+    )
+
+  dbg_trace s!"<< States to query (with new stall states?): ({query_ctrler_state})"
   
-  let stall_node := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' inst_to_stall_on_type inst_to_stall_type new_stall_state_name
-    |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while generating the stall state"
+  let dsl_stall_nodes : List ( Pipeline.Description × StateName × CtrlerState × InstType) := ← new_stall_state_names.mapM (do
+    let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
+    let dsl_stall := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_ctrler_states' /-inst_to_stall_on_types-/ inst_to_stall_type' new_stall_state_name
+      |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while generating the stall state"
+    pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
+  )
 
-  let updated_ctrlers ← UpdateCtrlerWithNode ctrlers stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_on_type)
-    |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while updating the controllers with the stall state"
+  dbg_trace s!"<< Generated DSL stall nodes: ({dsl_stall_nodes})"
+
+  let updated_ctrlers ←
+    dsl_stall_nodes.foldlM (
+      λ ctrlers' dsl_stall_node_state => do
+        let (stall_node, new_stall_state_name, stall_point, inst_to_stall_type') := dsl_stall_node_state;
+
+        UpdateCtrlerWithNode ctrlers' stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_type')
+          |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while updating the controllers with the stall state"
+    ) ctrlers
+  
+  dbg_trace s!"<< Finished In Order Transformation: ({inst_to_stall_on_types}) -> ({inst_to_stall_types}) or ({stall_point_param?})"
 
   pure updated_ctrlers
 
@@ -157,59 +144,117 @@ def append_created_states_if_needed
 def CDFG.Graph.TernaryInOrderTransform
 (graph : Graph)
 (ctrlers : Ctrlers)
-(inst_to_stall_on_type : InstType)
+(inst_to_stall_on_types : List InstType)
 (memory_ordering_type : InstType)
-(inst_to_stall_type : InstType)
-(provided_stall_point? : Option CtrlerState)
+(inst_to_stall_types : List InstType)
+(provided_stall_point? : Option (CtrlerState × InstType))
 -- (stall_point_param? : Option CtrlerState) -- Could try to add a fence to load-replay, so the replay is stalled on the memory-ordering-fence
 : Except String (List controller_info) := do
   -- Simple implementation, break down this MCM-Ordering: stall_on -> ordering -> to_stall,
   -- into: stall_on -> ordering, ordering -> to_stall
   -- stall_on -> ordering
-  let ordering_stall_point := ← get_stall_point none graph memory_ordering_type ctrlers
-    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({memory_ordering_type}) stall point in TernaryInOrderTransform"
+  let ordering_stall_point : (CtrlerState × (InstType)) := (
+    ( ← graph.find_stall_point_heuristic memory_ordering_type ctrlers
+      |>.throw_exception_nesting_msg s!"Error finding ordering inst ({memory_ordering_type}) stall point in TernaryInOrderTransform")
+    ,
+    memory_ordering_type
+  )
   -- ordering -> to_stall
-  let access_stall_point := ← get_stall_point provided_stall_point? graph inst_to_stall_type ctrlers
-    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({inst_to_stall_type}) stall point in TernaryInOrderTransform"
+  let access_stall_point : List (CtrlerState × (InstType)) := ← get_stall_point provided_stall_point? graph inst_to_stall_types ctrlers
+    |>.throw_exception_nesting_msg s!"Error finding ordering inst ({inst_to_stall_types}) stall point in TernaryInOrderTransform"
 
   dbg_trace s!"<< Found ordering stall point from heuristic: ({ordering_stall_point})"
   dbg_trace s!"<< Found access stall point from heuristic: ({access_stall_point})"
 
   -- stall_on -> ordering
   dbg_trace s!"<< Find stall_on states to query"
-  let query_stall_on_ctrler_state : List CtrlerStates := ← graph.pre_receive_state inst_to_stall_on_type
-    |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in TernaryInOrderTransform"
+  let query_stall_on_ctrler_state : List ( (List CtrlerStates) × InstType) := ← inst_to_stall_on_types.mapM (do
+    let inst_type' := ·;
+    let ctrler_states := ← graph.pre_receive_state inst_type'
+      |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in TernaryInOrderTransform"
+    pure (ctrler_states, inst_type')
+    )
   -- ordering -> to_stall
   dbg_trace s!"<< Find ordering states to query"
-  let query_ordering_ctrler_state : List CtrlerStates := ← graph.pre_receive_state memory_ordering_type
-    |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in TernaryInOrderTransform"
+  let query_ordering_ctrler_state : List CtrlerStates × InstType :=
+    (
+      (← graph.pre_receive_state memory_ordering_type
+        |>.throw_exception_nesting_msg s!"Error finding ordering_inst states to query in TernaryInOrderTransform")
+      ,
+      memory_ordering_type
+    )
 
-  let ternary_suffix := "_".intercalate <| [inst_to_stall_on_type, memory_ordering_type, inst_to_stall_type].map (·.toString)
-  let ordering_stall_state_name := ordering_stall_point.new_stall_state_name inst_to_stall_on_type memory_ordering_type (some ternary_suffix)
-  let access_stall_state_name := ordering_stall_point.new_stall_state_name memory_ordering_type inst_to_stall_type (some ternary_suffix)
+  let stall_on_types_name := "_".intercalate <| inst_to_stall_on_types.map (·.toString)
+  let to_stall_types_name := "_".intercalate <| inst_to_stall_types.map (·.toString)
 
-  let stall_points : List (CtrlerState × StateName) := [( ordering_stall_point, ordering_stall_state_name ), ( access_stall_point, access_stall_state_name )]
+  let ternary_suffix := "_".intercalate <| [stall_on_types_name, memory_ordering_type.toString, to_stall_types_name]
+  -- let ordering_stall_state_name := ordering_stall_point.new_stall_state_name inst_to_stall_on_type memory_ordering_type (some ternary_suffix)
+  let ordering_stall_state_name : (CtrlerState × StateName × InstType) := (
+    let (stall_point, inst_type) := ordering_stall_point; 
+    let new_state_name := stall_point.new_stall_state_name inst_to_stall_on_types inst_type (some ternary_suffix)
+    ( stall_point, new_state_name, inst_type)
+  )
+  -- let access_stall_state_name := ordering_stall_point.new_stall_state_name memory_ordering_type inst_to_stall_type (some ternary_suffix)
+  let access_stall_state_name : List (CtrlerState × StateName × InstType) := access_stall_point.map (
+    let (stall_point, inst_type) := ·; 
+    let new_state_name := stall_point.new_stall_state_name inst_to_stall_on_types inst_type (some ternary_suffix)
+    ( stall_point, new_state_name, inst_type)
+  )
+
+  let ordering_stall_points_new_name : (CtrlerState × StateName) := (let (stall_pt, new_name, _) := ordering_stall_state_name; (stall_pt, new_name))
+  let access_stall_points_new_name := access_stall_state_name.map (let (stall_pt, new_name, _) := ·; (stall_pt, new_name))
+  let stall_points : List (CtrlerState × StateName) := [ ordering_stall_points_new_name ] ++ access_stall_points_new_name
 
   dbg_trace s!"<< Add the generated stall state to the 'stall on' states to query"
-  let query_stall_on_ctrler_states' : List CtrlerStates := ← append_created_states_if_needed stall_points query_stall_on_ctrler_state
+  let query_stall_on_ctrler_states' : List (List CtrlerStates × InstType) := ←
+    query_stall_on_ctrler_state.mapM (do
+      let (ctrler_states, inst_type) := ·;
+      let updated_query_states := ← append_created_states_if_needed stall_points ctrler_states;
+      pure (updated_query_states, inst_type)
+    )
   dbg_trace s!"<< Add the generated stall state to the 'ordering' states to query"
-  let query_ordering_ctrler_states' : List CtrlerStates := ← append_created_states_if_needed stall_points query_ordering_ctrler_state
+  let query_ordering_ctrler_states' : (List CtrlerStates × InstType) := 
+    (
+      (← append_created_states_if_needed stall_points query_ordering_ctrler_state.1)
+      ,
+      query_ordering_ctrler_state.2
+    )
   
   dbg_trace s!"<< Generate the ordering_inst stall state"
-  let ordering_stall_node := ← ctrlers.StallNode ordering_stall_point.state ordering_stall_point.ctrler query_stall_on_ctrler_states' inst_to_stall_on_type memory_ordering_type ordering_stall_state_name
-    |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the ordering_inst stall state"
+  let ordering_stall_node : ( Pipeline.Description × StateName × CtrlerState × InstType) := ← (do
+    let (stall_point, new_stall_state_name, inst_to_stall_type') := ordering_stall_state_name;
+    let dsl_stall := ← ctrlers.StallNode stall_point.state stall_point.ctrler [query_ordering_ctrler_states'] /-inst_to_stall_on_types-/ inst_to_stall_type' new_stall_state_name
+      |>.throw_exception_nesting_msg s!"Error in TernaryInOrderTransformation while generating the stall state"
+    pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
+  )
   dbg_trace s!"<< Generate the access_inst stall state"
-  let access_stall_node := ← ctrlers.StallNode access_stall_point.state access_stall_point.ctrler query_ordering_ctrler_states' memory_ordering_type inst_to_stall_type access_stall_state_name
-    |>.throw_exception_nesting_msg s!"Error in InOrderTransformation while generating the ordering_inst stall state"
+  let access_stall_nodes : List ( Pipeline.Description × StateName × CtrlerState × InstType) := ← access_stall_state_name.mapM (do
+    let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
+    let dsl_stall := ← ctrlers.StallNode stall_point.state stall_point.ctrler [query_ordering_ctrler_states'] /-inst_to_stall_on_types-/ inst_to_stall_type' new_stall_state_name
+      |>.throw_exception_nesting_msg s!"Error in TernaryInOrderTransformation while generating the stall state"
+    pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
+  )
 
   dbg_trace s!"<< Update the controllers with the new ordering stall states"
-  let updated_ctrlers'  ← UpdateCtrlerWithNode ctrlers          ordering_stall_point.ctrler ordering_stall_state_name ordering_stall_node ordering_stall_point.state (some memory_ordering_type)
+  let updated_ctrlers' := ← (
+    let (stall_node, new_stall_state_name, stall_point, inst_to_stall_type') := ordering_stall_node;
+
+    UpdateCtrlerWithNode ctrlers stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_type')
+      |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while updating the controllers with the stall state"
+  )
   dbg_trace s!"<< Update the controllers with the new access stall states"
-  let updated_ctrlers'' ← UpdateCtrlerWithNode updated_ctrlers' access_stall_point.ctrler   access_stall_state_name   access_stall_node   access_stall_point.state   (some inst_to_stall_type)
+  let updated_ctrlers'' ←
+    access_stall_nodes.foldlM (
+      λ ctrlers' dsl_stall_node_state => do
+        let (stall_node, new_stall_state_name, stall_point, inst_to_stall_type') := dsl_stall_node_state;
+
+        UpdateCtrlerWithNode ctrlers' stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_type')
+          |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while updating the controllers with the stall state"
+    ) updated_ctrlers'
 
   pure updated_ctrlers''
 
-def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering) (provided_stall_point? : Option CtrlerState)
+def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering) (provided_stall_point? : Option ( CtrlerState × InstType))
 : Except String Ctrlers := do
   -- induct on mcm-ordering type
   -- Handle cases:
@@ -221,10 +266,10 @@ def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering) (prov
   let graph : Graph := ← ctrlers.to_simple_instruction_graph
 
   match mcm_ordering with
-  | .binary_ordering ⟨/- BinaryOrdering -/ access₁, access₂, /- address -/ _ ⟩ => do
+  | .binary_ordering ⟨/- BinaryOrdering -/ accesses₁, accesses₂, /- address -/ _ ⟩ => do
     dbg_trace s!"<< In-Order-Transform binary ordering: ({mcm_ordering})"
-    graph.BinaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_access access₂ ) provided_stall_point?
+    graph.BinaryInOrderTransform ctrlers ( accesses₁.to_inst_type_list ) ( accesses₂.to_inst_type_list ) provided_stall_point?
   | .ternary_ordering ⟨ /- TernaryOrdering -/ access₁, ordering₂, access₃, /- address -/ _⟩ => do
     dbg_trace s!"<< In-Order-Transform ternary ordering: ({mcm_ordering})"
-    graph.TernaryInOrderTransform ctrlers ( InstType.memory_access access₁ ) ( InstType.memory_ordering ordering₂ ) ( InstType.memory_access access₃ ) provided_stall_point?
+    graph.TernaryInOrderTransform ctrlers ( access₁.to_inst_type_list ) ( InstType.memory_ordering ordering₂ ) ( access₃.to_inst_type_list ) provided_stall_point?
 

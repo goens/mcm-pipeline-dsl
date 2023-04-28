@@ -199,7 +199,7 @@ def iwp23b1 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.required}
-  orderings := [binary_ordering store' load' Addresses.same]
+  orderings := [binary_ordering [ store' ] [ load' ] Addresses.same]
 }
 
 def amd1 : LitmusTest := {
@@ -220,7 +220,7 @@ def amd1 : LitmusTest := {
     -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [(binary_ordering load' load' Addresses.any), (binary_ordering store' store' Addresses.any)]
+  orderings := [(binary_ordering [ load' ] [ load' ] Addresses.any), (binary_ordering [ store' ] [ store' ] Addresses.any)]
 }
 
 -- ====== 
@@ -242,7 +242,7 @@ def amd2 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [binary_ordering load' store' Addresses.any]
+  orderings := [binary_ordering [ load' ] [ store' ] Addresses.any]
 }
 
 -- Do not use until I can generate tests which can check for an existing trace
@@ -276,7 +276,7 @@ def amd3 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.permitted},
-  orderings := [(binary_ordering store' store' Addresses.any), (binary_ordering store' load' Addresses.any)]
+  orderings := [(binary_ordering [ store' ] [ store' ] Addresses.any), (binary_ordering [ store' ] [ load' ] Addresses.any)]
 }
 
 -- Definition n2
@@ -325,7 +325,7 @@ def n2 : LitmusTest := {
     {core_idx := 3, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.permitted},
-  orderings := [(binary_ordering load' load' Addresses.same), (binary_ordering load' load' Addresses.any), (binary_ordering store' store' Addresses.any)]
+  orderings := [(binary_ordering [ load' ] [ load' ] Addresses.same), (binary_ordering [ load' ] [ load' ] Addresses.any), (binary_ordering [ store' ] [ store' ] Addresses.any)]
 }
 
 -- Definition n4
@@ -363,7 +363,7 @@ def n4 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}, {reg_idx := 2, reg_val := 2}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [(binary_ordering store' store' Addresses.same), (binary_ordering load' load' Addresses.same)]
+  orderings := [(binary_ordering [ store' ] [ store' ] Addresses.same), (binary_ordering [ load' ] [ load' ] Addresses.same)]
 }
 
 -- Definition n5
@@ -394,7 +394,7 @@ def n5 : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [(binary_ordering store' load' Addresses.same)]
+  orderings := [(binary_ordering [ store' ] [ load' ] Addresses.same)]
 }
 
 
@@ -447,7 +447,7 @@ def Dekker : LitmusTest := {
     {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
     ],
     negate_or_not := TestResult.forbidden},
-  orderings := [(binary_ordering store' load' Addresses.any)]
+  orderings := [(binary_ordering [ store' ] [ load' ] Addresses.any)]
 }
 
 -- =========================== Fence Litmus Tests ===============================
@@ -472,8 +472,8 @@ def load_fence : LitmusTest := {
     ],
     negate_or_not := TestResult.forbidden}
   orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
-    (ternary_ordering load' mfence' load' Addresses.any),
-    (binary_ordering store' store' Addresses.any)]
+    (ternary_ordering [ load' ] mfence' [ load' ] Addresses.any),
+    (binary_ordering [ store' ] [ store' ] Addresses.any)]
 }
 
 def load_fence_store_fence : LitmusTest := {
@@ -496,8 +496,8 @@ def load_fence_store_fence : LitmusTest := {
     ],
     negate_or_not := TestResult.forbidden}
   orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
-    (ternary_ordering load' mfence' load' Addresses.any),
-    (ternary_ordering store' mfence' store' Addresses.any)]
+    (ternary_ordering [ load' ] mfence' [ load' ] Addresses.any),
+    (ternary_ordering [ store' ] mfence' [ store' ] Addresses.any)]
 }
 
 def dekker_fence : LitmusTest := {
@@ -521,7 +521,7 @@ def dekker_fence : LitmusTest := {
     ],
     negate_or_not := TestResult.forbidden}
   orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
-      (ternary_ordering store' mfence' load' Addresses.any)
+      (ternary_ordering [ store' ] mfence' [ load' ] Addresses.any)
     ]
 }
 

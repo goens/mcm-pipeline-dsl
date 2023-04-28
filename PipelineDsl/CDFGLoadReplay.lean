@@ -79,12 +79,12 @@ def CreateReplayIssueLoadState
         else
           throw "While CreateReplayIssueLoadState, couldn't find the state issue is predicated by commit on"
       else do -- !is_issue_ctrler_pred_on_commit && !is_issue_ctrler_and_await_response_ctrler_same
-        -- transition to the first state in the issue ctrler
+        -- (complete!) transition to the first state in the issue ctrler
         let issue_ctrler : Ctrler ← ctrlers.ctrler_from_name four_nodes.global_perform_load_node.ctrler_name
         let issue_ctrler_first_state : StateName ← issue_ctrler.init_trans_dest
-        let transition_to_first_state := Pipeline.Statement.transition issue_ctrler_first_state
+        let complete_to_first_state := Pipeline.Statement.complete issue_ctrler_first_state
 
-        pure (transition_to_first_state, [search_api_to_send_start_replay_await_msg])
+        pure (complete_to_first_state, [search_api_to_send_start_replay_await_msg])
 
   let replay_issue_stmts_blk := Pipeline.Statement.block ([replay_load_stmt] ++ additional_stmts ++ [transition_stmt])
 
@@ -153,7 +153,7 @@ def CreateReplayAwaitLoadState
   let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
 
   -- 5. ===== Then handle the transition at the end =====
-  let (transition_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ←
+  let (complete_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ←
     if is_issue_ctrler_and_await_response_ctrler_same && is_issue_ctrler_pred_on_commit then do
       -- transition to the issue load's state that's pred on commit
       if let some issue_ctrler_node_pred_on_commit := issue_ctrler_node_pred_on_commit? then do
@@ -165,25 +165,25 @@ def CreateReplayAwaitLoadState
         throw "Error, issue ctrler node should be available.."
     else if is_issue_ctrler_and_await_response_ctrler_same then do
       -- transition to the (issue load / await response) ctrler's first state
-      let trans_to_first_state ← ctrlers.transition_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+      let compl_to_first_state ← ctrlers.complete_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
 
       -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
       let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
 
-      pure (trans_to_first_state, additional_stmts)
+      pure (compl_to_first_state, additional_stmts)
     else do
       -- transition to the await load ctrler's first state
-      let trans_to_first_state ← ctrlers.transition_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+      let compl_to_first_state ← ctrlers.complete_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
 
       -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
       let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
 
-      pure (trans_to_first_state, additional_stmts)
+      pure (compl_to_first_state, additional_stmts)
       
   -- 4. signal to ROB that replay is complete
   let replay_complete_func_call_msg := CreateDSLMsgCall four_nodes.commit_node.ctrler_name replay_complete_msg_to_commit []
   let commit_ctrler ← ctrlers.ctrler_from_name four_nodes.commit_node.ctrler_name
-  let replay_complete_msg ← commit_ctrler.queue_search_api_to_send_msg replay_complete_func_call_msg (additional_stmts ++ [transition_stmt])
+  let replay_complete_msg ← commit_ctrler.queue_search_api_to_send_msg replay_complete_func_call_msg (additional_stmts ++ [complete_stmt])
 
 
   -- Combined from 2. 3. & 4.
@@ -594,8 +594,14 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
   dbg_trace s!"LoadReplay: MCM Ordering: ( {mcm_ordering} )"
   dbg_trace s!"LoadReplay: Commit Start Replay State Name: ( {commit_start_replay_state_name} )"
 
-  CDFG.InOrderTransform ctrlers_with_load_replay mcm_ordering (some commit_start_replay_state_name)
-  |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers!"
+  -- mcm_orderings.foldlM ( λ ctrlers mcm_ordering => do
+  --   dbg_trace s!"LoadReplay: InOrder Transform: MCM Ordering: ( {mcm_ordering} )"
+  --   CDFG.InOrderTransform ctrlers mcm_ordering (some commit_start_replay_state_name)
+  --     |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay! for Ordering ( {mcm_ordering} )"
+  -- ) ctrlers_with_load_replay
+
+  CDFG.InOrderTransform ctrlers_with_load_replay mcm_ordering (some (commit_start_replay_state_name, load))
+  |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
   
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
