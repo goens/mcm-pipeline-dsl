@@ -223,7 +223,7 @@ def CDFG.Graph.TernaryInOrderTransform
   dbg_trace s!"<< Generate the ordering_inst stall state"
   let ordering_stall_node : ( Pipeline.Description × StateName × CtrlerState × InstType) := ← (do
     let (stall_point, new_stall_state_name, inst_to_stall_type') := ordering_stall_state_name;
-    let dsl_stall := ← ctrlers.StallNode stall_point.state stall_point.ctrler [query_ordering_ctrler_states'] /-inst_to_stall_on_types-/ inst_to_stall_type' new_stall_state_name
+    let dsl_stall := ← ctrlers.StallNode stall_point.state stall_point.ctrler query_stall_on_ctrler_states' /-inst_to_stall_on_types-/ inst_to_stall_type' new_stall_state_name
       |>.throw_exception_nesting_msg s!"Error in TernaryInOrderTransformation while generating the stall state"
     pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
   )
