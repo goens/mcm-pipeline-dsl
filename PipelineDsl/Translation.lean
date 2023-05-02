@@ -2988,6 +2988,43 @@ partial def find_when_from_transition
 
   when_stmt
 
+partial def find_when_from_transition?
+(trans_list : List Pipeline.Description)
+(func_name : Identifier)
+(curr_ctrler_name : Identifier)
+: Option Pipeline.Statement
+:=
+  let when_with_matching_func_and_src_ctrler_name :=
+  trans_list.map (
+    λ trans =>
+      -- get the transition stmts, find stmts
+      -- which 
+      match trans with
+      | Description.state state_name stmt =>
+        match stmt with
+        | Statement.block lst_stmts =>
+          dbg_trace s!"first When stmt from find when state_name: ({state_name}) stmt: ({stmt})"
+          let when_blk :=
+            recursive_await_when_search lst_stmts func_name curr_ctrler_name
+          when_blk
+        | _ => dbg_trace "stmt under transition should be blk!"
+          []
+      | _ => dbg_trace "wasn't passed a transition?"
+        []
+  )
+  let when_stmts_lst := List.join when_with_matching_func_and_src_ctrler_name
+  let when_stmt :=
+    match when_stmts_lst with
+    | [one_stmt] => some one_stmt
+    | _::_ =>
+      dbg_trace "found multiple matching when stmts?"
+      default
+    | [] =>
+      dbg_trace "found no matching when stmts?"
+      none
+
+  when_stmt
+
 partial def find_state_name_matching_when_msg
 (trans_list : List Pipeline.Description)
 (func_name : Identifier)
@@ -4986,8 +5023,8 @@ lst_stmts_decls
             dbg_trace s!"curr_ctrler: ({ctrler_name})"
             dbg_trace s!"===== End When Info ====="
 
-            let when_stmt : Pipeline.Statement :=
-              find_when_from_transition states_to_search api_func_name ctrler_name
+            let when_stmt : Option Pipeline.Statement :=
+              find_when_from_transition? states_to_search api_func_name ctrler_name
             dbg_trace s!"dest_ctrler_name: ({dest_ctrler_name})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'arbitrary' ({api_func_name}) API: ({when_stmt})"
@@ -4995,67 +5032,76 @@ lst_stmts_decls
             dbg_trace s!"dest_ctrler: ({dest_ctrler})"
 
             let when_stmt_args : List String :=
-              match (get_when_stmt_src_args when_stmt) with
-              | .error msg =>
-                let msg' : String := s!"Error getting when stmt args in 'Arbitrary' API func: ({msg})"
-                dbg_trace msg'
-                -- default
-                panic! msg'
-              | .ok lst_args => lst_args
+              match when_stmt with
+              | none => []
+              | some when_stmt =>
+                match (get_when_stmt_src_args when_stmt) with
+                | .error msg =>
+                  let msg' : String := s!"Error getting when stmt args in 'Arbitrary' API func: ({msg})"
+                  dbg_trace msg'
+                  -- default
+                  panic! msg'
+                | .ok lst_args => lst_args
 
             -- Convert to Murphi Stmt
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| curr_idx]
-            let when_stmt_trans_info : stmt_translation_info := {
-              stmt := when_stmt,
-              lst_ctrlers := stmt_trans_info.lst_ctrlers,
-              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
-              --            want to set this to the SQ somehow...
-              src_ctrler := 
-              dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
-              dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
-              if stmt_trans_info.src_ctrler.isNone then
-                Option.some ctrler_name
-              else
-                Option.some stmt_trans_info.ctrler_name,
-              lst_src_args :=
-                if stmt_trans_info.lst_src_args.isSome then
-                  if stmt_trans_info.lst_src_args.get!.length > 0 then
-                    stmt_trans_info.lst_src_args
+            let (murphi_when_stmt_decls?, murphi_when_stmt_stmts?) : Option (List Decl) × Option (List Murϕ.Statement) :=
+              match when_stmt with
+              | some when_stmt =>
+                let when_stmt_trans_info : stmt_translation_info := {
+                  stmt := when_stmt,
+                  lst_ctrlers := stmt_trans_info.lst_ctrlers,
+                  ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+                  --            want to set this to the SQ somehow...
+                  src_ctrler := 
+                  dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+                  dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+                  if stmt_trans_info.src_ctrler.isNone then
+                    Option.some ctrler_name
                   else
-                    match when_stmt_args with
-                    | [] => Option.none
-                    | _ => Option.some when_stmt_args
-                else
-                  -- THe list of args from the func call
-                  match when_stmt_args with
-                  | [] => Option.none
-                  | _ => Option.some when_stmt_args
-                ,
-              func := stmt_trans_info.func,
-              is_await := stmt_trans_info.is_await,
-              entry_keyword_dest := Option.some dest_ctrler_name,
-              trans_obj := stmt_trans_info.trans_obj,
-              -- Swap curr ctrler designator & specific murphi desig
-              -- since we just call in the opposite order
-              specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx,
-              lst_decls := stmt_trans_info.lst_decls,
-              is_rhs := stmt_trans_info.is_rhs,
-              -- By setting these fields, I assume we'll specifically mean to use this with 
-              -- controllers with multiple elements, and thus we need to use 'tail_search'
-              -- which indexes the dest with 'curr_idx'
-              use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
-              curr_ctrler_designator_idx := stmt_trans_info.specific_murphi_dest_expr -- murphi_dest_idx_expr
-              lhs_var_is_just_default := false
-              translate_entry_or_ctrler := entry_or_ctrler_translation
-            }
-            dbg_trace s!"Arbitrary msg translation. when stmt trans info: ({when_stmt_trans_info})"
-            -- TODO: Test the translation, I suspect I may need to set the
-            -- sepcific_murphi_dest_expr to this "i" index...
-            let murphi_when_stmts_decls : lst_stmts_decls :=
-              ast_stmt_to_murphi_stmts when_stmt_trans_info
-            let murphi_when_stmt : List Murϕ.Statement :=
-              murphi_when_stmts_decls.stmts
-            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+                    Option.some stmt_trans_info.ctrler_name,
+                  lst_src_args :=
+                    if stmt_trans_info.lst_src_args.isSome then
+                      if stmt_trans_info.lst_src_args.get!.length > 0 then
+                        stmt_trans_info.lst_src_args
+                      else
+                        match when_stmt_args with
+                        | [] => Option.none
+                        | _ => Option.some when_stmt_args
+                    else
+                      -- THe list of args from the func call
+                      match when_stmt_args with
+                      | [] => Option.none
+                      | _ => Option.some when_stmt_args
+                    ,
+                  func := stmt_trans_info.func,
+                  is_await := stmt_trans_info.is_await,
+                  entry_keyword_dest := Option.some dest_ctrler_name,
+                  trans_obj := stmt_trans_info.trans_obj,
+                  -- Swap curr ctrler designator & specific murphi desig
+                  -- since we just call in the opposite order
+                  specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx,
+                  lst_decls := stmt_trans_info.lst_decls,
+                  is_rhs := stmt_trans_info.is_rhs,
+                  -- By setting these fields, I assume we'll specifically mean to use this with 
+                  -- controllers with multiple elements, and thus we need to use 'tail_search'
+                  -- which indexes the dest with 'curr_idx'
+                  use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
+                  curr_ctrler_designator_idx := stmt_trans_info.specific_murphi_dest_expr -- murphi_dest_idx_expr
+                  lhs_var_is_just_default := false
+                  translate_entry_or_ctrler := entry_or_ctrler_translation
+                }
+                dbg_trace s!"Arbitrary msg translation. when stmt trans info: ({when_stmt_trans_info})"
+                -- TODO: Test the translation, I suspect I may need to set the
+                -- sepcific_murphi_dest_expr to this "i" index...
+                let murphi_when_stmts_decls : lst_stmts_decls :=
+                  ast_stmt_to_murphi_stmts when_stmt_trans_info
+                -- let murphi_when_stmt : List Murϕ.Statement :=
+                --   murphi_when_stmts_decls.stmts
+                
+                (some murphi_when_stmts_decls.decls, some murphi_when_stmts_decls.stmts)
+                dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+              | none => 
+                (none, none)
 
             -- Handle blocks?
             -- find_handle_blks_matching_msg states_to_search api_func_name ctrler_name
@@ -5117,13 +5163,18 @@ lst_stmts_decls
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
               dest_ctrler_name) expected_func expected_struct
-              (some murphi_when_stmt) (some ctrler_is_on_state_check)
+              (murphi_when_stmt_decls?) (some ctrler_is_on_state_check)
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
+            let murphi_when_stmt_decls : List Decl :=
+              match murphi_when_stmt? with
+              | some murphi_when_stmt_decls =>
+                murphi_when_stmt_decls
+              | none => []
             let stmts_decls : lst_stmts_decls := {
               stmts := squash_handle_by_state,
-              decls := murphi_when_stmts_decls.decls ++ state_handle_squash_if_stmt.decls
+              decls := murphi_when_stmt_decls ++ state_handle_squash_if_stmt.decls
             }
             stmts_decls
         else
