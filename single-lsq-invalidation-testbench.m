@@ -97,7 +97,7 @@ RENAME : record
   head : RENAME_idx_t;
   tail : RENAME_idx_t;
 end;
-STORE_STATE : enum {await_handling, await_invalidation_received, invalidation_received};
+STORE_STATE : enum {await_handling, await_invalidation_received, invalidation_received, store_send_completion};
 R_W : enum {read, write};
 MEM_REQ : record
   addr : addr_idx_t;
@@ -109,6 +109,7 @@ MEM_REQ : record
   seq_num : inst_count_t;
   store_state : STORE_STATE;
   store_inval_sent : array [cores_t] of boolean;
+  store_inval_ackd : array [cores_t] of boolean;
 end;
 MEM_ARRAY : record
   arr : array [addr_idx_t] of val_t;
@@ -291,6 +292,11 @@ begin
       ic.buffer[ i ].dest_id := 0;
       ic.buffer[ i ].seq_num := 0;
       ic.buffer[i].store_state := await_handling; -- await_invalidation_received -- NOTE: remember to reset this state
+      -- For each cores_t...
+      for core_idx : cores_t do
+        ic.buffer[i].store_inval_sent[core_idx] := false;
+        ic.buffer[i].store_inval_ackd[core_idx] := false;
+      endfor;
       ic.valid[ i ] := false;
     endfor;
     ic.num_entries := 0;
@@ -499,6 +505,7 @@ ruleset i : ic_idx_t do
   var addr : addr_idx_t;
   var mem_interface : MEM_INTERFACE;
   var store_invals_sent : boolean;
+  var store_invals_ackd : boolean;
 
 begin
   next_state := Sta;
@@ -518,23 +525,26 @@ begin
       -- continue until all cores have been sent an "invalidation" msg
       -- then progress to the next state...
 
-      -- i.e. For all cores not the dest of this core, send an invalidation
+      -- i.e. For all cores that are not the dest of this core AND
+      -- haven't been sent to already AND
+      -- aren't busy with a message, send an invalidation
       for core_idx : cores_t do
         if (core_idx != ic.buffer[i].dest_id) & (ic.buffer[i].store_inval_sent[core_idx] = false) & (Sta.core_[core_idx].mem_interface_.in_busy = false) then
           -- Do the write to memory...
           mem.arr[ addr ] := ic.buffer[ i ].value;
 
           -- mem_interface := Sta.core_[ j ].mem_interface_;
-          next_state.core_[core_idx].mem_interface.in_msg := ic.buffer[ i ];
-          next_state.core_[core_idx].mem_interface.in_msg.dest := core;
-          next_state.core_[core_idx].mem_interface.in_busy := true;
+          next_state.core_[core_idx].mem_interface_.in_msg := ic.buffer[ i ];
+          next_state.core_[core_idx].mem_interface_.in_msg.dest := core;
+          next_state.core_[core_idx].mem_interface_.in_busy := true;
         end;
       endfor;
 
-      store_invals_sent := false;
+      store_invals_sent := true;
       for core_idx : cores_t do
         if (core_idx != ic.buffer[i].dest_id) then
           -- TODO: check if all core - dests have an invalidation sent already....
+          store_invals_sent := store_invals_sent & ic.buffer[i].store_inval_sent[core_idx];
         end;
       endfor;
 
@@ -542,11 +552,40 @@ begin
         ic.buffer[i].store_state := await_invalidation_received;
       end;
 
+    elsif (ic.buffer[i].store_state = await_invalidation_received) then
+
+      store_invals_ackd := true;
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) then
+          -- TODO: check if all core - dests have an invalidation sent already....
+          store_invals_ackd := store_invals_ackd & ic.buffer[i].store_inval_ackd[core_idx];
+        end;
+      endfor;
+
+      if store_invals_ackd then
+        ic.buffer[i].store_state := invalidation_received;
+      end;
+
     elsif (ic.buffer[i].store_state = invalidation_received) then
       -- Set destination to core, when done with request..
-      next_state.core_[j].mem_interface.in_msg := ic.buffer[ i ];
-      ic.buffer[i].store_state := await_invalidation_received;
+
+      -- NOTE: Don't have to do this below, since there's a rule to move msgs to cores
+      -- when dest is set to core..
+      -- next_state.core_[ ic.buffer[i].dest_id ].mem_interface_.in_msg := ic.buffer[ i ];
+
+      ic.buffer[i].store_state := store_send_completion;
       ic.buffer[ i ].dest := core;
+
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) then
+          -- Reset this state...
+          ic.buffer[i].store_inval_sent[core_idx] := false;
+          ic.buffer[i].store_inval_ackd[core_idx] := false;
+        end;
+      endfor;
+    elsif (ic.buffer[i].store_state = store_send_completion) then
+      -- NOTE: do nothing. another controler/rule will take the message and send it?
+      -- i could put the code here as well....
     else
       error "Unreachable or unhandled case of store state in the InterConnect.";
     end;
@@ -573,6 +612,7 @@ ruleset i : ic_idx_t do
 
 begin
   next_state := Sta;
+
   ic := Sta.ic_;
   mem_interface := Sta.core_[ j ].mem_interface_;
   mem_interface.in_msg := ic.buffer[ i ];
@@ -587,6 +627,7 @@ begin
   ic.num_entries := (ic.num_entries - 1);
   next_state.ic_ := ic;
   next_state.core_[ j ].mem_interface_ := mem_interface;
+
   Sta := next_state;
 
 end;
@@ -603,6 +644,7 @@ ruleset j : cores_t do
   var lq : LSQ;
   var sb : ROB;
   var mem_interface : MEM_INTERFACE;
+  var found_msg_in_ic : boolean;
 
 begin
   next_state := Sta;
@@ -613,6 +655,27 @@ begin
     lq := associative_assign_ld(lq, mem_interface.in_msg);
   elsif (mem_interface.in_msg.r_w = write) then
     if (mem_interface.in_msg.store_state = await_handling) then
+      -- Overview: Send back an ack for the invalidation sent..
+      -- match this message with it's copy in the IC, set it's ack bool to true.
+      found_msg_in_ic := false;
+      for ic_idx : ic_idx_t do
+        -- if msg entry is valid & seq num matches, use this...
+        -- ..and ack the IC entry
+        if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = mem_interface.in_msg.seq_num)
+          & (Sta.ic_.buffer[ic_idx].dest_id = mem_interface.in_msg.dest_id) then
+          next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
+
+          if found_msg_in_ic = true then
+            error "we found 2 matching ic entries? shouldn't happen...";
+          elsif found_msg_in_ic = false then
+            found_msg_in_ic := true;
+          endif;
+        endif;
+      endfor;
+
+      -- then clear the message entry..
+      -- ..so the core can accept new msgs
+      mem_interface.in_busy := false;
     elsif (mem_interface.in_msg.store_state = invalidation_received) then
       sb := associative_ack_st(sb, mem_interface.in_msg);
     end;
@@ -1521,6 +1584,11 @@ begin
             next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
             next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
             next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num;
+            next_state.core_[j].mem_interface_.out_msg.store_state := await_handling;
+            for core_idx : cores_t do
+              next_state.core_[j].mem_interface_.out_msg.store_inval_sent[core_idx] := false;
+              next_state.core_[j].mem_interface_.out_msg.store_inval_ackd[core_idx] := false;
+            endfor;
             next_state.core_[ j ].mem_interface_.out_busy := true;
             next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_time_await_st_mem_resp;
           end;
