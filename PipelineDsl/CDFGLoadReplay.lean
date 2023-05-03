@@ -476,7 +476,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
         UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers
       | .Unordered => do -- NOTE: Case where we update the issue ctrler's first state to the optional state, and add the await-commit-start state
         UpdateIssueCtrlerFirstStateToAwaitReplayCommit four_nodes ctrlers
-      | .FIFO => throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
+      | .FIFO => do throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
   -- AZ NOTE: Must insert or replace the state accordingly, based on the cases above...
 
   dbg_trace s!"await_replay_start_state: ({await_replay_start_state})"
