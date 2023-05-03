@@ -5098,8 +5098,8 @@ lst_stmts_decls
                 -- let murphi_when_stmt : List Murϕ.Statement :=
                 --   murphi_when_stmts_decls.stmts
                 
+                dbg_trace s!"Translated when stmts: ({murphi_when_stmts_decls.stmts})"
                 (some murphi_when_stmts_decls.decls, some murphi_when_stmts_decls.stmts)
-                dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
               | none => 
                 (none, none)
 
@@ -5163,12 +5163,12 @@ lst_stmts_decls
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
               dest_ctrler_name) expected_func expected_struct
-              (murphi_when_stmt_decls?) (some ctrler_is_on_state_check)
+              (murphi_when_stmt_stmts?) (some ctrler_is_on_state_check)
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
             let murphi_when_stmt_decls : List Decl :=
-              match murphi_when_stmt? with
+              match murphi_when_stmt_decls? with
               | some murphi_when_stmt_decls =>
                 murphi_when_stmt_decls
               | none => []
