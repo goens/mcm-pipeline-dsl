@@ -2601,6 +2601,21 @@ def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state :
   let ctrler_not_completed := Pipeline.Statement.value_declaration (Pipeline.TypedIdentifier.mk "bool" if_at_state) (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
   pure (ctrler_not_completed, if_not_completed)
 
+def CtrlerStates.to_if_state_then_do
+(ctrler_states : CtrlerStates)
+(when_success_stmts : List Pipeline.Statement)
+(ctrlers : Ctrlers)
+: Except String (Pipeline.Statement) := do
+  -- let not_completed_true := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
+  -- let not_completed_false := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
+
+  let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
+  let ctrler_type ← ctrler.type 
+  let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_states.ctrler
+  let if_on_state := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr when_success_stmts.to_block [].to_block)
+
+  pure if_on_state
+
 
 abbrev when_stmt := Pipeline.Statement.when -- when <msg>() from <ctrler> { <stmts> }
 abbrev qualified_var := Pipeline.Term.qualified_var -- i.e. "entry.instruction.seq_num", LQ.tail_search, etc.
@@ -2623,7 +2638,12 @@ def Pipeline.Expr.to_term (expr : Pipeline.Expr) : Pipeline.Term :=
   term_expr expr
 
 abbrev binand := Pipeline.Expr.binand
-def CtrlerName.FIFOOlderInstSearch (dest_ctrler_name : CtrlerName) (stall_on_inst_type : InstType) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
+def CtrlerName.FIFOOlderInstSearch
+(dest_ctrler_name : CtrlerName)
+(stall_on_inst_type : InstType)
+(success_case_stmts : List Pipeline.Statement)
+(search_api : MsgName)
+: Pipeline.Statement :=
   -- await LQ.tail_search(entry.instruction.seq_num < instruction.seq_num) {
   --   when search_fail() from LQ {
   --     ld_seq_num = NULL # 0
@@ -2645,11 +2665,16 @@ def CtrlerName.FIFOOlderInstSearch (dest_ctrler_name : CtrlerName) (stall_on_ins
 
   let entry_is_older_and_stall_type := binand entry_seq_num_less_than.to_term entry_is_stall_type.to_term
 
-  let search_api_term : Pipeline.Term := function_call [dest_ctrler_name, tail_search].to_qual_name [entry_is_older_and_stall_type]
+  let search_api_term : Pipeline.Term := function_call [dest_ctrler_name, search_api].to_qual_name [entry_is_older_and_stall_type]
   let search_api := await (some search_api_term) [when_search_success, when_search_fail]
   search_api
 
-def CtrlerName.UnorderedOlderInstSearch (dest_ctrler_name : CtrlerName) (stall_on_inst_type : InstType) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
+def CtrlerName.UnorderedOlderInstSearch
+(dest_ctrler_name : CtrlerName)
+(stall_on_inst_type : InstType)
+(success_case_stmts : List Pipeline.Statement)
+(search_api : MsgName)
+: Pipeline.Statement :=
   -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
   -- when search_fail() from SB
   -- when search_success(write_value) from SB
@@ -2670,7 +2695,7 @@ def CtrlerName.UnorderedOlderInstSearch (dest_ctrler_name : CtrlerName) (stall_o
   let min_of_diff : Pipeline.Expr := some_term $ function_call [(min : Identifier)].to_qual_name [inst_and_entry_inst_seq_num_diff]
 
   -- AZ NOTE: min_of_diff may not be necessary...
-  let search_api_term : Pipeline.Term := function_call [dest_ctrler_name, search].to_qual_name [entry_is_older_and_stall_type, min_of_diff]
+  let search_api_term : Pipeline.Term := function_call [dest_ctrler_name, /-search-/ search_api].to_qual_name [entry_is_older_and_stall_type, min_of_diff]
   let search_api := await (some search_api_term) [when_search_success, when_search_fail]
   search_api
 
@@ -2682,7 +2707,37 @@ abbrev reset := Pipeline.Statement.reset
 
 abbrev not_equal := Pipeline.Expr.not_equal
 abbrev num_lit := Pipeline.Const.num_lit
-def CtrlerStates.query_older_insts (ctrler_states : CtrlerStates) (stall_on_inst_type : InstType) (original_state_name : StateName) (if_stmt : Pipeline.Statement) (ctrlers : Ctrlers)
+
+inductive SearchType where
+| hit_one : SearchType
+| hit_all : SearchType
+
+def search_all' : MsgName := "search_all"
+
+def SearchType.search_api
+(search_type : SearchType)
+(ctrler_type : CtrlerType)
+: Option MsgName :=
+  match search_type with
+  | SearchType.hit_one =>
+    match ctrler_type with
+    | .FIFO => some tail_search
+    | .Unordered => some search
+    | .BasicCtrler => none
+  | SearchType.hit_all =>
+    match ctrler_type with
+    | .FIFO
+    | .Unordered => some search_all'
+    | .BasicCtrler => none
+
+def CtrlerStates.query_older_insts
+(ctrler_states : CtrlerStates)
+(stall_on_inst_type : InstType)
+-- (original_state_name : StateName)
+(if_stmt : Pipeline.Statement)
+(else_stmt : Pipeline.Statement)
+(ctrlers : Ctrlers)
+(search_type : SearchType)
 : Except String SearchStatement := do
   let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error (gen query for ctrler/states) trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
   let ctrler_type ← ctrler.type
@@ -2700,15 +2755,26 @@ def CtrlerStates.query_older_insts (ctrler_states : CtrlerStates) (stall_on_inst
       if_else_statement
         entry_is_stall_type_and_valid
         if_stmt
-        (reset original_state_name)
+        else_stmt
   | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
   -- TODO: replace default. add helper to create search API with stmts in it
-    pure $ ctrler_states.ctrler.FIFOOlderInstSearch stall_on_inst_type [if_stmt]
+    if let some search_api := search_type.search_api ctrler_type then
+      pure $ ctrler_states.ctrler.FIFOOlderInstSearch stall_on_inst_type [if_stmt] search_api
+    else
+      throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
   | .Unordered =>
-    pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt]
+    if let some search_api := search_type.search_api ctrler_type then
+      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] search_api
+    else
+      throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
 
 -- also return the not-completed-check var_name, so we can OR them together
-def CtrlerStates.to_query (ctrler_states : CtrlerStates) (inst_type : InstType) /- (stall_on_inst_type : InstType) -/ (original_state_name : StateName) (ctrlers : Ctrlers)
+def CtrlerStates.to_query
+(ctrler_states : CtrlerStates)
+(inst_type : InstType)
+/- (stall_on_inst_type : InstType) -/
+(original_state_name : StateName)
+(ctrlers : Ctrlers)
 -- NOTE: Consider if I actually just need a fixed number of stmts, like a tuple
 : Except String (BoolDecl × SearchStatement × VarName) := do
   let var_name : VarName := ("_".intercalate [ctrler_states.ctrler, inst_type.toString, "is_in_state_set"]);
@@ -2723,7 +2789,8 @@ def CtrlerStates.to_query (ctrler_states : CtrlerStates) (inst_type : InstType) 
   let (ctrler_not_completed_var, if_not_completed) ← ctrler_states.to_if_state_check var_name ctrlers
 
   -- TODO: Create a helper to check if the ctrler is a queue, and use the right search API
-  let query_older_insts ← ctrler_states.query_older_insts inst_type original_state_name if_not_completed ctrlers
+  let reset_to_original := (reset original_state_name)
+  let query_older_insts ← ctrler_states.query_older_insts inst_type if_not_completed reset_to_original ctrlers SearchType.hit_one
 
   pure (ctrler_not_completed_var, query_older_insts, var_name)
 
@@ -2758,7 +2825,12 @@ def Prod.to_typed_identifier ( tuple : Prod String String) : TypedIdentifier :=
 
 abbrev bool_decl := Pipeline.Statement.variable_declaration
 abbrev variable_assignment := Pipeline.Statement.variable_assignment
-def List.to_queries (states_to_query : List (List CtrlerStates × InstType)) /-(stall_on_inst_type : InstType)-/ (original_state_name : StateName) (ctrlers : Ctrlers) : Except String (List (BoolDecl × SearchStatement × VarName)) := do
+def List.to_queries
+(states_to_query : List (List CtrlerStates × InstType))
+/-(stall_on_inst_type : InstType)-/
+(original_state_name : StateName)
+(ctrlers : Ctrlers)
+: Except String (List (BoolDecl × SearchStatement × VarName)) := do
   -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
   let decl_search_var : List (BoolDecl × SearchStatement × VarName) := List.join $ ← states_to_query.mapM (do
     let (states_list, stall_on_inst_type') := ·;
@@ -2898,3 +2970,39 @@ def List.add_ctrler_state (ctrler_states_list : List CtrlerStates) (ctrler_name 
 
   ctrler_states_list.map (let ctrler_states := ·; if ctrler_states.ctrler == ctrler_name then added_state else ctrler_states) |> pure
 
+def List.to_query_match_do
+(states_to_query : List (List CtrlerStates × InstType))
+(when_success_stmts : List Pipeline.Statement)
+(ctrlers : Ctrlers)
+: Except String (List SearchStatement) := do
+  -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
+  let decl_search_var : List (SearchStatement) := List.join $ ← states_to_query.mapM (do
+    let (states_list, inst_to_query) := ·;
+    let gen_checks := states_list.mapM (do
+      let states := ·;
+
+      let if_on_state_do := ←
+        CtrlerStates.to_if_state_then_do states when_success_stmts ctrlers
+
+      CtrlerStates.query_older_insts
+        states
+        inst_to_query
+        if_on_state_do
+        [].to_block
+        ctrlers
+        SearchType.hit_all
+      )
+      |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
+    gen_checks
+    )
+  pure decl_search_var 
+
+abbrev stray_expr := Pipeline.Statement.stray_expr
+
+def QueryAll
+(ctrler_states_list : List (List CtrlerStates × InstType))
+(when_search_success_stmts : List Pipeline.Statement)
+(ctrlers : Ctrlers)
+: Except String (List Pipeline.Statement) := do
+  ctrler_states_list.to_query_match_do when_search_success_stmts ctrlers
+  
