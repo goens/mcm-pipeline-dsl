@@ -2862,6 +2862,7 @@ def Pipeline.Statement.decl_name : Pipeline.Statement → Except String VarName
 -- abbrev conditional_stmt := Pipeline.Statement.conditional_stmt
 -- abbrev if_else_statement := Pipeline.Conditional.if_else_statement
 abbrev transition := Pipeline.Statement.transition
+abbrev complete := Pipeline.Statement.complete
 -- abbrev reset := Pipeline.Statement.reset
 
 
@@ -3005,4 +3006,6 @@ def QueryAll
 (ctrlers : Ctrlers)
 : Except String (List Pipeline.Statement) := do
   ctrler_states_list.to_query_match_do when_search_success_stmts ctrlers
+
+abbrev variable_declaration := Pipeline.Statement.variable_declaration
   
