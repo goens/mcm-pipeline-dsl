@@ -384,7 +384,8 @@ begin
     if (curr_entry.instruction.seq_num = seq_num) then
       assert ((curr_entry.state = squashed_await_ld_mem_resp)
         | (curr_entry.state = await_mem_response)
-        | (curr_entry.state = replay_generated_await_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+        -- | (curr_entry.state = replay_generated_await_mem_response)
+        ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
       if (curr_entry.state = await_mem_response) then
         curr_entry.state := write_result;
       elsif (curr_entry.state = squashed_await_ld_mem_resp) then
@@ -544,6 +545,12 @@ begin
       ic.buffer[ i ].dest := mem;
       ic.buffer[ i ].dest_id := 0;
       ic.buffer[ i ].seq_num := 0;
+      ic.buffer[i].store_state := await_handling; -- await_invalidation_received -- NOTE: remember to reset this state
+      -- For each cores_t...
+      for core_idx : cores_t do
+        ic.buffer[i].store_inval_sent[core_idx] := false;
+        ic.buffer[i].store_inval_ackd[core_idx] := false;
+      endfor;
       ic.valid[ i ] := false;
     endfor;
     ic.num_entries := 0;
@@ -644,6 +651,11 @@ begin
         sb.entries[ i ].state := sb_await_creation;
       endfor;
       sb.num_entries := 0;
+    end;
+    alias listen_handler : init_state.core_[core].invalidation_listener_ do
+      listen_handler.seq_num := 0;
+      listen_handler.address := 0;
+      listen_handler.state := await_invalidation;
     end;
   endfor;
   alias rename_c0 : init_state.core_[ 0 ].RENAME_ do
@@ -943,7 +955,7 @@ begin
   sb := Sta.core_[ j ].SB_;
   mem_interface := Sta.core_[ j ].mem_interface_;
   if (mem_interface.in_msg.r_w = read) then
-    lq := associative_assign_ld(lq, mem_interface.in_msg);
+    lq := associative_assign_lq(lq, mem_interface.in_msg);
     mem_interface.in_busy := false;
   elsif (mem_interface.in_msg.r_w = write) then
     if (mem_interface.in_msg.store_state = await_handling) then
@@ -983,7 +995,7 @@ begin
 
       assert mem_interface.in_busy = true "This should still be busy...";
     elsif (mem_interface.in_msg.store_state = invalidation_received) then
-      sb := associative_ack_st(sb, mem_interface.in_msg);
+      sb := associative_ack_sb(sb, mem_interface.in_msg);
       mem_interface.in_busy := false;
     end;
   end;
@@ -1072,7 +1084,7 @@ begin
   LQ_offset := 0;
   while ((LQ_offset <= LQ_difference) & (LQ_while_break = false)) do
     LQ_search_all_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].instruction.seq_num < instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].instruction.op = ld)) then
+    if ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].instruction.seq_num < Sta.core_[j].invalidation_listener_.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].instruction.op = ld)) then
       if ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].state = write_result) | ((next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].state = await_committed) | (next_state.core_[ j ].LQ_.entries[ LQ_search_all_curr_idx ].state = squashed_await_ld_mem_resp))))) then
         for ROB_squash_idx : ROB_idx_t do
           if true then
@@ -1096,7 +1108,7 @@ begin
   ROB_offset := 0;
   while ((ROB_offset <= ROB_difference) & (ROB_while_break = false)) do
     ROB_search_all_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].instruction.seq_num < instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].instruction.op = ld)) then
+    if ((next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].instruction.seq_num < Sta.core_[j].invalidation_listener_.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].instruction.op = ld)) then
       if ((next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_search_all_curr_idx ].state = rob_commit_if_head)) then
         for ROB_squash_idx : ROB_idx_t do
           if true then
@@ -1110,6 +1122,30 @@ begin
       ROB_while_break := true;
     end;
   end;
+
+      found_msg_in_ic := false;
+      for ic_idx : ic_idx_t do
+        -- if msg entry is valid & seq num matches, use this...
+        -- ..and ack the IC entry
+        if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
+          & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
+
+          -- (1) send ack
+          next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
+
+
+          if found_msg_in_ic = true then
+            error "we found 2 matching ic entries? shouldn't happen...";
+          elsif found_msg_in_ic = false then
+            found_msg_in_ic := true;
+          endif;
+        endif;
+      endfor;
+
+      assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
+      assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
+      next_state.core_[j].mem_interface_.in_busy := false;
+
   next_state.core_[ j ].invalidation_listener_.state := await_invalidation;
   Sta := next_state;
 
@@ -1507,6 +1543,11 @@ begin
   next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
   next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
   next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num;
+  next_state.core_[j].mem_interface_.out_msg.store_state := await_handling;
+  for core_idx : cores_t do
+    next_state.core_[j].mem_interface_.out_msg.store_inval_sent[core_idx] := false;
+    next_state.core_[j].mem_interface_.out_msg.store_inval_ackd[core_idx] := false;
+  endfor;
   next_state.core_[ j ].mem_interface_.out_busy := true;
   next_state.core_[ j ].SB_.entries[ i ].state := sb_await_mem_response;
   Sta := next_state;
@@ -2023,7 +2064,7 @@ end;
 
 ruleset j : cores_t; i : RENAME_idx_t do 
   rule "RENAME issue_if_head ===> issue_if_head || issue_if_head || issue_if_head || issue_if_head || issue_if_head || issue_if_head" 
-(((Sta.core_[ j ].RENAME_.entries[ i ].state = issue_if_head) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST)) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST))
+(((Sta.core_[ j ].RENAME_.entries[ i ].state = issue_if_head) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST)) & (Sta.core_[j].RENAME_.num_entries > 0))
 ==>
  
   var IQ_loop_break : boolean;
