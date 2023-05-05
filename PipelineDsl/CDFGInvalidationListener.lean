@@ -1,15 +1,18 @@
 import PipelineDsl.CDFG
 import PipelineDsl.CDFGInOrderTfsm
+import PipelineDsl.DSLtoCDFG
 
 
 def address := "address"
 def invalidation := "invalidation"
+def invalidation_ack := "invalidation_ack"
 
+open Pipeline in
 def CDFG.Graph.CreateInvalidationListener
 (graph : Graph)
 (commit_node global_perform_load_node : Node)
 (ctrlers : Ctrlers)
-: Except String Ctrlers := do
+: Except String Ctrler := do
   -- create a ctrler to listen for invalidation
 
   -- 1. create 2 states:
@@ -32,7 +35,7 @@ def CDFG.Graph.CreateInvalidationListener
     variable_assignment [address].to_qual_name <| var_expr address,
     transition squash_speculative_loads_state_name
   ]
-  let when_invalidation := Pipeline.Statement.when
+  let when_invalidation := Statement.when
     [memory_interface, invalidation].to_qual_name [seq_num, address] await_inval_stmts.to_block
   let await_invalidation := await none [ when_invalidation ]
 
@@ -40,9 +43,10 @@ def CDFG.Graph.CreateInvalidationListener
   -- The await invalidation state
   let await_invalidation_state := state await_state_name await_invalidation.to_block
 
-  -- (b) squash in-flight loads matching address
-  -- send ack msg to memory_interface
-  -- transiction back to (a)
+  -- (b)
+  -- (i) squash in-flight loads matching address
+  -- (ii) send ack msg to memory_interface
+  -- (iii) transiction back to (a)
 
   -- TODO: Still need to add the if address of the invalidation & load matches, then squash
 
@@ -56,13 +60,65 @@ def CDFG.Graph.CreateInvalidationListener
     [( post_send_ld_req.to_ctrler_states, load )]
   -- Create queries for all loads in speculatively executed state
 
-  -- TODO: Make the function also check if the address matches?
-  let query_squash := ← QueryAll post_send_with_inst [search_squash_stmt] ctrlers
+  -- (i)
+  -- TODO: Make the function also check if the address matches? (somewhat hard, need to know where/how to get the address)
+  /-
+  Could try to do this by adding an if statement to the squash.
+  Need to get the address of the load if it is in "speculatively executed state".
+  -/
+  let query_squash : List Statement := ← QueryAll post_send_with_inst [search_squash_stmt] ctrlers
 
+  -- (ii)
+  let invalidation_ack_msg : Statement := stray_expr $ some_term $
+    function_call [memory_interface, invalidation_ack].to_qual_name []
 
+  -- (iii)
+  let transition_to_await_invalidation : Statement := complete await_state_name
 
+  let squash_speculative_loads_stmts := query_squash ++ [invalidation_ack_msg, transition_to_await_invalidation]
+  let squash_state := state squash_speculative_loads_state_name squash_speculative_loads_stmts.to_block
+
+  -- 0. Create the ctrler
   let invalidation_listener_ctrler_name := "invalidation_listener"
 
+  -- (i) Create init state
+  let init_state_name := "init_inval_listener"
+  let init_stmts := [
+    variable_assignment [seq_num].to_qual_name <| some_term $ Term.const $ str_lit "0",
+    variable_assignment [address].to_qual_name <| some_term $ Term.const $ str_lit "0",
+    transition await_state_name
+  ]
+  let init_state := state init_state_name init_stmts.to_block
 
-  default
+  -- (ii) create the ctrler
+  let seq_num_tident : TypedIdentifier := ⟨ seq_num, seq_num ⟩ 
+  let address_tident : TypedIdentifier := ⟨ address, address ⟩
+  let seq_num_decl := variable_declaration seq_num_tident
+  let address_decl := variable_declaration address_tident
+  let init_state_decl := variable_assignment [ "init_state" ].to_qual_name <| var_expr init_state_name
+
+  let inval_controller : Description := Description.controller invalidation_listener_ctrler_name [
+    seq_num_decl, address_decl, init_state_decl ].to_block
+  
+  let inval_ctrler : Ctrler :=
+    ⟨invalidation_listener_ctrler_name, inval_controller,
+      none, none, none, none,
+      some init_state_name, some [init_state, squash_state, await_invalidation_state], some [seq_num_tident, address_tident]⟩  
+
+  pure inval_ctrler
+
+open CDFG in
+def Ctrlers.AddInvalidationListener
+(ctrlers : Ctrlers)
+: Except String Ctrlers := do
+  let graph : Graph := { nodes := ← DSLtoCDFG ctrlers |>.throw_exception_nesting_msg s!"Error converting DSL to Graph" }
+
+  let commit_node : Node := ← graph.commit_state_ctrler |>.throw_exception_nesting_msg s!"Error getting commit node"
+  let global_perform_load_node : Node := ← graph.load_global_perform_state_ctrler |>.throw_exception_nesting_msg s!"Error getting global perform load node"
+
+  let inval_listener_ctrler : Ctrler := ← graph.CreateInvalidationListener commit_node global_perform_load_node ctrlers
+
+  let ctrlers' := inval_listener_ctrler :: ctrlers
+
+  pure ctrlers'
 
