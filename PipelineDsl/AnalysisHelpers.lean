@@ -1,7 +1,10 @@
+
 import PipelineDsl.AST
 import Murphi
 import PipelineDsl.LoadReplayHelpers
 import PipelineDsl.InstructionHelpers
+import PipelineDsl.ControllerHelpers
+import PipelineDsl.PipelineHelpers
 
 -- AZ NOTE: Consider placing into a namespace for instruction related things, definitions, etc.
 
@@ -13,16 +16,6 @@ import PipelineDsl.InstructionHelpers
 -- #eval InstType.toMurphiString (InstType.load)
 -- #eval (InstType.load).toMurphiString
 
--- NOTE: This ControllerType is now more "legacy", use the CtrlerType now..
-structure ControllerType where
-name : String
-deriving Inhabited, BEq
-
-def FIFO : ControllerType := {name := "FIFO"}
-def Unordered : ControllerType := {name := "Unordered"}
-
-def IndexableCtrlerTypes : List ControllerType := [FIFO, Unordered]
-def IndexableCtrlerTypesStrings : List String := IndexableCtrlerTypes.map (fun ctrler_type => ctrler_type.name )
 
 
 structure file_name_and_output where
@@ -31,64 +24,6 @@ murphi_code : Murϕ.Program
 
 open Pipeline
 open Murϕ
-
-structure controller_info where
-  -- Name, like LQ, SQ, SB, etc.
-  name : Identifier
-  -- The controller description, probably some info here...
-  controller_descript : Description
-  -- The entry description, probably some info here...
-  entry_descript : Option Description
-  -- The init transition
-  init_trans : Option Identifier
-  -- Entry vars, like seq_num, ld_seq_num, inst, read_value
-  -- NOTE: leave for now, figure out tomorrow
-  -- Or translate from the entry_descript
-  state_vars : Option (List TypedIdentifier)
-  -- list of transitions this structure takes
-  -- should be: Description.transition
-  transition_list : Option (List Description)
-  -- ======== CTRLER State Machine STUFF ========
-  ctrler_init_trans : Option Identifier
-  ctrler_trans_list : Option (List Description)
-  ctrler_state_vars : Option (List TypedIdentifier)
-deriving Inhabited
-
-instance : ToString controller_info := ⟨
-  λ i =>
-    "===controller===\n" ++
-    "NAME: " ++ toString i.name ++ "\n" ++
-    "CONTROLLER_DESCRIPTION: " ++ toString i.controller_descript ++ "\n" ++
-    "ENTRY_DESCRIPT: " ++ toString i.entry_descript ++ "\n" ++
-    "INIT_TRANS: " ++ toString i.init_trans ++ "\n" ++
-    "STATE_VARS: " ++ toString i.state_vars ++ "\n" ++
-    "TRANSITION_LIST: " ++ toString i.transition_list ++ "\n" ++
-    s!"CTRLER_init_trans: ({i.ctrler_init_trans})\n" ++
-    s!"CTRLER_state_vars: ({i.ctrler_state_vars})\n" ++
-    s!"CTRLER_trans_list: ({i.ctrler_trans_list})\n" ++
-    "\n=== End Controller ===\n\n"
-  ⟩ 
-
-inductive CtrlerType
-| FIFO : CtrlerType
-| Unordered : CtrlerType
-| BasicCtrler : CtrlerType
-deriving Inhabited, BEq
-
--- abbrev CtrlerType := ControllerType
-
-def CtrlerType.toString : CtrlerType → String
-| .FIFO => "FIFO Queue"
-| .Unordered => "Unordered Queue"
-| .BasicCtrler => "BasicCtrler"
-instance : ToString CtrlerType where toString := CtrlerType.toString
-
-def CtrlerType.is_a_queue : CtrlerType → Bool
-| .BasicCtrler => false
-| _ => true
-
-def thing : controller_info := default
-#eval thing
 
 def filter_lst_of_stmts_for_ordering_asn
 (lst_stmts : List Pipeline.Statement)
@@ -541,81 +476,9 @@ def find_speculative_st_ctrler
 :=
   "SQ"
 
--- Future TODO: let any insert operations be auto-generated
--- by any structures that use them
--- The framework is already there... nothing needs to be done..
-
--- def create_murphi_ctrler_insert_func
--- ( ctrler_name : String )
--- : Murϕ.ProcDecl
--- :=
---   let insert_name := String.join [ctrler_name, "_insert"]
---   let ld_spec_ctrler := find_speculative_ld_ctrler
---   let st_spec_ctrler := find_speculative_st_ctrler
---   let lq_idx_t := ld_spec_ctrler.append "_idx_t"
-
---   let proc : Murϕ.ProcDecl :=
---   [murϕ_proc_decl|
--- function £insert_name(
---              lq : £ld_spec_ctrler;
---              sq : £st_spec_ctrler;
---              inst : INST;
---            ) : LQ;
---   var lq_new : LQ;
---   var lq_tail : ld_idx_t;
-
---   --# ADDED NOTE
---   --#var sq : SQ;
---   var curr_tail_entry : LD_ENTRY_VALUES;
--- begin
---   --
---   lq_new := lq;
---   curr_tail_entry := lq_new.ld_entries[lq.ld_tail];
-
---   assert curr_tail_entry.ld_state = await_creation "to insert, load should be awaiting creation";
---   curr_tail_entry.ld_state := await_scheduled;
---   --# AZ TODO: do the store_queue check
-
---   --# Consider placing the Check Store_queue latest
---   --# Entry here!
---   --# Though if I do, this means this action is atomic,
---   --# and no other message passing operations 
---   --# NOTE should be add the assert in automatically?
---   --# or allow the user to specify asserts as well?
---   --# Or both?
---   --# Generated asserts shouldn't cause problems for the user
---   assert (curr_tail_entry.st_seq_num = 0) "should first be 0?";
---   if (sq.num_entries != 0) then
---     --#NOTE: REMEMBER TO CLEAR ST SEQ NUM
---     --# at the end...
---     curr_tail_entry.st_seq_num := sq.entries[sq.head].instruction.seq_num;
---   else
---     --# Keep at none
---     --# 0 is "none" here...
---     curr_tail_entry.st_seq_num := 0;
---   end;
-
---   --# NOTE: Auto generate the standard "insert" part
---   curr_tail_entry.instruction := inst;
---   lq_new.ld_tail := ( lq.ld_tail + 1 ) % (LD_ENTRY_NUM + 1);
---   lq_new.num_entries := lq.num_entries + 1;
---   --
---   --# NOTE: assert, but not technically required, since
---   --# if it's out of the range, Murphi throws an error
---   assert (lq.num_entries < ( LD_ENTRY_NUM + 1)) "can't add more!";
-
---   lq_new.ld_entries[lq.ld_tail] := curr_tail_entry;
-
---   return lq_new;
--- end
---   ]
-
 partial def get_only_transitions_recursively
 (stmt : Pipeline.Statement)
 :=
-          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
-          -- dbg_trace stmt
-          -- dbg_trace "==END GET-TRANSITIONS ==\n"
 
   match stmt with
   | Statement.transition ident => [ident]
@@ -1110,13 +973,6 @@ partial def Pipeline.Expr.is_contains_is_head_api : Pipeline.Expr → Bool
   | _ => false
 end
 
-def instruction := "instruction"
-def op := "op"
-def ld := "ld"
-
-def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
-  Pipeline.QualifiedName.mk idents
-
 mutual
 partial def Pipeline.Term.is_instruction_not_eq_ld : Pipeline.Term → Bool
 | term =>
@@ -1458,9 +1314,6 @@ def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Exp
   | h :: t =>
     -- use recursion
     pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
-
-abbrev Ctrlers := List controller_info
-abbrev Ctrler := controller_info
 
 def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info 
 | ctrlers, ctrler_name => do
@@ -2124,10 +1977,6 @@ def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipel
   | .labelled_statement _ stmt => stmt
   | _ => stmt
 
-def reg_file : String := "reg_file"
-def write := "write"
-def read := "read"
-
 def Pipeline.Statement.is_rf_write (stmt : Pipeline.Statement) : Bool :=
   match stmt with
   | .stray_expr expr =>
@@ -2182,16 +2031,6 @@ def CreateDSLIfStmt (expr : Pipeline.Expr) (stmt : Pipeline.Statement) : Pipelin
 def CreateDSLFuncCallStmt (func_name : String) (args : List Pipeline.Expr) : Pipeline.Statement :=
   let qual_name := [func_name].to_qual_name
   Pipeline.Statement.stray_expr $ Pipeline.Expr.some_term (Pipeline.Term.function_call qual_name args)
-
-def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
-| idents =>
-  Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
-
--- def inst := "inst"
-def seq_num := "seq_num"
-def inst_seq_num_expr := [instruction, seq_num].to_dsl_var_expr
-def violating_seq_num := "violating_seq_num"
-def squash := "squash"
 
 def String.to_dsl_var_expr : String → Pipeline.Expr
 | var_name =>
@@ -2567,27 +2406,9 @@ def List.isNotEmpty (list : List α) : Bool :=
   | [] => false
   | _ => true
 
--- TODO NOTE: create a namespace and list of these API names somewhere....
-def remove_head := "remove_head"
-def remove := "remove"
-def insert := "insert"
-def insert_tail := "insert_tail"
--- def API_msg_names : List MsgName := [load_completed, store_completed, remove_head]
-def API_msg_names : List MsgName := [remove_head, remove, insert, insert_tail, squash]
-def API_dest_ctrlers_msg_names : List (CtrlerName × MsgName) := [
-  (memory_interface, load_perform),
-  (memory_interface, store_perform),
-  (memory_interface, load_completed),
-  (memory_interface, store_completed),
-  (reg_file, remove_head),
-  (reg_file, write)
-]
 -- def ficticious_ctrler_API_msg_names : List MsgName := [load_completed, store_completed]
 
 -- ============== AZ NOTE: New "correct" stall based on query for un-complete state ==============
-abbrev VarName := String
-abbrev BoolDecl := Pipeline.Statement
-abbrev BoolSetIfStmt := Pipeline.Statement
 
 def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state : VarName) (ctrlers : Ctrlers) : Except String (BoolDecl × BoolSetIfStmt) := do
   let not_completed_true := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
@@ -2616,28 +2437,15 @@ def CtrlerStates.to_if_state_then_do
 
   pure if_on_state
 
-
-abbrev when_stmt := Pipeline.Statement.when -- when <msg>() from <ctrler> { <stmts> }
-abbrev qualified_var := Pipeline.Term.qualified_var -- i.e. "entry.instruction.seq_num", LQ.tail_search, etc.
-abbrev equal := Pipeline.Expr.equal -- equal
-abbrev sub := Pipeline.Expr.sub -- subtract
-abbrev function_call := Pipeline.Term.function_call -- function_call
-abbrev some_term := Pipeline.Expr.some_term -- Expr.some_term
-abbrev less_than := Pipeline.Expr.less_than -- less_than
-abbrev await := Pipeline.Statement.await -- await
-
-abbrev str_lit := Pipeline.Const.str_lit
 def InstType.to_const_term : InstType → Pipeline.Term
 | inst_type => Pipeline.Term.const $ str_lit inst_type.toMurphiString
 
 -- AZ NOTE: mirrors functions CreateDSLFIFOSearchAPI, and CreateDSLUnorderedSearchAPI
 -- maybe able to compose
 
-abbrev term_expr := Pipeline.Term.expr
 def Pipeline.Expr.to_term (expr : Pipeline.Expr) : Pipeline.Term :=
   term_expr expr
 
-abbrev binand := Pipeline.Expr.binand
 def CtrlerName.FIFOOlderInstSearch
 (dest_ctrler_name : CtrlerName)
 (stall_on_inst_type : InstType)
@@ -2698,15 +2506,6 @@ def CtrlerName.UnorderedOlderInstSearch
   let search_api_term : Pipeline.Term := function_call [dest_ctrler_name, /-search-/ search_api].to_qual_name [entry_is_older_and_stall_type, min_of_diff]
   let search_api := await (some search_api_term) [when_search_success, when_search_fail]
   search_api
-
-abbrev SearchStatement := Pipeline.Statement
-
-abbrev conditional_stmt := Pipeline.Statement.conditional_stmt
-abbrev if_else_statement := Pipeline.Conditional.if_else_statement
-abbrev reset := Pipeline.Statement.reset
-
-abbrev not_equal := Pipeline.Expr.not_equal
-abbrev num_lit := Pipeline.Const.num_lit
 
 inductive SearchType where
 | hit_one : SearchType
@@ -2796,13 +2595,6 @@ def CtrlerStates.to_query
 
 -- #eval (1,2,3).2.2
 
-def var_expr (var_name : VarName) : Pipeline.Expr :=
- Pipeline.Expr.some_term $ Pipeline.Term.var var_name
-
-abbrev var_term := Pipeline.Term.var
-abbrev or_expr := Pipeline.Expr.binor
-abbrev expr_term := Pipeline.Term.expr
-
 def List.to_expr (var_names : List VarName) : Except String Pipeline.Expr :=
   match var_names with
   | [var_name] => pure $ var_expr var_name
@@ -2823,8 +2615,6 @@ def List.to_expr (var_names : List VarName) : Except String Pipeline.Expr :=
 def Prod.to_typed_identifier ( tuple : Prod String String) : TypedIdentifier :=
   TypedIdentifier.mk (tuple.1 : Identifier) (tuple.2 : Identifier)
 
-abbrev bool_decl := Pipeline.Statement.variable_declaration
-abbrev variable_assignment := Pipeline.Statement.variable_assignment
 def List.to_queries
 (states_to_query : List (List CtrlerStates × InstType))
 /-(stall_on_inst_type : InstType)-/
@@ -2859,12 +2649,6 @@ def Pipeline.Statement.decl_name : Pipeline.Statement → Except String VarName
   | .variable_declaration (Pipeline.TypedIdentifier.mk _ var_name) => pure var_name
   | _ => throw s!"Error (stmt is not a var decl) stmt: ({stmt})"
 
--- abbrev conditional_stmt := Pipeline.Statement.conditional_stmt
--- abbrev if_else_statement := Pipeline.Conditional.if_else_statement
-abbrev transition := Pipeline.Statement.transition
-abbrev complete := Pipeline.Statement.complete
--- abbrev reset := Pipeline.Statement.reset
-
 
 def Pipeline.QualifiedName.to_term : Pipeline.QualifiedName → Pipeline.Term
 | qual_name => qualified_var qual_name
@@ -2874,8 +2658,6 @@ def Prod.to_list (tuple : Prod α α) : List α :=
 
 def List.tuple_to_list (tuple_list : List (Prod α α)) : List α :=
   tuple_list.map (·.to_list) |>.join
-
-abbrev state := Pipeline.Description.state
 
 def stall_state_querying_states
 (new_stall_state_name : StateName)
@@ -2998,8 +2780,6 @@ def List.to_query_match_do
     )
   pure decl_search_var 
 
-abbrev stray_expr := Pipeline.Statement.stray_expr
-
 def QueryAll
 (ctrler_states_list : List (List CtrlerStates × InstType))
 (when_search_success_stmts : List Pipeline.Statement)
@@ -3007,5 +2787,37 @@ def QueryAll
 : Except String (List Pipeline.Statement) := do
   ctrler_states_list.to_query_match_do when_search_success_stmts ctrlers
 
-abbrev variable_declaration := Pipeline.Statement.variable_declaration
+
+def Pipeline.Statement.key_assignment? (stmt : Pipeline.Statement) : Option Pipeline.Expr :=
+  match stmt with
+  | .variable_assignment qual_name expr =>
+    match qual_name == ["key"].to_qual_name with
+    | true => some expr
+    | false => none
+  | _ => none
+
+def List.find_key? (stmts : List Pipeline.Statement) : Except String ( Option Pipeline.Expr ) := do
+  let key_assignments? := stmts.map (·.key_assignment?)
+  let key_assignments := key_assignments?.filterMap id
+  match key_assignments with
+  | [key] => do pure $ some key
+  | [] => do pure none
+  | _ => do throw s!"Error, found multiple key assignments ({key_assignments})"
+
+open Pipeline in
+def Ctrler.key (ctrler : Ctrler) : Except String Pipeline.Expr := do
+  let description := ctrler.controller_descript
+  let stmts_block := ← match description with
+    | Description.controller /- name -/_ stmts => do pure stmts
+    | _ => do throw s!"Error, expected controller description, got ({description})"
+  let stmts := ← stmts_block.stmt_block
+  let key? := ← stmts.find_key?
+  match key? with
+  | some key => do pure $ key
+  | none => do throw s!"Error, couldn't find key assignment in controller ({ctrler})"
+
+def Pipeline.Statement.when_stmt_arguments
+(when_stmt : Pipeline.Statement)
+: Except String (List Identifier) := do
+  (get_when_stmt_src_args when_stmt)
   

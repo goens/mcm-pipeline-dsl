@@ -26,15 +26,6 @@ inductive InstType
 | memory_ordering : MemoryOrdering → InstType
 deriving Inhabited, BEq
 
-def memory_interface : CtrlerName := "memory_interface"
-def load_completed : MsgName := "load_completed"
-def load_perform : MsgName := "send_load_request"
-def store_completed : MsgName := "store_completed"
-def store_perform : MsgName := "send_store_request"
-
--- NOTE: the "name" of the load value from the load response api
-def load_value : String := "load_value"
-
 def InstType.completion_msg_name : InstType → Except String MsgName
 | .memory_access access => do
   match access with

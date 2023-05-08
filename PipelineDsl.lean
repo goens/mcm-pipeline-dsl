@@ -22,3 +22,5 @@ import PipelineDsl.CDFGLoadReplay
 
 import PipelineDsl.InstructionHelpers
 import PipelineDsl.CDFGInvalidationListener
+import PipelineDsl.ControllerHelpers
+import PipelineDsl.PipelineHelpers
