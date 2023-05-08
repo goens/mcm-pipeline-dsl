@@ -7,8 +7,15 @@ def CreateTableQueue -- CAM like table
 (table_name : String)
 (table_size : Nat)
 (entries : List (VarType × VarName))
-(cam_key : VarName)
-: Except String Description := do
+(entry_key : VarName)
+-- Insert/Remove msg
+(insert_args : List VarName)
+(insert_actions : List Statement)
+(insert_from : CtrlerName)
+(remove_args : List VarName)
+(remove_actions : List Statement)
+(remove_from : CtrlerName)
+: Except String Ctrler := do
   -- ====== controller description ======
   -- Stmts needed:
   -- (1) something to identify key
@@ -17,7 +24,7 @@ def CreateTableQueue -- CAM like table
   -- num_entries = num_entries
   -- (3) determine the queue type
   -- element_ordering ordering = Unordered
-  let key_asgn := variable_assignment [key].to_qual_name <| var_expr cam_key
+  let key_asgn := variable_assignment [key].to_qual_name <| var_expr entry_key
   let num_entries_asgn := variable_assignment [num_entries].to_qual_name <| num_lit_expr table_size
   let ordering_asgn :=
     value_decl
@@ -47,23 +54,44 @@ def CreateTableQueue -- CAM like table
   -- I could just re-use insert() with a key
   -- let states := []
   -- (3) need one more state! after inserting, entries shouldn't be able to be inserted again..
+  let await_remove_state_name := table_name ++ "_await_remove"
+  let await_insert_state_name := table_name ++ "_await_insert"
+  let trans_to_insert := transition await_insert_state_name
+  let when_remove_stmt := Statement.when
+    [remove_from, remove_key].to_qual_name
+    remove_args
+    (remove_actions ++ [trans_to_insert]).to_block
+  let await_when_remove_stmt := await none [when_remove_stmt]
+  let await_remove_state := state await_remove_state_name await_when_remove_stmt.to_block
 
   -- (2) await insert state
-  let await_insert_state := table_name ++ "_await_insert"
+  -- Create await stmt, to await insert, and then assign the key and other state vars
+  -- Transition to (3) to await removal
+  let trans_to_remove := transition await_remove_state_name
+  let when_insert_stmt := Statement.when
+    [insert_from, insert].to_qual_name
+    insert_args
+    (insert_actions ++ [trans_to_remove]).to_block
+  let await_when_insert_stmt := await none [when_insert_stmt]
+  let await_insert_state := state await_insert_state_name await_when_insert_stmt.to_block
 
   -- (1) init state
-  let init_stmts := entries.mapM ( λ (var_type, var_name) => do
-    let default_val := ← default_value_expr var_type;
+  let init_stmts := ← entries.mapM ( λ (var_type, var_name) => do
+    let default_val := ← default_value_expr var_type
+      |>.throw_exception_nesting_msg s!"(Create Invalidation Listener): Could not find default value for ({var_type})";
     pure $ variable_assignment [var_name].to_qual_name <| default_val)
-  let trans_to_first_state := transition await_insert_state
-  let init_table_state := state init_state_name 
+  let trans_to_first_state := transition await_insert_state_name
+  let init_table_state := state init_state_name $ ( init_stmts ++ [trans_to_first_state] ).to_block
 
 
   -- ===== Create the controller =====
-  -- let ctrler := ⟨ name ast_controller ast_entry init_trans state_vars states
-  --   ctrler_init_trans ctrler_trans_list ctrler_state_vars ⟩ 
+  let state_vars := entries.map (let (var_type, var_name) := ·; (var_type, var_name).to_typed_identifier)
+  let ctrler : Ctrler := ⟨ table_name, ast_table_ctrler,
+    some ast_entry, some init_state_name, some state_vars,
+    some [init_table_state, await_insert_state, await_remove_state],
+    none, none, none⟩ 
   
-  default
+  pure ctrler
 
 open Pipeline in
 def CDFG.Graph.CreateInvalidationListener
