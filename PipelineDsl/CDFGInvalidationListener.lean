@@ -2,10 +2,68 @@ import PipelineDsl.CDFG
 import PipelineDsl.CDFGInOrderTfsm
 import PipelineDsl.DSLtoCDFG
 
+open Pipeline in
+def CreateTableQueue -- CAM like table
+(table_name : String)
+(table_size : Nat)
+(entries : List (VarType × VarName))
+(cam_key : VarName)
+: Except String Description := do
+  -- ====== controller description ======
+  -- Stmts needed:
+  -- (1) something to identify key
+  -- key = seq_num
+  -- (2) num entries of course
+  -- num_entries = num_entries
+  -- (3) determine the queue type
+  -- element_ordering ordering = Unordered
+  let key_asgn := variable_assignment [key].to_qual_name <| var_expr cam_key
+  let num_entries_asgn := variable_assignment [num_entries].to_qual_name <| num_lit_expr table_size
+  let ordering_asgn :=
+    value_decl
+      (element_ordering, ordering).to_typed_identifier
+      $ var_expr CtrlerType.Unordered.toString
+  let ast_table_ctrler := Description.controller table_name [key_asgn, num_entries_asgn, ordering_asgn].to_block
 
-def address := "address"
-def invalidation := "invalidation"
-def invalidation_ack := "invalidation_ack"
+  -- ===== entry description =====
+  -- stmts needed
+  -- (1) list the entries
+  -- entries can be elaborated here
+  -- (2) indicate the initial state
+  -- init_state = init_table_"table_name"
+  let entry_stmts := entries.map ( let (var_type, var_name) := ·
+    variable_declaration (var_type, var_name).to_typed_identifier )
+  let (init_state_asgn, init_state_name) := let init_state_name := ("init_table_" ++ table_name)
+    ( variable_assignment [init_state].to_qual_name <| var_expr init_state_name ,
+    init_state_name )
+
+  let ast_entry := Description.entry table_name (entry_stmts ++ [init_state_asgn]).to_block
+
+  -- ===== state description =====
+  -- (1) Need the init state. We can just assign a default to the
+  -- entry vars
+  -- (2) Need a state to await for an insertion of some item with some key.
+  -- This state also handles removal with remove_key().
+  -- I could just re-use insert() with a key
+  -- let states := []
+  -- (3) need one more state! after inserting, entries shouldn't be able to be inserted again..
+
+  -- (2) await insert state
+  let await_insert_state := table_name ++ "_await_insert"
+
+  -- (1) init state
+  let init_stmts := entries.mapM ( λ (var_type, var_name) => do
+    let default_val := ← default_value_expr var_type;
+    pure $ variable_assignment [var_name].to_qual_name <| default_val)
+  let trans_to_first_state := transition await_insert_state
+  let init_table_state := state init_state_name 
+
+
+  -- ===== Create the controller =====
+  -- let ctrler := ⟨ name ast_controller ast_entry init_trans state_vars states
+  --   ctrler_init_trans ctrler_trans_list ctrler_state_vars ⟩ 
+  
+  default
 
 open Pipeline in
 def CDFG.Graph.CreateInvalidationListener
