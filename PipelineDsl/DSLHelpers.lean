@@ -30,6 +30,9 @@ def squash := "squash"
 -- TODO NOTE: create a namespace and list of these API names somewhere....
 def remove_head := "remove_head"
 def remove := "remove"
+
+def remove_key := "remove_key"
+
 def insert := "insert"
 def insert_tail := "insert_tail"
 -- def API_msg_names : List MsgName := [load_completed, store_completed, remove_head]
