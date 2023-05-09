@@ -878,10 +878,6 @@ def get_ctrler_from_ctrlers_list (ctrler_name : CtrlerName) (ctrlers : List cont
     let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
     throw msg
 
-def Pipeline.Statement.stmt_block : Pipeline.Statement → Except String (List Pipeline.Statement)
-| .block stmts => pure stmts
-| _ => throw "Statement is not a block"
-
 def Pipeline.QualifiedName.idents : Pipeline.QualifiedName → List Identifier
 | .mk idents => idents
 
@@ -1111,14 +1107,6 @@ def controller_info.state_list (ctrler : controller_info) : Except String (List 
     pure ctrler.ctrler_trans_list.get!
   else
     throw s!"Error: ctrler doesn't have state_list ({ctrler})"
-
-def Pipeline.Description.state_name : Pipeline.Description → Except String Identifier
-| .state ident /- stmt -/ _ => pure ident
-| _ => throw "Error: Description is not a state"
-
-def Pipeline.Description.stmt : Pipeline.Description → Except String Pipeline.Statement
-| .state /- ident -/ _ stmt => pure stmt
-| _ => throw "Error: Description is not a state"
 
 def controller_info.init_trans_descript (ctrler : controller_info) : Except String Pipeline.Description
 := do
@@ -1951,12 +1939,6 @@ def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Optio
     | .commit => none
   | _ => none
 
--- NOTE: Better to explicitly error with a msg at specific points, to get a "stack trace" where I care
-def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : Except String α := do
-  match e with
-  | .ok a => pure a
-  | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
-
 -- Newer, better, version of get_ctrler_from_ctrlers_list
 def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
 : Except String Ctrler := do
@@ -2041,11 +2023,6 @@ def Ctrlers.complete_to_ctrler's_first_state_stmt : Ctrlers → CtrlerName → E
   let ctrler : Ctrler ← ctrlers.ctrler_from_name ctrler_name
   let ctrler_first_state : StateName ← ctrler.init_trans_dest
   pure $ Pipeline.Statement.complete ctrler_first_state
-  
-def Pipeline.Statement.to_block : Pipeline.Statement → Pipeline.Statement
-| stmt => match stmt with
-  | .block _ => stmt
-  | _ => Pipeline.Statement.block [stmt]
 
 def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Description → Pipeline.Statement → Except String (Pipeline.Description)
 | descript, stmt_to_append => do
@@ -2090,14 +2067,6 @@ def controller_info.state_from_name : Ctrler → StateName → Except String Pip
   match state with
   | some state' => pure state'
   | none => throw "Error: Could not find state in controller"
-
--- NOTE: "to_block_if_not"
-def List.to_block (stmts : List Pipeline.Statement) : Pipeline.Statement :=
-  match stmts with
-  | [stmt] => match stmt with
-    | .block _ => stmt
-    | _ => Pipeline.Statement.block stmts
-  | _ => Pipeline.Statement.block stmts
 
 partial def List.split_off_stmts_at_commit_and_inject_stmts
 (stmts : List Pipeline.Statement) (stmts_to_inject : List Pipeline.Statement)
@@ -2215,13 +2184,6 @@ def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
     pure (updated_state, stmts_after_commit_state)
   | _ => throw "Error: Expected input Pipeline.Description to be a state. Instead got ({state})"
 
--- AZ NOTE: TODO: place the API function names into a function name namespace
--- And do the same for organizing other defined names
-def tail_search := "tail_search"
-def search_fail := "search_fail"
-def search_success := "search_success"
-
-def entry := "entry"
 -- def instruction := "instruction"
 -- def seq_num := "seq_num"
 
@@ -2241,8 +2203,6 @@ def CreateDSLFIFOSearchAPI (dest_ctrler_name : CtrlerName) (success_case_stmts :
   let search_api := Pipeline.Statement.await (some search_api_term) [when_search_success, when_search_fail]
   search_api
 
-def search := "search"
-def min := "min"
 
 def CreateDSLUnorderedSearchAPI (dest_ctrler_name : CtrlerName) (success_case_stmts : List Pipeline.Statement) : Pipeline.Statement :=
   -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
@@ -2612,9 +2572,6 @@ def List.to_expr (var_names : List VarName) : Except String Pipeline.Expr :=
   | [] => throw s!"Error converting list of var names to expr: Empty list passed"
 
 -- #eval ["a", "b", "c"].to_expr
-def Prod.to_typed_identifier ( tuple : Prod String String) : TypedIdentifier :=
-  TypedIdentifier.mk (tuple.1 : Identifier) (tuple.2 : Identifier)
-
 def List.to_queries
 (states_to_query : List (List CtrlerStates × InstType))
 /-(stall_on_inst_type : InstType)-/

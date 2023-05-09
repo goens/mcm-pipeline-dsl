@@ -1,5 +1,5 @@
 
-import PipelineDsl.DSLHelpers
+-- import PipelineDsl.DSLHelpers
 
 inductive MemoryAccess
 | load : MemoryAccess
@@ -26,23 +26,6 @@ inductive InstType
 | memory_ordering : MemoryOrdering → InstType
 deriving Inhabited, BEq
 
-def InstType.completion_msg_name : InstType → Except String MsgName
-| .memory_access access => do
-  match access with
-  | .load => do pure load_completed
-  | .store => do pure store_completed
-| .memory_ordering ordering => do
-  match ordering with
-  | .mfence => do throw "Error: mFence has no awaited completion message"
-
-def InstType.perform_msg_name : InstType → Except String MsgName
-| .memory_access access => do
-  match access with
-  | .load => do pure load_perform
-  | .store => do pure store_perform
-| .memory_ordering ordering => do
-  match ordering with
-  | .mfence => do throw "Error: mFence has no perform message"
 
 def load : InstType := InstType.memory_access MemoryAccess.load
 def store : InstType := InstType.memory_access MemoryAccess.store
