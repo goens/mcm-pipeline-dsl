@@ -5041,14 +5041,14 @@ lst_stmts_decls
               find_when_from_transition states_to_search "insert_tail" ctrler_name
             dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
-            dbg_trace s!"When stmt for 'insert' API: ({when_stmt})"
+            dbg_trace s!"When stmt for 'insert_tail' API: ({when_stmt})"
             let actual_when_stmt : Pipeline.Statement :=
               find_when_stmt_from_transition states_to_search "insert" ctrler_name
 
             let when_stmt_args : List String :=
               match (get_when_stmt_src_args actual_when_stmt) with
               | .error msg =>
-                let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
+                let msg' : String := s!"Error getting when stmt args in 'insert_tail' API func: ({msg})"
                 dbg_trace msg'
                 -- default
                 panic! msg'
@@ -5058,7 +5058,7 @@ lst_stmts_decls
               match get_when_stmt_src_ctrler actual_when_stmt with
               | .ok src_ctrler => src_ctrler
               | .error msg =>
-                let msg' : String := s!"Error getting when stmt src_ctrler in 'insert' API func: ({msg})"
+                let msg' : String := s!"Error getting when stmt src_ctrler in 'insert_tail' API func: ({msg})"
                 dbg_trace msg'
                 -- default
                 panic! msg'
@@ -5116,6 +5116,127 @@ lst_stmts_decls
 
             let dest_num_entries_const : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
             let murphi_stmts : List Murϕ.Statement := [murϕ|
+              -- NOTE: assert is nice to have. maybe consider generating one later...
+              -- assert curr_tail_entry .state = await_creation "to insert, load should be awaiting creation";
+
+              -- update the state accordingly...
+              £murphi_when_stmts_decls.stmts;
+
+              --# NOTE: Auto generate the standard "insert" book keeping part
+              -- insert inst is not so 'standard'
+              -- curr_tail_entry .instruction := inst;
+              next_state .core_[j] .£dest_ctrler_ .tail := ( Sta .core_[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
+              next_state .core_[j] .£dest_ctrler_ .num_entries := Sta .core_[j] .£dest_ctrler_ .num_entries + 1;
+            ]
+            let murphi_decls : List Murϕ.Decl := [] ++ murphi_when_stmts_decls.decls
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmts,
+              decls := murphi_decls
+            }
+            stmts_decls
+          else if (api_func_name == "insert_key") then
+            -- TODO: move murphi code here...
+            let dest_ctrler_ : String := dest_ctrler_name.append "_"
+            let dest_ctrler : Ctrler :=
+              get_ctrler_matching_name dest_ctrler_name ctrlers_lst
+
+            -- let entry_or_ctrler_translation : entry_or_ctrler :=
+            --   dest_ctrler.entry_or_ctrler_translation
+
+            let states_to_search : List Description :=
+              if dest_ctrler.init_trans.isSome then
+                dest_ctrler.transition_list.get!
+              else if dest_ctrler.ctrler_init_trans.isSome then
+                dest_ctrler.ctrler_trans_list.get!
+              else
+                dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({dest_ctrler})"
+                  default
+
+            let when_stmt : Pipeline.Statement :=
+              find_when_from_transition states_to_search "insert_key" ctrler_name
+            dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
+            dbg_trace s!"ctrler_name: ({ctrler_name})"
+            dbg_trace s!"When stmt for 'insert_key API: ({when_stmt})"
+            let actual_when_stmt : Pipeline.Statement :=
+              find_when_stmt_from_transition states_to_search "insert_key" ctrler_name
+
+            let when_stmt_args : List String :=
+              match (get_when_stmt_src_args actual_when_stmt) with
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt args in 'insert_key API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+              | .ok lst_args => lst_args
+
+            let when_stmt_src_ctrler : String :=
+              match get_when_stmt_src_ctrler actual_when_stmt with
+              | .ok src_ctrler => src_ctrler
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt src_ctrler in 'insert_key API func: ({msg})"
+                dbg_trace msg'
+                -- default
+                panic! msg'
+            -- Convert to Murphi Stmt
+
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .tail]
+            let when_stmt_trans_info : stmt_translation_info := {
+              stmt := when_stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+              --            want to set this to the SQ somehow...
+              src_ctrler := 
+              -- dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              -- dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              -- stmt_trans_info.src_ctrler
+              if stmt_trans_info.src_ctrler.isNone then
+                Option.some ctrler_name
+              else
+                if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                  Option.some stmt_trans_info.ctrler_name
+                else
+                  Option.some stmt_trans_info.ctrler_name
+              ,
+              lst_src_args :=
+                if stmt_trans_info.lst_src_args.isSome then
+                  stmt_trans_info.lst_src_args
+                else
+                  -- THe list of args from the func call
+                  match when_stmt_args with
+                  | [] => Option.none
+                  | _ => Option.some when_stmt_args
+                ,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := murphi_dest_idx_expr
+              lhs_var_is_just_default := false
+              --translate_entry_or_ctrler := entry_or_ctrler_translation
+              -- Insert should really be for a entry-controller ( a ctrler w/ entries)
+              translate_entry_or_ctrler := entry_or_ctrler.entry
+            }
+            dbg_trace s!"Insert_key translate when stmt: ({when_stmt_trans_info})"
+            -- TODO: Test the translation, I suspect I may need to set the
+            -- sepcific_murphi_dest_expr to this "i" index...
+            let murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts when_stmt_trans_info
+            let murphi_when_stmt : List Murϕ.Statement :=
+              murphi_when_stmts_decls.stmts
+            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+
+            let dest_num_entries_const : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
+            let murphi_stmts : List Murϕ.Statement := [murϕ|
+              -- === BEGIN New Code ===
+              -- Start with If stmt, to check if there is space in the dest_ctrler??
+              -- Or try to generate stmts to check if the structure is full?
+              -- Then (1) check if there's a valid entry with the same key, if there is, insert into that one
+              -- Else (2) Take an unused value to insert into
+              -- === END New Code ===
               -- NOTE: assert is nice to have. maybe consider generating one later...
               -- assert curr_tail_entry .state = await_creation "to insert, load should be awaiting creation";
 
