@@ -60,7 +60,7 @@ def CDFG.Graph.CreateInvalidationListener
   -- TODO NOTE: Need to update the LAT generator, to only have 1 state, and to implement the API insert_key()
   -- NOTE: check the generated Load-Address-Table (LAT) to see if the address matches the invalidation
 
-  let expr_address_eq_table_address := VarCompare address equal table_address_name
+  let expr_address_eq_table_address := VarCompare [address] equal [table_address_name]
   let if_address_matches := conditional_stmt <| if_statement expr_address_eq_table_address search_squash_stmt
   let search_for_addr := table_name.TableUnorderedSearch seq_num "instruction.seq_num" [if_address_matches] []
 
