@@ -129,7 +129,24 @@ def Ctrlers.AddInvalidationListener
 
   pure ctrlers'
 
+def Ctrlers.AddInvalidationBasedLoadOrdering
+(ctrlers : Ctrlers)
+: Except String Ctrlers := do
+  -- A few things to do (in no particular order):
+  -- 1. Create a LAT to store the addresses of the loads
+  -- 2. Create the invalidation listener (this will read from the LAT)
+  -- 3. Add a stmt to insert_key into the invalidation listener to perform load
+  -- 4. Add a stmt to remove_key from the invalidation listener to commit load
+
+  -- (1) Create the LAT
+  let lat_name := "load_address_table"
+  let lat_size := 2 -- chosing a number for now..
+  let entry_key := seq_num
+  let insert_args := [seq_num, address]
+  let insert_actions := [var_asn_var [seq_num] seq_num, var_asn_var [address] address]
+
+  default
+
 -- NOTE: remember to get perform_load_node
 -- def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 -- def Ctrlers.AddRemoveFromLATWhenCommit
-
