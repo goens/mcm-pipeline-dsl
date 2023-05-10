@@ -168,6 +168,21 @@ def CreateTableQueue -- CAM like table
   -- I could just re-use insert() with a key
   -- let states := []
   -- (3) need one more state! after inserting, entries shouldn't be able to be inserted again..
+
+  -- Trying an implementation which just has 1 state
+  let await_insert_remove_state_name := table_name ++ "_await_insert_remove"
+  let when_insert_stmt := Statement.when
+    [insert_from, insert_key].to_qual_name
+    insert_args
+    (insert_actions ++ [reset await_insert_remove_state_name]).to_block
+  let when_remove_stmt := Statement.when
+    [remove_from, remove_key].to_qual_name
+    remove_args
+    (remove_actions ++ [complete await_insert_remove_state_name]).to_block
+  let await_when_remove_stmt := await none [when_insert_stmt, when_remove_stmt]
+  let await_insert_remove_state := state await_insert_remove_state_name await_when_remove_stmt.to_block
+
+/- -- If I later decide it's better to have 2 states....
   let await_remove_state_name := table_name ++ "_await_remove"
   let await_insert_state_name := table_name ++ "_await_insert"
   let trans_to_insert := transition await_insert_state_name
@@ -183,18 +198,18 @@ def CreateTableQueue -- CAM like table
   -- Transition to (3) to await removal
   let trans_to_remove := transition await_remove_state_name
   let when_insert_stmt := Statement.when
-    [insert_from, insert].to_qual_name
+    [insert_from, insert_key].to_qual_name
     insert_args
     (insert_actions ++ [trans_to_remove]).to_block
   let await_when_insert_stmt := await none [when_insert_stmt]
   let await_insert_state := state await_insert_state_name await_when_insert_stmt.to_block
-
+-/
   -- (1) init state
   let init_stmts := ← entries.mapM ( λ (var_type, var_name) => do
     let default_val := ← default_value_expr var_type
       |>.throw_exception_nesting_msg s!"(Create Invalidation Listener): Could not find default value for ({var_type})";
     pure $ variable_assignment [var_name].to_qual_name <| default_val)
-  let trans_to_first_state := transition await_insert_state_name
+  let trans_to_first_state := transition await_insert_remove_state_name
   let init_table_state := state init_state_name $ ( init_stmts ++ [trans_to_first_state] ).to_block
 
 
@@ -202,7 +217,7 @@ def CreateTableQueue -- CAM like table
   let state_vars := entries.map (let (var_type, var_name) := ·; (var_type, var_name).to_typed_identifier)
   let ctrler : Ctrler := ⟨ table_name, ast_table_ctrler,
     some ast_entry, some init_state_name, some state_vars,
-    some [init_table_state, await_insert_state, await_remove_state],
+    some [init_table_state, await_insert_remove_state /-await_insert_state, await_remove_state-/],
     none, none, none⟩ 
   
   pure ctrler
