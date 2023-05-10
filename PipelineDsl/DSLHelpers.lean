@@ -360,3 +360,9 @@ def Pipeline.Description.inject_stmts_at_stmt
 
     pure updated_state
   | _ => throw "Error: (inject stmts at perform) Expected input Pipeline.Description to be a state. Instead got ({state})"
+
+def qual_var_expr (var_name : List VarName) : Pipeline.Expr :=
+ Pipeline.Expr.some_term $ Pipeline.Term.qualified_var var_name.to_qual_name
+
+def var_asn_var (var1 : List String) (var2 : String) : Statement :=
+  variable_assignment var1.to_qual_name <| var_expr var2
