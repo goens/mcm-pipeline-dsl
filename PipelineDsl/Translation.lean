@@ -5144,14 +5144,11 @@ lst_stmts_decls
             --   dest_ctrler.entry_or_ctrler_translation
 
             let states_to_search : List Description :=
-              if dest_ctrler.init_trans.isSome then
-                dest_ctrler.transition_list.get!
-              else if dest_ctrler.ctrler_init_trans.isSome then
-                dest_ctrler.ctrler_trans_list.get!
-              else
-                dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({dest_ctrler})"
-                  default
-
+              match dest_ctrler.states with
+              | .ok states => states
+              | .error msg =>
+                dbg_trace s!"Error getting states of ctrler ({dest_ctrler_name}) in insert_key api translation: ({msg})"
+                default
             let when_stmt : Pipeline.Statement :=
               find_when_from_transition states_to_search "insert_key" ctrler_name
             dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
@@ -5179,8 +5176,58 @@ lst_stmts_decls
                 panic! msg'
             -- Convert to Murphi Stmt
 
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .tail]
-            let when_stmt_trans_info : stmt_translation_info := {
+            -- When-stmt translated for inserting into an existing key-matched entry
+            let dest_ctrler_key_check_idx := dest_ctrler_name.append "_key_check_idx"
+            let insert_existing_entry_murphi_dest_idx_expr : Murϕ.Expr := [murϕ| £dest_ctrler_key_check_idx]
+            let insert_existing_entry_when_stmt_trans_info : stmt_translation_info := {
+              stmt := when_stmt,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
+              --            want to set this to the SQ somehow...
+              src_ctrler := 
+              -- dbg_trace s!"src_ctrler: ({stmt_trans_info.src_ctrler})"
+              -- dbg_trace s!"stmt_trans_info: ({stmt_trans_info})"
+              -- stmt_trans_info.src_ctrler
+              if stmt_trans_info.src_ctrler.isNone then
+                Option.some ctrler_name
+              else
+                if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                  Option.some stmt_trans_info.ctrler_name
+                else
+                  Option.some stmt_trans_info.ctrler_name
+              ,
+              lst_src_args :=
+                if stmt_trans_info.lst_src_args.isSome then
+                  stmt_trans_info.lst_src_args
+                else
+                  -- THe list of args from the func call
+                  match when_stmt_args with
+                  | [] => Option.none
+                  | _ => Option.some when_stmt_args
+                ,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := insert_existing_entry_murphi_dest_idx_expr
+              lhs_var_is_just_default := false
+              --translate_entry_or_ctrler := entry_or_ctrler_translation
+              -- Insert should really be for a entry-controller ( a ctrler w/ entries)
+              translate_entry_or_ctrler := entry_or_ctrler.entry
+            }
+            let insert_existing_entry_murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts insert_existing_entry_when_stmt_trans_info
+            let insert_existing_entry_murphi_when_stmt : List Murϕ.Statement :=
+              insert_existing_entry_murphi_when_stmts_decls.stmts
+
+            -- When-stmt translated for inserting into an empty entry
+            let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| £ctrler_curr_idx]
+            let insert_unused_entry_when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
               ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
@@ -5220,36 +5267,124 @@ lst_stmts_decls
               -- Insert should really be for a entry-controller ( a ctrler w/ entries)
               translate_entry_or_ctrler := entry_or_ctrler.entry
             }
-            dbg_trace s!"Insert_key translate when stmt: ({when_stmt_trans_info})"
+            dbg_trace s!"Insert_key (into unused entry) translate when stmt: ({insert_unused_entry_when_stmt_trans_info})"
             -- TODO: Test the translation, I suspect I may need to set the
             -- sepcific_murphi_dest_expr to this "i" index...
-            let murphi_when_stmts_decls : lst_stmts_decls :=
-              ast_stmt_to_murphi_stmts when_stmt_trans_info
-            let murphi_when_stmt : List Murϕ.Statement :=
-              murphi_when_stmts_decls.stmts
-            dbg_trace s!"Translated when stmts: ({murphi_when_stmt})"
+            let insert_unused_entry_murphi_when_stmts_decls : lst_stmts_decls :=
+              ast_stmt_to_murphi_stmts insert_unused_entry_when_stmt_trans_info
+            let insert_unused_entry_murphi_when_stmt : List Murϕ.Statement :=
+              insert_unused_entry_murphi_when_stmts_decls.stmts
+            dbg_trace s!"Insert_key (into unused entry) translated when stmts: ({insert_unused_entry_murphi_when_stmt})"
 
-            let dest_num_entries_const : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
+            -- Don't have to add var decls for these two
+            let dest_ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+              let dest_ctrler_name_ := dest_ctrler_name.append "_"
+
+            -- add var decls for these
+            let ctrler_loop_break : String := dest_ctrler_name.append "_loop_break"
+            let ctrler_found_entry : String := dest_ctrler_name.append "_found_entry"
+            let ctrler_entry_idx : String :=   dest_ctrler_name.append "_entry_idx"
+            let ctrler_difference : String :=  dest_ctrler_name.append "_difference"
+            let ctrler_offset : String :=      dest_ctrler_name.append "_offset"
+
+            -- Could get first_state_name as 'the state of the when stmt that expects the msg' instead?  to make it easier to get?
+            let first_state_name : String :=
+              match dest_ctrler.init_trans_dest with
+              | .ok state_name => state_name
+              | .error msg =>
+                let msg' : String := s!"Error getting dest_ctrler.init_trans_dest in 'insert_key API func: ({msg})"
+                dbg_trace msg'
+                default
+                -- panic! msg'
+            let dest_ctrler_'await_insert'_state : String := first_state_name
+
+            -- TODO NOTE: Generate another version of the murphi_when_stmts_decls , where the stmts
+            -- are generated with the while loop's index variable for accessing the dest_ctrler RHS
+
+            -- let couldn't_insert_unused_error_msg := s!"Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into"
+
+            let dest_num_entries_const_name : String := dest_ctrler_name.append "_NUM_ENTRIES_CONST"
             let murphi_stmts : List Murϕ.Statement := [murϕ|
               -- === BEGIN New Code ===
               -- Start with If stmt, to check if there is space in the dest_ctrler??
               -- Or try to generate stmts to check if the structure is full?
               -- Then (1) check if there's a valid entry with the same key, if there is, insert into that one
+              insert_key_check_found := false;
+              found_double_key_check := false;
+              for £dest_ctrler_key_check_idx : £dest_ctrler_idx_t do
+                if (Sta .core_[j] .£dest_ctrler_ .entries[£dest_ctrler_key_check_idx] .valid) then
+                  if (Sta .core_[j] .£dest_ctrler_ .entries[£dest_ctrler_key_check_idx] .key = key) then
+                    -- Update the entry
+                    £insert_existing_entry_murphi_when_stmt;
+                    if insert_key_check_found = false then
+                      insert_key_check_found := true;
+                    else
+                      found_double_key_check := true;
+                    endif;
+                  endif;
+                endif;
+              endfor;
+
+              if found_double_key_check = true then
+                error "Found two entries with the same key? Was this intentional?" ;
+              elsif insert_key_check_found = false then
+                £ctrler_loop_break := false;
+                if next_state .core_[j] .£dest_ctrler_name_ .num_entries = £dest_num_entries_const_name then
+                  £ctrler_loop_break := true;
+                endif;
+
+                £ctrler_entry_idx := 0;
+                --# (1) loop to tail searching for:
+                --# if plus 0 is outside this range, this should be caught
+                --# by difference check
+                -- NOTE: the -1 is because tail is actually 1 more than the actual tail, so it acts as an "insert" location
+                £ctrler_found_entry := false;
+                -- difference := ( ( (£dest_num_entries_const_name - 1 + £dest_num_entries_const_name) - 1 ) - £ctrler_entry_idx ) % £dest_num_entries_const_name;
+                £ctrler_difference := (£dest_num_entries_const_name - 1 );
+                £ctrler_offset := 0;
+                --#if (difference != -1) then
+                while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_loop_break = false) & (£ctrler_found_entry = false)
+                        & (£ctrler_difference >= 0)
+                      ) do
+                  --# do the search
+                  £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
+                  if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].state = £dest_ctrler_'await_insert'_state) then
+                    -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
+                    £insert_unused_entry_murphi_when_stmt;
+                    £ctrler_found_entry := true;
+                  end;
+                  if (£ctrler_offset != £ctrler_difference) then
+                    £ctrler_offset := £ctrler_offset + 1;
+                  else
+                    £ctrler_loop_break := true;
+                  endif;
+                end;
+                next_state .core_[j] .£dest_ctrler_name_ .num_entries := (next_state .core_[j] .£dest_ctrler_name_ .num_entries + 1);
+                if (£ctrler_found_entry = false) then
+                  error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
+                end;
+                -- next_state .core_[j] .£dest_ctrler_ .num_entries := Sta .core_[j] .£dest_ctrler_ .num_entries + 1;
+                -- Find previous code for insert into unordered queue to insert into first available entry
+              endif;
               -- Else (2) Take an unused value to insert into
               -- === END New Code ===
-              -- NOTE: assert is nice to have. maybe consider generating one later...
-              -- assert curr_tail_entry .state = await_creation "to insert, load should be awaiting creation";
-
-              -- update the state accordingly...
-              £murphi_when_stmts_decls.stmts;
-
-              --# NOTE: Auto generate the standard "insert" book keeping part
-              -- insert inst is not so 'standard'
-              -- curr_tail_entry .instruction := inst;
-              next_state .core_[j] .£dest_ctrler_ .tail := ( Sta .core_[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
-              next_state .core_[j] .£dest_ctrler_ .num_entries := Sta .core_[j] .£dest_ctrler_ .num_entries + 1;
             ]
-            let murphi_decls : List Murϕ.Decl := [] ++ murphi_when_stmts_decls.decls
+            let ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t"
+            let decls : List Murϕ.Decl := 
+              -- [murϕ_decl| ctrler : £dest_ctrler_name]
+              -- (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
+              [murϕ_var_decls| var £ctrler_loop_break : boolean;] ++
+              [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_found_entry : boolean] ++
+              [murϕ_var_decls| var £ctrler_difference : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_offset : £ctrler_idx_t] ++
+              [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t] ++
+              insert_unused_entry_murphi_when_stmts_decls.decls ++
+              insert_existing_entry_murphi_when_stmts_decls.decls
+
+            let murphi_decls : List Murϕ.Decl := decls ++
+              insert_unused_entry_murphi_when_stmts_decls.decls ++ 
+              insert_existing_entry_murphi_when_stmts_decls.decls
             let stmts_decls : lst_stmts_decls := {
               stmts := murphi_stmts,
               decls := murphi_decls
