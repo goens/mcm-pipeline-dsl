@@ -117,36 +117,52 @@ def Ctrlers.AddInvalidationListener
 (ctrlers : Ctrlers)
 (lat_name : CtrlerName)
 (lat_address_name : CtrlerName)
+(graph : Graph)
+(commit_node : Node)
+(global_perform_load_node : Node)
 : Except String Ctrlers := do
-  let graph : Graph := { nodes := ← DSLtoCDFG ctrlers |>.throw_exception_nesting_msg s!"Error converting DSL to Graph" }
-
-  let commit_node : Node := ← graph.commit_state_ctrler |>.throw_exception_nesting_msg s!"Error getting commit node"
-  let global_perform_load_node : Node := ← graph.load_global_perform_state_ctrler |>.throw_exception_nesting_msg s!"Error getting global perform load node"
-
-  let inval_listener_ctrler : Ctrler := ← graph.CreateInvalidationListener commit_node global_perform_load_node ctrlers lat_name lat_address_name
+  let inval_listener_ctrler : Ctrler :=
+    ← graph.CreateInvalidationListener
+      commit_node global_perform_load_node ctrlers lat_name lat_address_name
 
   let ctrlers' := inval_listener_ctrler :: ctrlers
 
   pure ctrlers'
 
+open CDFG in
 def Ctrlers.AddInvalidationBasedLoadOrdering
 (ctrlers : Ctrlers)
 : Except String Ctrlers := do
-  -- A few things to do (in no particular order):
+  -- === Setup: Get graph info, perform_load & commit Nodes ===
+  let graph : Graph := { nodes := ← DSLtoCDFG ctrlers
+    |>.throw_exception_nesting_msg s!"Error converting DSL to Graph" }
+  let perform_load_node := ← graph.load_global_perform_state_ctrler
+    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+  let commit_node := ← graph.commit_state_ctrler
+    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+
+  -- A few things to do:
   -- 1. Create a LAT to store the addresses of the loads
   -- 2. Create the invalidation listener (this will read from the LAT)
   -- 3. Add a stmt to insert_key into the invalidation listener to perform load
   -- 4. Add a stmt to remove_key from the invalidation listener to commit load
 
   -- (1) Create the LAT
-  let lat_name := "load_address_table"
-  let lat_size := 2 -- chosing a number for now..
-  let entry_key := seq_num
-  let insert_args := [seq_num, address]
-  let insert_actions := [var_asn_var [seq_num] seq_num, var_asn_var [address] address]
+  let (lat, lat_name, lat_address_var) ← CreateLoadAddressTableCtrler
+    perform_load_node.ctrler_name perform_load_node.ctrler_name
 
-  default
+  let ctrlers' := ctrlers ++ [lat]
 
--- NOTE: remember to get perform_load_node
--- def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
--- def Ctrlers.AddRemoveFromLATWhenCommit
+  -- (2) Create the invalidation listener
+  let ctrlers''   ← AddInvalidationListener
+    ctrlers' lat_name lat_address_var graph commit_node perform_load_node
+
+  -- (3) Add a stmt to insert_key into the invalidation listener to perform load
+  let ctrlers'''  ← AddInsertToLATWhenPerform
+    ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state
+  
+  -- (4) Add a stmt to remove_key from the invalidation listener to commit load
+  let ctrlers'''' ← AddRemoveFromLATWhenCommit
+    ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state
+
+  pure ctrlers''''
