@@ -296,7 +296,7 @@ def ast0048_generate_controller_murphi_record
         dbg_trace s!"ERROR getting c_type: {msg}"
         panic! msg
     let valid := match ctrler_type with
-      | .Unordered => [murϕ_var_decl| valid : boolean]
+      | .Unordered => [murϕ_var_decls| var valid : boolean]
       | .FIFO
       | .BasicCtrler => []
     let murphi_decls_list : List Murϕ.Decl :=
@@ -2441,6 +2441,7 @@ def CtrlerName.UnorderedOlderInstSearch
 (stall_on_inst_type : InstType)
 (success_case_stmts : List Pipeline.Statement)
 (search_api : MsgName)
+(current_ctrler_seq_num : List Identifier)
 : Pipeline.Statement :=
   -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
   -- when search_fail() from SB
@@ -2449,7 +2450,7 @@ def CtrlerName.UnorderedOlderInstSearch
   let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
 
   let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
-  let curr_ctrler_inst := (qualified_var [instruction, seq_num].to_qual_name)
+  let curr_ctrler_inst := (qualified_var current_ctrler_seq_num.to_qual_name)
   let entry_older_seq_num : Pipeline.Expr := less_than entry_inst curr_ctrler_inst
 
   let entry_inst_type := (qualified_var [entry, instruction, op].to_qual_name)
@@ -2496,6 +2497,7 @@ def CtrlerStates.query_older_insts
 (else_stmt : Pipeline.Statement)
 (ctrlers : Ctrlers)
 (search_type : SearchType)
+(current_ctrler_seq_num : List Identifier)
 : Except String SearchStatement := do
   let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error (gen query for ctrler/states) trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
   let ctrler_type ← ctrler.type
@@ -2522,7 +2524,7 @@ def CtrlerStates.query_older_insts
       throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
   | .Unordered =>
     if let some search_api := search_type.search_api ctrler_type then
-      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] search_api
+      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] search_api current_ctrler_seq_num
     else
       throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
 
@@ -2548,7 +2550,7 @@ def CtrlerStates.to_query
 
   -- TODO: Create a helper to check if the ctrler is a queue, and use the right search API
   let reset_to_original := (reset original_state_name)
-  let query_older_insts ← ctrler_states.query_older_insts inst_type if_not_completed reset_to_original ctrlers SearchType.hit_one
+  let query_older_insts ← ctrler_states.query_older_insts inst_type if_not_completed reset_to_original ctrlers SearchType.hit_one [instruction, seq_num]
 
   pure (ctrler_not_completed_var, query_older_insts, var_name)
 
@@ -2713,6 +2715,7 @@ def List.to_query_match_do
 (states_to_query : List (List CtrlerStates × InstType))
 (when_success_stmts : List Pipeline.Statement)
 (ctrlers : Ctrlers)
+(current_ctrler_seq_num : List Identifier)
 : Except String (List SearchStatement) := do
   -- convert ctrlerstates to a query on the controller / or entry, if the inst is older, and the state
   let decl_search_var : List (SearchStatement) := List.join $ ← states_to_query.mapM (do
@@ -2730,6 +2733,7 @@ def List.to_query_match_do
         [].to_block
         ctrlers
         SearchType.hit_all
+        current_ctrler_seq_num
       )
       |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
     gen_checks
@@ -2740,8 +2744,9 @@ def QueryAll
 (ctrler_states_list : List (List CtrlerStates × InstType))
 (when_search_success_stmts : List Pipeline.Statement)
 (ctrlers : Ctrlers)
+(current_ctrler_seq_num : List Identifier)
 : Except String (List Pipeline.Statement) := do
-  ctrler_states_list.to_query_match_do when_search_success_stmts ctrlers
+  ctrler_states_list.to_query_match_do when_search_success_stmts ctrlers current_ctrler_seq_num
 
 
 def Pipeline.Statement.key_assignment? (stmt : Pipeline.Statement) : Option Pipeline.Expr :=
