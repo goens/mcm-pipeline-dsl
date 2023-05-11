@@ -24,11 +24,12 @@ def CDFG.Graph.CreateInvalidationListener
   -- Send a msg to the memory_interface at the end, ack the invalidation
   -- transition to (a)
 
+  let invalidation_seq_num := "invalidation_seq_num"
   -- (a) await invalidation 
   let squash_speculative_loads_state_name := "squash_speculative_loads"
 
   let await_inval_stmts := [
-    variable_assignment [seq_num].to_qual_name <| var_expr seq_num,
+    variable_assignment [seq_num].to_qual_name <| var_expr invalidation_seq_num,
     variable_assignment [address].to_qual_name <| var_expr address,
     transition squash_speculative_loads_state_name
   ]
@@ -49,10 +50,11 @@ def CDFG.Graph.CreateInvalidationListener
 
   -- squash msg call
   let commit_ctrler_name := commit_node.ctrler_name
-  let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr seq_num]
+  let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr invalidation_seq_num]
   let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
 
-  let post_send_ld_req := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
+  let post_send_ld_req' := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
+  let post_send_ld_req := post_send_ld_req'.filter (· != global_perform_load_node)
   let post_send_with_inst : List (List CtrlerStates × InstType) :=
     [( post_send_ld_req.to_ctrler_states, load )]
   -- Create queries for all loads in speculatively executed state
@@ -62,7 +64,7 @@ def CDFG.Graph.CreateInvalidationListener
 
   let expr_address_eq_table_address := VarCompare [address] equal [table_address_name]
   let if_address_matches := conditional_stmt <| if_statement expr_address_eq_table_address search_squash_stmt
-  let search_for_addr := table_name.TableUnorderedSearch seq_num "instruction.seq_num" [if_address_matches] []
+  let search_for_addr := table_name.TableUnorderedSearch seq_num invalidation_seq_num [if_address_matches] []
 
 
   -- (i)
@@ -71,7 +73,8 @@ def CDFG.Graph.CreateInvalidationListener
   Could try to do this by adding an if statement to the squash.
   Need to get the address of the load if it is in "speculatively executed state".
   -/
-  let query_squash : List Statement := ← QueryAll post_send_with_inst [search_for_addr] ctrlers
+  let test := var_asn_var [ invalidation_seq_num ] invalidation_seq_num
+  let query_squash : List Statement := ← QueryAll post_send_with_inst [test, search_for_addr] ctrlers [invalidation_seq_num]
 
   -- (ii)
   let invalidation_ack_msg : Statement := stray_expr $ some_term $
@@ -89,14 +92,14 @@ def CDFG.Graph.CreateInvalidationListener
   -- (i) Create init state
   let init_state_name := "init_inval_listener"
   let init_stmts := [
-    variable_assignment [seq_num].to_qual_name <| some_term $ Term.const $ str_lit "0",
+    variable_assignment [invalidation_seq_num].to_qual_name <| some_term $ Term.const $ str_lit "0",
     variable_assignment [address].to_qual_name <| some_term $ Term.const $ str_lit "0",
     transition await_state_name
   ]
   let init_state := state init_state_name init_stmts.to_block
 
   -- (ii) create the ctrler
-  let seq_num_tident : TypedIdentifier := ⟨ seq_num, seq_num ⟩ 
+  let seq_num_tident : TypedIdentifier := ⟨ seq_num, invalidation_seq_num ⟩ 
   let address_tident : TypedIdentifier := ⟨ address, address ⟩
   let seq_num_decl := variable_declaration seq_num_tident
   let address_decl := variable_declaration address_tident
