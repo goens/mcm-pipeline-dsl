@@ -4518,7 +4518,7 @@ lst_stmts_decls
               find_when_stmt_from_transition first_state_list "insert" ctrler_name
 
             let when_stmt_args : List String :=
-              match (get_when_stmt_src_args actual_when_stmt) with
+              match (actual_when_stmt.get_when_stmt_src_args) with
               | .error msg =>
                 let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
                 dbg_trace msg'
@@ -5046,7 +5046,7 @@ lst_stmts_decls
               find_when_stmt_from_transition states_to_search "insert" ctrler_name
 
             let when_stmt_args : List String :=
-              match (get_when_stmt_src_args actual_when_stmt) with
+              match (actual_when_stmt.get_when_stmt_src_args) with
               | .error msg =>
                 let msg' : String := s!"Error getting when stmt args in 'insert_tail' API func: ({msg})"
                 dbg_trace msg'
@@ -5154,20 +5154,32 @@ lst_stmts_decls
             dbg_trace s!"dest_ctrler states: ({dest_ctrler.transition_list})"
             dbg_trace s!"ctrler_name: ({ctrler_name})"
             dbg_trace s!"When stmt for 'insert_key API: ({when_stmt})"
-            let actual_when_stmt : Pipeline.Statement :=
-              find_when_stmt_from_transition states_to_search "insert_key" ctrler_name
 
             let when_stmt_args : List String :=
-              match (get_when_stmt_src_args actual_when_stmt) with
+              match (when_stmt.get_when_stmt_src_args) with
               | .error msg =>
                 let msg' : String := s!"Error getting when stmt args in 'insert_key API func: ({msg})"
                 dbg_trace msg'
-                -- default
                 panic! msg'
               | .ok lst_args => lst_args
+            
+            let when_stmt_arg_exprs : List Pipeline.Expr :=
+              match (when_stmt.get_when_stmt_src_arg_exprs) with
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt arg exprs in 'insert_key API func: ({msg})"
+                dbg_trace msg'
+                panic! msg'
+              | .ok lst_arg_exprs => lst_arg_exprs
+            let when_stmt_vars_matched_to_args : Pipeline.Statement :=
+              match when_stmt.map_rhs_vars_src_to_dest lst_expr when_stmt_arg_exprs with
+              | .ok when_stmt' => when_stmt'
+              | .error msg =>
+                let msg' : String := s!"Error getting when stmt vars matched to args in 'insert_key API func: ({msg})"
+                dbg_trace msg'
+                panic! msg'
 
             let when_stmt_src_ctrler : String :=
-              match get_when_stmt_src_ctrler actual_when_stmt with
+              match get_when_stmt_src_ctrler when_stmt with
               | .ok src_ctrler => src_ctrler
               | .error msg =>
                 let msg' : String := s!"Error getting when stmt src_ctrler in 'insert_key API func: ({msg})"
@@ -5176,11 +5188,13 @@ lst_stmts_decls
                 panic! msg'
             -- Convert to Murphi Stmt
 
+            -- let calling_ctrler_args := sorry
+
             -- When-stmt translated for inserting into an existing key-matched entry
             let dest_ctrler_key_check_idx := dest_ctrler_name.append "_key_check_idx"
             let insert_existing_entry_murphi_dest_idx_expr : Murϕ.Expr := [murϕ| £dest_ctrler_key_check_idx]
             let insert_existing_entry_when_stmt_trans_info : stmt_translation_info := {
-              stmt := when_stmt,
+              stmt := when_stmt_vars_matched_to_args, -- when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
               ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
               --            want to set this to the SQ somehow...
@@ -5228,7 +5242,7 @@ lst_stmts_decls
             let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
             let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| £ctrler_curr_idx]
             let insert_unused_entry_when_stmt_trans_info : stmt_translation_info := {
-              stmt := when_stmt,
+              stmt := when_stmt_vars_matched_to_args, -- when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
               ctrler_name := dest_ctrler_name, --stmt_trans_info.ctrler_name,
               --            want to set this to the SQ somehow...
@@ -5496,7 +5510,7 @@ lst_stmts_decls
               match when_stmt with
               | none => []
               | some when_stmt =>
-                match (get_when_stmt_src_args when_stmt) with
+                match (when_stmt.get_when_stmt_src_args) with
                 | .error msg =>
                   let msg' : String := s!"Error getting when stmt args in 'Arbitrary' API func: ({msg})"
                   dbg_trace msg'
@@ -5865,7 +5879,7 @@ partial def api_term_func_to_murphi_func
       s!"When src_ctrler: ({dest_ctrler_name})"
 
     let when_success_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_success) with
+      match (when_search_success.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
@@ -5873,7 +5887,7 @@ partial def api_term_func_to_murphi_func
         panic! msg'
       | .ok lst_args => lst_args
     let when_fail_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_fail) with
+      match (when_search_fail.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
@@ -6149,7 +6163,7 @@ partial def api_term_func_to_murphi_func
       s!"When src_ctrler: ({dest_ctrler_name})"
 
     let when_success_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_success) with
+      match (when_search_success.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
@@ -6157,7 +6171,7 @@ partial def api_term_func_to_murphi_func
         panic! msg'
       | .ok lst_args => lst_args
     let when_fail_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_fail) with
+      match (when_search_fail.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
@@ -6653,7 +6667,7 @@ partial def api_term_func_to_murphi_func
       s!"When src_ctrler: ({dest_ctrler_name})"
 
     let when_success_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_success) with
+      match (when_search_success.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
@@ -6661,7 +6675,7 @@ partial def api_term_func_to_murphi_func
         panic! msg'
       | .ok lst_args => lst_args
     let when_fail_stmt_args : List String :=
-      match (get_when_stmt_src_args when_search_fail) with
+      match (when_search_fail.get_when_stmt_src_args) with
       | .error msg =>
         let msg' : String := s!"Error getting when stmt args in 'insert' API func: ({msg})"
         dbg_trace msg'
