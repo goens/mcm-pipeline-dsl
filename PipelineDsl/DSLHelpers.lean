@@ -19,13 +19,6 @@ def ld := "ld"
 -- def inst := "inst"
 def seq_num := "seq_num"
 
-def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
-  Pipeline.QualifiedName.mk idents
-
-def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
-| idents =>
-  Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
-
 def inst_seq_num_expr := [instruction, seq_num].to_dsl_var_expr
 def violating_seq_num := "violating_seq_num"
 def squash := "squash"
@@ -95,10 +88,6 @@ open Pipeline
 
 def num_lit_expr (n : Nat) : Expr :=
   Expr.some_term (Term.const (Const.num_lit n))
-
-
-def var_expr (var_name : VarName) : Pipeline.Expr :=
- Pipeline.Expr.some_term $ Pipeline.Term.var var_name
 
 def default_value_expr (var_type : VarType) : Except String Expr := do
   if var_type == seq_num ||
@@ -360,9 +349,3 @@ def Pipeline.Description.inject_stmts_at_stmt
 
     pure updated_state
   | _ => throw "Error: (inject stmts at perform) Expected input Pipeline.Description to be a state. Instead got ({state})"
-
-def qual_var_expr (var_name : List VarName) : Pipeline.Expr :=
- Pipeline.Expr.some_term $ Pipeline.Term.qualified_var var_name.to_qual_name
-
-def var_asn_var (var1 : List String) (var2 : String) : Statement :=
-  variable_assignment var1.to_qual_name <| var_expr var2

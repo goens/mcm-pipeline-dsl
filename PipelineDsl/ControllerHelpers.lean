@@ -222,26 +222,32 @@ def CreateTableQueue -- CAM like table
   
   pure ctrler
 
-open Pipeline in
-def CreateLoadAddressTable -- LAT
-(table_name : String)
-(table_size : Nat)
--- (entries : List (VarType × VarName))
-(entry_key : VarName)
--- Insert/Remove msg
-(insert_args : List VarName)
-(insert_actions : List Statement)
-(insert_from : CtrlerName)
-(remove_args : List VarName)
-(remove_actions : List Statement)
-(remove_from : CtrlerName)
-: Except String Ctrler :=
-  let entries := [(seq_num, seq_num), (address, address)]
-  CreateTableQueue
-    table_name table_size
+def CreateLoadAddressTableCtrler
+(perform_load_node_ctrler_name : CtrlerName)
+(commit_node_ctrler_name : CtrlerName)
+: Except String (Ctrler × CtrlerName × VarName) := do
+  let lat_address_var := "_".intercalate ["lat", address]
+
+  let lat_name := "load_address_table"
+  let lat_size := 2 -- chosing a number for now..
+  let entries := [(seq_num, seq_num), (address, lat_address_var)]
+  let entry_key := seq_num
+  let insert_args := [seq_num, "insert_address"]
+  let insert_actions := [var_asn_var [seq_num] seq_num, var_asn_var [lat_address_var] "insert_address"]
+  let insert_from := perform_load_node_ctrler_name
+
+  let remove_args := [seq_num]
+  let remove_actions :=
+    [variable_assignment [seq_num].to_qual_name (← default_value_expr seq_num)]
+  let remove_from := commit_node_ctrler_name
+
+  let lat : Ctrler ← CreateTableQueue
+    lat_name lat_size
     entries entry_key
     insert_args insert_actions insert_from
     remove_args remove_actions remove_from
+  
+  pure (lat, lat_name, lat_address_var)
 
 def Pipeline.Description.inject_state_stmts
 (state : Description)
@@ -312,6 +318,8 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 : Except String Ctrlers := do
 
   -- Insert a stmt to insert_key(seq_num, address) into the LAT  
+  -- TODO: Update the function so it uses a provided argument for the seq_num / address
+  -- So it finds the address from the used var expr from the send_load_request API
   let insert_key_stmt : Statement := stray_expr $ some_term $
     function_call [lat_name, insert_key].to_qual_name [var_expr seq_num, var_expr address]
 

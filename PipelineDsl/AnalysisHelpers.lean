@@ -169,9 +169,73 @@ def dsl_type_to_murphi_type
 
   murphi_type_expr
 
+def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
+| .mk type' identifier => (type', identifier)
+
+def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
+| typed_ident =>
+  let (type', ident) := typed_ident.type_ident
+  if (type' == "element_ordering") && (ident == "ordering") then
+    true
+  else
+    false
+
+def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
+| expr => do
+  match expr with
+  | .some_term term =>
+    match term with
+    | .var ident' => pure ident'
+    | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
+  | _ => throw "Expr is not 'some_term' (i.e. a var)"
+
+def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
+| stmt => do
+  match stmt with
+  | .value_declaration typed_ident expr => do
+    -- let (type', ident) := typed_ident.type_ident
+    match typed_ident.is_ident_ordering with
+    | true => do
+      let var_ident ← expr.var_ident 
+      if var_ident == "FIFO" then
+        pure $ CtrlerType.FIFO
+      else if var_ident == "Unordered" then
+        pure $ CtrlerType.Unordered
+      else
+        throw "Expr.var_ident is not a valid ordering"
+    | false => throw "Statement's LHS isn't Ordering"
+  | _ =>
+    let msg := s!"Statement is not a variable assignment: ({stmt})"
+    throw msg
+
+def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (CtrlerType)
+| stmt => do
+  let blk ← stmt.stmt_block
+  let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
+  let ordering_asgn ←
+    match ordering_list with
+    | [] => throw "No ordering found in stmt block"
+    | [ordering] => pure ordering
+    | _ => throw "Multiple orderings found in stmt block"
+  ordering_asgn.var_asgn_ordering
+
+def Pipeline.Description.ctrler_type : Pipeline.Description → Except String CtrlerType
+| descript => do
+  match descript with
+  | .controller /- identifier -/ _ stmt =>
+    stmt.ordering_from_stmt_block
+  | _ => throw "Description is not a controller: ({descript})"
+
+def controller_info.type : controller_info → Except String CtrlerType
+| ctrler =>
+  if ctrler.entry_descript.isSome then
+    ctrler.controller_descript.ctrler_type
+  else
+    pure CtrlerType.BasicCtrler
+
 -- open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
-( ctrl : controller_info )
+( ctrl : Ctrler )
 :=
   -- TODO: read the entry description
   -- build the per entry record of state vars
@@ -225,13 +289,23 @@ def ast0048_generate_controller_murphi_record
 
           Murϕ.Decl.var [ident] murphi_type_expr
       )
+    let ctrler_type :=
+      match ctrl.type with
+      | .ok c_type => c_type
+      | .error msg => 
+        dbg_trace s!"ERROR getting c_type: {msg}"
+        panic! msg
+    let valid := match ctrler_type with
+      | .Unordered => [murϕ_var_decl| valid : boolean]
+      | .FIFO
+      | .BasicCtrler => []
     let murphi_decls_list : List Murϕ.Decl :=
-    murphi_state_vars.concat (
+    murphi_state_vars ++ [
       Decl.var ["state"] (
         TypeExpr.previouslyDefined
         (ctrl.name.append "_state")
       )
-    )
+    ] ++ valid
     let murphi_ctrler_record : Murϕ.Decl :=
       Decl.var [ctrl.name] (TypeExpr.record murphi_decls_list)
 
@@ -651,17 +725,6 @@ def get_listen_handle_blks_from_stmts
 
   return list_handle_blks
 
-def get_when_stmt_src_args
-(when_stmt : Pipeline.Statement)
-: Except String (List Identifier)
-:= do
-  match when_stmt with
-  | .when _ args _ => return args
-  | _ =>
-    let msg : String := "Error: function expected a when stmt\n"++
-      s!"Instead got this stmt: ({when_stmt})"
-    throw msg
-
 def get_when_stmt_src_ctrler
 (when_stmt : Pipeline.Statement)
 : Except String (String)
@@ -887,70 +950,6 @@ def Pipeline.QualifiedName.is_ident_ordering : Pipeline.QualifiedName → Except
   | [ident] => pure $ ident == "ordering"
   | [] => throw s!"QualifiedName is empty? ({qual_name})"
   | _ => pure false
-
-def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
-| expr => do
-  match expr with
-  | .some_term term =>
-    match term with
-    | .var ident' => pure ident'
-    | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
-  | _ => throw "Expr is not 'some_term' (i.e. a var)"
-
-def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
-| .mk type' identifier => (type', identifier)
-
-def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
-| typed_ident =>
-  let (type', ident) := typed_ident.type_ident
-  if (type' == "element_ordering") && (ident == "ordering") then
-    true
-  else
-    false
-
-def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
-| stmt => do
-  match stmt with
-  | .value_declaration typed_ident expr => do
-    -- let (type', ident) := typed_ident.type_ident
-    match typed_ident.is_ident_ordering with
-    | true => do
-      let var_ident ← expr.var_ident 
-      if var_ident == "FIFO" then
-        pure $ CtrlerType.FIFO
-      else if var_ident == "Unordered" then
-        pure $ CtrlerType.Unordered
-      else
-        throw "Expr.var_ident is not a valid ordering"
-    | false => throw "Statement's LHS isn't Ordering"
-  | _ =>
-    let msg := s!"Statement is not a variable assignment: ({stmt})"
-    throw msg
-
-def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (CtrlerType)
-| stmt => do
-  let blk ← stmt.stmt_block
-  let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
-  let ordering_asgn ←
-    match ordering_list with
-    | [] => throw "No ordering found in stmt block"
-    | [ordering] => pure ordering
-    | _ => throw "Multiple orderings found in stmt block"
-  ordering_asgn.var_asgn_ordering
-
-def Pipeline.Description.ctrler_type : Pipeline.Description → Except String CtrlerType
-| descript => do
-  match descript with
-  | .controller /- identifier -/ _ stmt =>
-    stmt.ordering_from_stmt_block
-  | _ => throw "Description is not a controller: ({descript})"
-
-def controller_info.type : controller_info → Except String CtrlerType
-| ctrler =>
-  if ctrler.entry_descript.isSome then
-    ctrler.controller_descript.ctrler_type
-  else
-    pure CtrlerType.BasicCtrler
 
 mutual
 partial def Pipeline.Term.is_head_api : Pipeline.Term → Bool

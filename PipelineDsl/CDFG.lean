@@ -10,8 +10,6 @@ import PipelineDsl.AST
 
 namespace CDFG
 
-abbrev VarName := String
-
 inductive InEqRel
 | LT : InEqRel /- Less than -/
 | LEq : InEqRel /- Less than or equal -/
