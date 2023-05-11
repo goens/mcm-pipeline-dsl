@@ -1099,11 +1099,13 @@ ruleset j : cores_t do
   var ROB_search_all_curr_idx : ROB_idx_t;
   var next_state : STATE;
   var found_msg_in_ic : boolean;
+  var violating_seq_num : inst_idx_t;
 
 begin
   next_state := Sta;
   LQ_while_break := false;
   LQ_found_entry := false;
+  violating_seq_num := Sta.core_[j].invalidation_listener_.invalidation_seq_num;
   if (next_state.core_[ j ].LQ_.num_entries = 0) then
     LQ_while_break := true;
   end;
@@ -1122,6 +1124,38 @@ begin
               if (found_entry = false) then
                 found_element := (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num);
                 found_idx := load_address_table_iter;
+      for LQ_squash_idx : LQ_idx_t do
+        if true then
+          if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              -- rob := next_state.core_[ j ].ROB_;
+              -- rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
+              -- assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
+              -- rob.entries[ rob_id ].is_executed := false;
+              -- next_state.core_[ j ].ROB_ := rob;
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+            end;
+          elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+            end;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_mem_response) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := squashed_await_ld_mem_resp;
+            end;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = build_packet_send_mem_request) then
+            if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+              next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+            end;
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_fwd_check) then
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_translation) then
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_scheduled) then
+           elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_creation) then
+          else
+            error "Controller is not on an expected state for a msg: (squash) from: (SQ) to: (LQ)";
+          end;
+        end;
+      endfor;
               else
                 if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num) < found_element) then
                   found_element := (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num);
@@ -1163,6 +1197,19 @@ begin
               if (found_entry = false) then
                 found_element := (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num);
                 found_idx := load_address_table_iter;
+      for ROB_squash_idx : ROB_idx_t do
+        if true then
+          if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_executed) then
+          elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
+            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num) then
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
+              next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+            end;
+          else
+            error "Controller is not on an expected state for a msg: (squash) from: (SQ) to: (ROB)";
+          end;
+        end;
+      endfor;
               else
                 if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num) < found_element) then
                   found_element := (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].seq_num - next_state.core_[ j ].invalidation_listener_.invalidation_seq_num);
