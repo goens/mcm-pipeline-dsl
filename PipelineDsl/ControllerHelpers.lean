@@ -67,8 +67,8 @@ deriving Inhabited, BEq
 -- abbrev CtrlerType := ControllerType
 
 def CtrlerType.toString : CtrlerType → String
-| .FIFO => "FIFO Queue"
-| .Unordered => "Unordered Queue"
+| .FIFO => "FIFO"
+| .Unordered => "Unordered"
 | .BasicCtrler => "BasicCtrler"
 instance : ToString CtrlerType where toString := CtrlerType.toString
 
