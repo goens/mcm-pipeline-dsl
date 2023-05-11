@@ -2,6 +2,8 @@ import PipelineDsl
 import Cli
 import Lean
 
+import PipelineDsl.ControllerHelpers
+
 open Lean Pipeline
 
 def parseFile : Environment → String → IO (Option String × AST)
@@ -135,7 +137,7 @@ def transformTesting : AST → Array Nat → IO Unit
           dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
           []
 
-      let ctrlers := match Ctrlers.AddInvalidationListener ctrlers with
+      let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error adding invalidation listener: ({msg})"
