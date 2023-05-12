@@ -141,10 +141,12 @@ private partial def labelToString : Label → String
   | .result_write => "result_write "
   | .commit => "commit "
 
-private partial def handleBlockToString : HandleBlock → String
-| .mk name args body => "handle " ++ (qualifiedNameToString name) ++
-  "(" ++ (String.intercalate ", " (args.map toString)) ++
- ")\n" ++ (statementToString 0 body)
+private partial def handleBlockToString (indentationLevel := 0) ( handle : HandleBlock ) : String :=
+  match handle with
+  | .mk name args body =>
+    "handle " ++ (qualifiedNameToString name) ++
+    "(" ++ (String.intercalate ", " (args.map toString)) ++ ")\n" ++
+    (statementToString indentationLevel body)
 
 private partial def conditionalToString : Conditional → String
 | .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString 0 then_br) ++ "else\n" ++ (statementToString 0 else_br)
@@ -167,10 +169,8 @@ private partial def constToString : Const → String
 | .str_lit s => s
 
 private partial def qualifiedNameToString : QualifiedName → String
-  | .mk l => match l.reverse with
-    | [] => ""
-    | n::[] => toString n
-    | n::ns => (qualifiedNameToString (QualifiedName.mk ns)) ++ "." ++ (toString n)
+  | .mk l =>
+    ".".intercalate l
 
 private partial def exprToString : Expr → String
   | .add x y => (termToString x) ++ " + " ++ (termToString y)
@@ -195,29 +195,31 @@ private partial def statementToString (indentationLevel := 0) (inputStatement : 
   let indent_outter_nest : Nat := (indentationLevel - 1)
   let same_nesting_statementToString := statementToString (indentationLevel := indentationLevel)
   let indent_nested_statementToString := statementToString (indentationLevel := indentationLevel + 1)
+  let indent' := indent indentationLevel
   match inputStatement with
-  | .labelled_statement label stmt => (labelToString label) ++ " " ++ (same_nesting_statementToString stmt)
-  | .variable_declaration tid => (typedIdentifierToString tid)
-  | .value_declaration tid val => (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
-  | .variable_assignment tgt val => (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
-  | .conditional_stmt cond => conditionalToString cond
-  | .listen_handle listen_block catches => "listen " ++ (indent_nested_statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map handleBlockToString))
+  | .labelled_statement label stmt => (indent') ++ (labelToString label) ++ " " ++ (same_nesting_statementToString stmt)
+  | .variable_declaration tid => (indent') ++ (typedIdentifierToString tid)
+  | .value_declaration tid val => (indent') ++ (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
+  | .variable_assignment tgt val => (indent') ++ (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
+  | .conditional_stmt cond => (indent') ++ conditionalToString cond
+  | .listen_handle listen_block catches =>
+    (indent') ++ "listen " ++ (indent_nested_statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map ( handleBlockToString ( indentationLevel + 1 ) ·)))
   | .await opcall whens =>
     let call := match opcall with
       | none => ""
       | some c => termToString c ++ " "
-    s!"await {call}\{\n" ++ String.intercalate "\n" (whens.map statementToString) ++ "\n}\n"
+    (indent') ++ s!"await {call}\{\n" ++ String.intercalate "\n" (whens.map indent_nested_statementToString) ++ "\n}\n"
   | .when src_and_msg args body =>
     let src := src_and_msg.toList.head!
     let msg := QualifiedName.mk src_and_msg.toList.tail!
-   "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (same_nesting_statementToString body)
-  | .transition lbl => "transition " ++ (toString lbl)
-  | .reset lbl => "reset " ++ (toString lbl)
-  | .complete lbl => "complete " ++ (toString lbl)
-  | .stray_expr e => exprToString e
-  | .stall e => "stall ( " ++ exprToString e ++ " )"
-  | .block stmts => " {\n" ++ String.join (stmts.map (λ stmt => String.join [(indent indentationLevel), indent_nested_statementToString stmt, ";\n"]))  ++ (indent indent_outter_nest) ++ "}\n"
-  | .return_stmt e => "return " ++ exprToString e
+    (indent') ++ "when "  ++ (qualifiedNameToString msg) ++ "(" ++ (String.intercalate "," args) ++ s!") from {src} " ++ (same_nesting_statementToString body)
+  | .transition lbl => (indent') ++ "transition " ++ (toString lbl)
+  | .reset lbl => (indent') ++ "reset " ++ (toString lbl)
+  | .complete lbl => (indent') ++ "complete " ++ (toString lbl)
+  | .stray_expr e => (indent') ++ exprToString e
+  | .stall e => (indent') ++ "stall ( " ++ exprToString e ++ " )"
+  | .block stmts => (indent indent_outter_nest) ++ "{\n" ++ String.join (stmts.map (λ stmt => String.join [(indent indentationLevel), indent_nested_statementToString stmt, ";\n"]))  ++ (indent indent_outter_nest) ++ "}\n"
+  | .return_stmt e => (indent') ++ "return " ++ exprToString e
 
 end -- mutual
 
