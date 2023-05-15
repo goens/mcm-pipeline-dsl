@@ -2471,8 +2471,6 @@ inductive SearchType where
 | hit_one : SearchType
 | hit_all : SearchType
 
-def search_all' : MsgName := "search_all"
-
 def SearchType.search_api
 (search_type : SearchType)
 (ctrler_type : CtrlerType)
@@ -2486,7 +2484,7 @@ def SearchType.search_api
   | SearchType.hit_all =>
     match ctrler_type with
     | .FIFO
-    | .Unordered => some search_all'
+    | .Unordered => some search_all
     | .BasicCtrler => none
 
 def CtrlerStates.query_older_insts

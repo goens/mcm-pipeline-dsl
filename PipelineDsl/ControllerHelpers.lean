@@ -139,7 +139,7 @@ def CreateTableQueue -- CAM like table
   -- (3) determine the queue type
   -- element_ordering ordering = Unordered
   let key_asgn := variable_assignment [key].to_qual_name <| var_expr entry_key
-  let num_entries_asgn := variable_assignment [num_entries].to_qual_name <| num_lit_expr table_size
+  let num_entries_asgn := value_decl ("int", num_entries).to_typed_identifier <| num_lit_expr table_size
   let ordering_asgn :=
     value_decl
       (element_ordering, ordering).to_typed_identifier
@@ -225,12 +225,13 @@ def CreateTableQueue -- CAM like table
 def CreateLoadAddressTableCtrler
 (perform_load_node_ctrler_name : CtrlerName)
 (commit_node_ctrler_name : CtrlerName)
-: Except String (Ctrler × CtrlerName × VarName) := do
+: Except String (Ctrler × CtrlerName × VarName × VarName) := do
   let lat_address_var := "_".intercalate ["lat", address]
+  let lat_seq_num_var := "_".intercalate ["lat", seq_num]
 
   let lat_name := "load_address_table"
   let lat_size := 2 -- chosing a number for now..
-  let entries := [(seq_num, seq_num), (address, lat_address_var)]
+  let entries := [(seq_num, lat_seq_num_var), (address, lat_address_var)]
   let entry_key := seq_num
   let insert_args := [seq_num, "insert_address"]
   let insert_actions := [var_asn_var [seq_num] seq_num, var_asn_var [lat_address_var] "insert_address"]
@@ -247,7 +248,7 @@ def CreateLoadAddressTableCtrler
     insert_args insert_actions insert_from
     remove_args remove_actions remove_from
   
-  pure (lat, lat_name, lat_address_var)
+  pure (lat, lat_name, lat_seq_num_var, lat_address_var)
 
 def Pipeline.Description.inject_state_stmts
 (state : Description)

@@ -36,6 +36,7 @@ def insert_key := "insert_key"
 
 def search := "search"
 def tail_search := "tail_search"
+def search_all : MsgName := "search_all"
 
 def search_fail := "search_fail"
 def search_success := "search_success"
@@ -131,9 +132,11 @@ def CtrlerName.TableUnorderedSearch
 (search_failure_stmts : List Statement)
 -- (src_ctrler : CtrlerName)
 : Statement :=
+  let if_valid_expr := EntryVarCompare ["valid"] equal ["true"]
   let key_match_expr := EntryVarCompare [ table_key ] equal [ search_key ]
-  let min_sub := minEntryVarOp [ table_key ] sub [ search_key ]
-  let search_call := function_call [dest_ctrler, search].to_qual_name [key_match_expr, min_sub]
+  let valid_and_key_match := binand (expr_term if_valid_expr) (expr_term key_match_expr)
+  -- let min_sub := minEntryVarOp [ table_key ] sub [ search_key ]
+  let search_call := function_call [dest_ctrler, search_all].to_qual_name [valid_and_key_match]
 
   let when_search_success := when_stmt [dest_ctrler, search_success].to_qual_name [] search_success_stmts.to_block
   let when_search_failure := when_stmt [dest_ctrler, search_fail ].to_qual_name [] search_failure_stmts.to_block

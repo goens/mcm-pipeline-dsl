@@ -8,6 +8,7 @@ def CDFG.Graph.CreateInvalidationListener
 (commit_node global_perform_load_node : Node)
 (ctrlers : Ctrlers)
 (table_name : CtrlerName) -- "seq_num_to_address_table"
+(table_seq_num_name : VarName) -- "table_address"
 (table_address_name : VarName) -- "table_address"
 : Except String Ctrler := do
   -- create a ctrler to listen for invalidation
@@ -25,12 +26,13 @@ def CDFG.Graph.CreateInvalidationListener
   -- transition to (a)
 
   let invalidation_seq_num := "invalidation_seq_num"
+  let invalidation_address := "invalidation_address"
   -- (a) await invalidation 
   let squash_speculative_loads_state_name := "squash_speculative_loads"
 
   let await_inval_stmts := [
     variable_assignment [seq_num].to_qual_name <| var_expr invalidation_seq_num,
-    variable_assignment [address].to_qual_name <| var_expr address,
+    variable_assignment [address].to_qual_name <| var_expr invalidation_address,
     transition squash_speculative_loads_state_name
   ]
   let when_invalidation := Statement.when
@@ -49,8 +51,9 @@ def CDFG.Graph.CreateInvalidationListener
   -- TODO: Still need to add the if address of the invalidation & load matches, then squash
 
   -- squash msg call
+  -- something like: ROB.squash(LAT_seq_num)
   let commit_ctrler_name := commit_node.ctrler_name
-  let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr invalidation_seq_num]
+  let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr table_seq_num_name]
   let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
 
   let post_send_ld_req' := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
@@ -62,9 +65,19 @@ def CDFG.Graph.CreateInvalidationListener
   -- TODO NOTE: Need to update the LAT generator, to only have 1 state, and to implement the API insert_key()
   -- NOTE: check the generated Load-Address-Table (LAT) to see if the address matches the invalidation
 
-  let expr_address_eq_table_address := VarCompare [address] equal [table_address_name]
-  let if_address_matches := conditional_stmt <| if_statement expr_address_eq_table_address search_squash_stmt
-  let search_for_addr := table_name.TableUnorderedSearch seq_num invalidation_seq_num [if_address_matches] []
+  -- something like:
+  -- 1: if (LAT.address == inval.address) & (entry.valid == true) { squash() }
+  -- let expr_address_eq_table_address := VarCompare [invalidation_address] equal [table_address_name]
+  -- let if_address_matches := conditional_stmt <| if_statement expr_address_eq_table_address search_squash_stmt
+
+  -- Remove the entry upon match as well, so that it doesn't get squashed again
+  let remove_entry_at_key := stray_expr $ some_term $
+    function_call [table_name, remove_key].to_qual_name [var_expr table_seq_num_name]
+
+  -- table_address_name is the LAT's address, and check if invalidation listener's address (from the inval msg) matches
+  let search_for_addr := table_name.TableUnorderedSearch
+    table_address_name invalidation_address
+    [search_squash_stmt, remove_entry_at_key] []
 
 
   -- (i)
@@ -73,8 +86,7 @@ def CDFG.Graph.CreateInvalidationListener
   Could try to do this by adding an if statement to the squash.
   Need to get the address of the load if it is in "speculatively executed state".
   -/
-  let test := var_asn_var [ invalidation_seq_num ] invalidation_seq_num
-  let query_squash : List Statement := ← QueryAll post_send_with_inst [test, search_for_addr] ctrlers [invalidation_seq_num]
+  -- let query_squash : List Statement := ← QueryAll post_send_with_inst [search_for_addr] ctrlers [invalidation_seq_num]
 
   -- (ii)
   let invalidation_ack_msg : Statement := stray_expr $ some_term $
@@ -83,7 +95,7 @@ def CDFG.Graph.CreateInvalidationListener
   -- (iii)
   let transition_to_await_invalidation : Statement := complete await_state_name
 
-  let squash_speculative_loads_stmts := query_squash ++ [invalidation_ack_msg, transition_to_await_invalidation]
+  let squash_speculative_loads_stmts := /- query_squash -/ [search_for_addr, invalidation_ack_msg, transition_to_await_invalidation]
   let squash_state := state squash_speculative_loads_state_name squash_speculative_loads_stmts.to_block
 
   -- 0. Create the ctrler
@@ -93,14 +105,14 @@ def CDFG.Graph.CreateInvalidationListener
   let init_state_name := "init_inval_listener"
   let init_stmts := [
     variable_assignment [invalidation_seq_num].to_qual_name <| some_term $ Term.const $ str_lit "0",
-    variable_assignment [address].to_qual_name <| some_term $ Term.const $ str_lit "0",
+    variable_assignment [invalidation_address].to_qual_name <| some_term $ Term.const $ str_lit "0",
     transition await_state_name
   ]
   let init_state := state init_state_name init_stmts.to_block
 
   -- (ii) create the ctrler
   let seq_num_tident : TypedIdentifier := ⟨ seq_num, invalidation_seq_num ⟩ 
-  let address_tident : TypedIdentifier := ⟨ address, address ⟩
+  let address_tident : TypedIdentifier := ⟨ address, invalidation_address ⟩
   let seq_num_decl := variable_declaration seq_num_tident
   let address_decl := variable_declaration address_tident
   let init_state_decl := variable_assignment [ "init_state" ].to_qual_name <| var_expr init_state_name
@@ -119,14 +131,17 @@ open CDFG in
 def Ctrlers.AddInvalidationListener
 (ctrlers : Ctrlers)
 (lat_name : CtrlerName)
-(lat_address_name : CtrlerName)
+(lat_seq_num_name : VarName)
+(lat_address_name : VarName)
 (graph : Graph)
 (commit_node : Node)
 (global_perform_load_node : Node)
 : Except String Ctrlers := do
   let inval_listener_ctrler : Ctrler :=
     ← graph.CreateInvalidationListener
-      commit_node global_perform_load_node ctrlers lat_name lat_address_name
+      commit_node global_perform_load_node
+      ctrlers
+      lat_name lat_seq_num_name lat_address_name
 
   let ctrlers' := inval_listener_ctrler :: ctrlers
 
@@ -151,14 +166,14 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   -- 4. Add a stmt to remove_key from the invalidation listener to commit load
 
   -- (1) Create the LAT
-  let (lat, lat_name, lat_address_var) ← CreateLoadAddressTableCtrler
+  let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
     perform_load_node.ctrler_name perform_load_node.ctrler_name
 
   let ctrlers' := ctrlers ++ [lat]
 
   -- (2) Create the invalidation listener
   let ctrlers''   ← AddInvalidationListener
-    ctrlers' lat_name lat_address_var graph commit_node perform_load_node
+    ctrlers' lat_name lat_seq_num_var lat_address_var graph commit_node perform_load_node
 
   -- (3) Add a stmt to insert_key into the invalidation listener to perform load
   let ctrlers'''  ← AddInsertToLATWhenPerform
