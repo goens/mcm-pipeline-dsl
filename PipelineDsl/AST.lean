@@ -148,9 +148,17 @@ private partial def handleBlockToString (indentationLevel := 0) ( handle : Handl
     "(" ++ (String.intercalate ", " (args.map toString)) ++ ")\n" ++
     (statementToString indentationLevel body)
 
-private partial def conditionalToString : Conditional → String
-| .if_else_statement cond then_br else_br  => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString 0 then_br) ++ "else\n" ++ (statementToString 0 else_br)
-| .if_statement cond then_br => "if (" ++ (exprToString cond) ++ ")\n" ++ (statementToString 0 then_br)
+private partial def conditionalToString  (indentationLevel := 0) ( conditional : Conditional ) : String :=
+  let same_nesting_statementToString := statementToString (indentationLevel := indentationLevel)
+  -- let indent_nested_statementToString := statementToString (indentationLevel := indentationLevel + 1)
+  let indent' := indent indentationLevel
+  -- let indent_plus' := indent (indentationLevel+1)
+  match conditional with
+  | .if_else_statement cond then_br else_br  =>
+    indent' ++ "if (" ++ (exprToString cond) ++ ") " ++ (same_nesting_statementToString then_br) ++
+    indent' ++ "else " ++ (same_nesting_statementToString else_br)
+  | .if_statement cond then_br =>
+    indent' ++ "if (" ++ (exprToString cond) ++ ") " ++ (same_nesting_statementToString then_br)
 
 private partial def termToString : Term → String
   | .negation t => "-" ++ (termToString t)
@@ -192,7 +200,7 @@ private partial def exprToString : Expr → String
   | .some_term x => termToString x
 
 private partial def statementToString (indentationLevel := 0) (inputStatement : Statement) : /-Statement →-/ String :=
-  let indent_outter_nest : Nat := (indentationLevel - 1)
+  -- let indent_outter_nest : Nat := (indentationLevel - 1)
   let same_nesting_statementToString := statementToString (indentationLevel := indentationLevel)
   let indent_nested_statementToString := statementToString (indentationLevel := indentationLevel + 1)
   let indent' := indent indentationLevel
@@ -201,14 +209,14 @@ private partial def statementToString (indentationLevel := 0) (inputStatement : 
   | .variable_declaration tid => (indent') ++ (typedIdentifierToString tid)
   | .value_declaration tid val => (indent') ++ (typedIdentifierToString tid) ++ " = " ++ (exprToString val)
   | .variable_assignment tgt val => (indent') ++ (qualifiedNameToString tgt) ++ " = " ++ (exprToString val)
-  | .conditional_stmt cond => (indent') ++ conditionalToString cond
+  | .conditional_stmt cond => /- (indent') ++-/ conditionalToString indentationLevel cond
   | .listen_handle listen_block catches =>
     (indent') ++ "listen " ++ (indent_nested_statementToString listen_block) ++ "\n" ++ (String.intercalate "\n" (catches.map ( handleBlockToString ( indentationLevel + 1 ) ·)))
   | .await opcall whens =>
     let call := match opcall with
       | none => ""
       | some c => termToString c ++ " "
-    (indent') ++ s!"await {call}\{\n" ++ String.intercalate "\n" (whens.map indent_nested_statementToString) ++ "\n}\n"
+    (indent') ++ s!"await {call}\{\n" ++ String.intercalate "\n" (whens.map indent_nested_statementToString) ++ "\n" ++ indent' ++ "}\n"
   | .when src_and_msg args body =>
     let src := src_and_msg.toList.head!
     let msg := QualifiedName.mk src_and_msg.toList.tail!
@@ -218,7 +226,7 @@ private partial def statementToString (indentationLevel := 0) (inputStatement : 
   | .complete lbl => (indent') ++ "complete " ++ (toString lbl)
   | .stray_expr e => (indent') ++ exprToString e
   | .stall e => (indent') ++ "stall ( " ++ exprToString e ++ " )"
-  | .block stmts => (indent indent_outter_nest) ++ "{\n" ++ String.join (stmts.map (λ stmt => String.join [(indent indentationLevel), indent_nested_statementToString stmt, ";\n"]))  ++ (indent indent_outter_nest) ++ "}\n"
+  | .block stmts => "{\n" ++ String.join (stmts.map (λ stmt => String.join [indent_nested_statementToString stmt, ";\n"]))  ++ (indent') ++ "}\n"
   | .return_stmt e => (indent') ++ "return " ++ exprToString e
 
 end -- mutual
