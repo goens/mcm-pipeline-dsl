@@ -229,17 +229,20 @@ def CreateLoadAddressTableCtrler
   let lat_address_var := "_".intercalate ["lat", address]
   let lat_seq_num_var := "_".intercalate ["lat", seq_num]
 
+  let input_address := "input_address"
+  let input_seq_num := "input_seq_num"
+
   let lat_name := "load_address_table"
   let lat_size := 2 -- chosing a number for now..
   let entries := [(seq_num, lat_seq_num_var), (address, lat_address_var)]
-  let entry_key := seq_num
-  let insert_args := [seq_num, "insert_address"]
-  let insert_actions := [var_asn_var [seq_num] seq_num, var_asn_var [lat_address_var] "insert_address"]
+  let entry_key := lat_seq_num_var
+  let insert_args := [input_seq_num, input_address]
+  let insert_actions := [var_asn_var [lat_seq_num_var] input_seq_num, var_asn_var [lat_address_var] input_address]
   let insert_from := perform_load_node_ctrler_name
 
-  let remove_args := [seq_num]
+  let remove_args := [input_seq_num]
   let remove_actions :=
-    [variable_assignment [seq_num].to_qual_name (← default_value_expr seq_num)]
+    [variable_assignment [lat_seq_num_var].to_qual_name (← default_value_expr seq_num)]
   let remove_from := commit_node_ctrler_name
 
   let lat : Ctrler ← CreateTableQueue
@@ -316,13 +319,16 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 (lat_name : CtrlerName)
 (perform_load_ctrler_name : CtrlerName)
 (perform_load_state_name : StateName)
+(load_req_address : Expr)
+(load_req_seq_num : Expr)
 : Except String Ctrlers := do
 
   -- Insert a stmt to insert_key(seq_num, address) into the LAT  
   -- TODO: Update the function so it uses a provided argument for the seq_num / address
   -- So it finds the address from the used var expr from the send_load_request API
   let insert_key_stmt : Statement := stray_expr $ some_term $
-    function_call [lat_name, insert_key].to_qual_name [var_expr seq_num, var_expr address]
+    -- function_call [lat_name, insert_key].to_qual_name [qual_var_expr [instruction, seq_num], var_expr load_req_address]
+    function_call [lat_name, insert_key].to_qual_name [load_req_seq_num, load_req_address]
 
   let ctrlers_insert_key_into_lat :=
     ctrlers.inject_ctrler_state
