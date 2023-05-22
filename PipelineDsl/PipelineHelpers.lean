@@ -277,6 +277,7 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
   match stmt with
   | .variable_assignment qual_name expr => do
     let expr' := ← expr.map_var_expr_to_dest_var src_vars dest_vars
+    -- dbg_trace s!"(dbg_trace: {Statement.variable_assignment qual_name expr'})"
     pure $ Statement.variable_assignment qual_name expr'
   | .stall _ => do throw s!"stall not supported, for expr translation"
   | .return_stmt _ => do throw s!"return_stmt not supported, for expr translation"
@@ -293,7 +294,10 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
   | .when qual_name arg_idents stmt' => do
     let stmt'' := ← stmt'.map_rhs_vars_src_to_dest src_vars dest_vars
     pure $ Statement.when qual_name arg_idents stmt''
-  | .await (some _) _
+  | .await (some term) stmts => do
+    let term' ← term.map_var_term_to_dest_var_term src_vars dest_vars
+    let stmts' ← stmts.mapM (·.map_rhs_vars_src_to_dest src_vars dest_vars)
+    pure $ Statement.await (some term') stmts'
   | .await none _ => do
     pure stmt
   | .listen_handle _ _ => do
