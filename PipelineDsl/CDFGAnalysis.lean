@@ -2011,6 +2011,19 @@ def CDFG.Graph.commit_state_ctrler (graph : CDFG.Graph) : Except String CDFG.Nod
 --   | store => exact inst_type ∈ [.load, .store],
 --   | mfence => 
 
+open Pipeline in
+def CDFG.Node.load_req_address_seq_num (node : Node) : Except String (Expr × Expr) := do
+  let unique_msgs := node.non_reset_transitions.map (·.messages) |>.eraseDups |>.join
+  let perform_msgs ← unique_msgs.filterM (do ·.is_global_perform_of_type load)
+  match perform_msgs with
+  | [perform_msg] => do
+    let addr_seq_num? ← perform_msg.load_req_address_seq_num!? |>.throw_exception_nesting_msg "Error: Couldn't get Load Perform Msg's addr/seq_num?"
+    match addr_seq_num? with
+    | some addr_seq_num => do pure addr_seq_num
+    | none => do throw "Error: Load Perform Message should have an address sequence number"
+  | [] => throw "Error: There should be a perform message"
+  | _::_ => throw "Error: Don't know how to handle multiple perform messages"
+
 def CDFG.Graph.global_perform_node_of_memory_access (graph : Graph) (inst_type : InstType) : Except String Node := do
   let global_perform_nodes! : Except String (List Node) := do
     graph.nodes.filterM (do ·.transitions.anyM (do ·.messages.anyM (do ·.is_global_perform_of_type inst_type)))
