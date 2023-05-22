@@ -6,7 +6,7 @@ open Pipeline in
 def CDFG.Graph.CreateInvalidationListener
 (graph : Graph)
 (commit_node global_perform_load_node : Node)
-(ctrlers : Ctrlers)
+-- (ctrlers : Ctrlers)
 (table_name : CtrlerName) -- "seq_num_to_address_table"
 (table_seq_num_name : VarName) -- "table_address"
 (table_address_name : VarName) -- "table_address"
@@ -140,7 +140,7 @@ def Ctrlers.AddInvalidationListener
   let inval_listener_ctrler : Ctrler :=
     ← graph.CreateInvalidationListener
       commit_node global_perform_load_node
-      ctrlers
+      -- ctrlers
       lat_name lat_seq_num_name lat_address_name
 
   let ctrlers' := inval_listener_ctrler :: ctrlers
@@ -176,8 +176,12 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
     ctrlers' lat_name lat_seq_num_var lat_address_var graph commit_node perform_load_node
 
   -- (3) Add a stmt to insert_key into the invalidation listener to perform load
+  -- Get the global_perform_load API's args: (the seq_num expr, and address expr) (should be in fixed positions..)
+  -- pass to the AddInsertToLATWhenPerform function
+  let (load_req_address, load_req_seq_num) ← perform_load_node.load_req_address_seq_num
+
   let ctrlers'''  ← AddInsertToLATWhenPerform
-    ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state
+    ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
   
   -- (4) Add a stmt to remove_key from the invalidation listener to commit load
   let ctrlers'''' ← AddRemoveFromLATWhenCommit
