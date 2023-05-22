@@ -233,6 +233,27 @@ def controller_info.type : controller_info → Except String CtrlerType
   else
     pure CtrlerType.BasicCtrler
 
+open Pipeline in
+def Ctrler.get_state_vars (ctrler : Ctrler)
+: Except String (List TypedIdentifier)
+:= do
+  match ← ctrler.type with
+  | .BasicCtrler => do
+    match ctrler.ctrler_state_vars with
+    | some state_vars => do pure state_vars
+    | none => do throw "BasicCtrler doesn't have state vars"
+  | .FIFO | .Unordered => do
+    match ctrler.state_vars with
+    | some state_vars => do pure state_vars
+    | none => do throw "FIFO/Unordered Queue doesn't have state vars"
+
+def Ctrler.state_var_names (ctrler : Ctrler)
+: Except String (List Identifier)
+:= do
+  let state_vars ← ctrler.get_state_vars
+  let state_var_names : List Identifier := state_vars.map (·.type_ident.snd)
+  pure state_var_names
+
 -- open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
 ( ctrl : Ctrler )
@@ -289,23 +310,13 @@ def ast0048_generate_controller_murphi_record
 
           Murϕ.Decl.var [ident] murphi_type_expr
       )
-    let ctrler_type :=
-      match ctrl.type with
-      | .ok c_type => c_type
-      | .error msg => 
-        dbg_trace s!"ERROR getting c_type: {msg}"
-        panic! msg
-    let valid := match ctrler_type with
-      | .Unordered => [murϕ_var_decls| var valid : boolean]
-      | .FIFO
-      | .BasicCtrler => []
     let murphi_decls_list : List Murϕ.Decl :=
     murphi_state_vars ++ [
       Decl.var ["state"] (
         TypeExpr.previouslyDefined
         (ctrl.name.append "_state")
       )
-    ] ++ valid
+    ]-- ++ valid
     let murphi_ctrler_record : Murϕ.Decl :=
       Decl.var [ctrl.name] (TypeExpr.record murphi_decls_list)
 
@@ -349,13 +360,26 @@ def ast0048_generate_controller_murphi_record
           Murϕ.Decl.var [ident] murphi_type_expr
       )
 
+    let ctrler_type :=
+      match ctrl.type with
+      | .ok c_type => c_type
+      | .error msg => 
+        dbg_trace s!"ERROR getting c_type: {msg}"
+        panic! msg
+    dbg_trace s!"Getting Ctrler Type in Murphi Translation: Ctrler: ({ctrl.name}), Type: ({ctrler_type})"
+    let valid := match ctrler_type with
+      | .Unordered =>
+        dbg_trace s!"Found Unordered ctrler: ({ctrl.name})"
+        [murϕ_var_decls| var valid : boolean]
+      | .FIFO
+      | .BasicCtrler => []
     let murphi_decls_lst :=
       murphi_state_vars.concat (
         Decl.var ["state"] (
           TypeExpr.previouslyDefined
           (ctrl.name.append "_state")
         )
-      )
+      ) ++ valid
 
     -- This is a record of what an entry looks like
     let murphi_entry_record := TypeExpr.record murphi_decls_lst
