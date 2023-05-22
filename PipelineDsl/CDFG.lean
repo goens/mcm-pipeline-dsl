@@ -142,13 +142,13 @@ def Message.toString : Message → String
 instance : ToString Message where toString := Message.toString
 
 def Message.idents : Message → Except String (List Identifier)
-| .mk term =>
+| .mk term => do
   match term with
-  | .function_call qual_name /- exprs -/ _ =>
+  | .function_call qual_name /- exprs -/ _ => do
     match qual_name with
-    | .mk idents =>
+    | .mk idents => do
       pure idents
-  | _ => throw "Message is not a function call"
+  | _ => do throw "(get qual name) Message is not a function call"
 
 abbrev MessageName := String
 def Message.dest_ctrler : Message → Except String CtrlerName
@@ -173,6 +173,43 @@ def Message.is_global_perform_of_type : Message → InstType → Except String B
   pure <|
     ((← ctrler_msg.name) == ( ← inst_type.perform_msg_name )) &&
     ((← ctrler_msg.dest_ctrler) == memory_interface)
+
+open Pipeline in
+def Message.args! : Message → Except String (List Expr)
+| .mk term => do
+  match term with
+  | .function_call /- qual_name -/ _ exprs => do
+    pure exprs
+  | _ => do throw "(get args) Message is not a function call"
+
+open Pipeline in
+def Message.load_req_address!? : Message → Except String (Option Expr)
+| msg => do
+  match ← msg.is_global_perform_of_type load with
+  | true => do
+    let args ← msg.args! 
+    pure args[0]?
+  | false => do throw "Message is not a load request"
+
+open Pipeline in
+def Message.load_req_seq_num!? : Message → Except String (Option Expr)
+| msg => do
+  match ← msg.is_global_perform_of_type load with
+  | true => do
+    let args ← msg.args! 
+    pure args[1]?
+  | false => do throw "Message is not a load request"
+
+open Pipeline in
+def Message.load_req_address_seq_num!? : Message → Except String (Option (Expr × Expr))
+| msg => do
+  match ← msg.is_global_perform_of_type load with
+  | true => do
+    let args ← msg.args! 
+    match args[0]?, args[1]? with
+    | some addr, some seq_num => do pure (addr, seq_num)
+    | _, _ => do pure none
+  | false => do throw "Message is not a load request"
 
 def Message.term : Message → Pipeline.Term
 | .mk term => term
