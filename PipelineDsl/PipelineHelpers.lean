@@ -72,8 +72,13 @@ def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
 def var_expr (var_name : Identifier) : Pipeline.Expr :=
  Pipeline.Expr.some_term $ Pipeline.Term.var var_name
 
+-- def var_term (var_name : Identifier) : Pipeline.Term := Pipeline.Term.var var_name
+
 def qual_var_expr (var_name : List Identifier) : Pipeline.Expr :=
  Pipeline.Expr.some_term $ Pipeline.Term.qualified_var var_name.to_qual_name
+
+def qual_var_term (var_name : List Identifier) : Pipeline.Term :=
+ Pipeline.Term.qualified_var var_name.to_qual_name
 
 def var_asn_var (var1 : List String) (var2 : String) : Statement :=
   variable_assignment var1.to_qual_name <| var_expr var2

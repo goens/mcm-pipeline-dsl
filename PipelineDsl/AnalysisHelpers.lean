@@ -2491,6 +2491,39 @@ def CtrlerName.UnorderedOlderInstSearch
   let search_api := await (some search_api_term) [when_search_success, when_search_fail]
   search_api
 
+open Pipeline in
+def List.to_qual_or_var_term
+(idents : List Identifier)
+: Except String Pipeline.Term := do
+  match idents with
+  | [one] => do pure $ var_term one
+  | _::_ => do pure $ qual_var_term idents
+  | _ => do throw "List.to_qual_or_var_expr: empty list"
+
+open Pipeline in
+def CtrlerName.unordered_query_match
+(if_stmt : Pipeline.Statement)
+(else_stmt : Pipeline.Statement)
+(dest_ctrler_name : CtrlerName)
+
+(dest_ctrler_var : List Identifier)
+(searched_var : List Identifier)
+: Except String SearchStatement := do
+  -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
+  let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] if_stmt.to_block
+  let when_search_fail    := when_stmt [dest_ctrler_name, search_fail   ].to_qual_name [] else_stmt.to_block
+
+  let entry_var := ← dest_ctrler_var.to_qual_or_var_term
+  let search_var := ← searched_var.to_qual_or_var_term
+  let entry_match := equal entry_var search_var
+
+  let diff := sub search_var entry_var
+  let min_of_diff : Pipeline.Expr := some_term $ function_call [(min : Identifier)].to_qual_name [diff]
+
+  let search_api_call := function_call [dest_ctrler_name, search].to_qual_name [entry_match, min_of_diff]
+  let search_stmt := await (some search_api_call) [when_search_success, when_search_fail]
+  pure search_stmt
+
 inductive SearchType where
 | hit_one : SearchType
 | hit_all : SearchType

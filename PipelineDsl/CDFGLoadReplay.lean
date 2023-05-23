@@ -45,6 +45,8 @@ def CreateReplayIssueLoadState
 (four_nodes : CommitIssueAwaitValueStmtNodes)
 (issue_ctrler_node_pred_on_commit? : Option CDFG.Node)
 (ctrlers : Ctrlers)
+(lat_name : CtrlerName)
+(lat_seq_num_var lat_address_var : VarName)
 : Except String (Pipeline.Description) := do
   -- NOTE: Temporary way to get a "replay" load stmt
   -- Proper way should read the load API usage, and copy any
@@ -86,9 +88,19 @@ def CreateReplayIssueLoadState
 
         pure (complete_to_first_state, [search_api_to_send_start_replay_await_msg])
 
+  -- TODO: Generate the seq_num, either check if this ctrler has an instruction state_var, if it does, use it!
+  -- Or make an assumption that the commit ctrler has the instruction
   let replay_issue_stmts_blk := Pipeline.Statement.block ([replay_load_stmt] ++ additional_stmts ++ [transition_stmt])
+  -- then replace replay_issue_stmts_blk with search_for_load_seq_num
+  -- NOTE: Must think of way to reset the LAT upon mis-match
+  -- Generate some handle block to listen to squash... from the commit node
+  let search_for_load_seq_num ← lat_name.unordered_query_match
+    replay_issue_stmts_blk [].to_block
+    [ lat_seq_num_var ] [instruction, seq_num]
 
-  let replay_issue_in_listen_handle ← four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists replay_issue_stmts_blk ctrlers
+  let replay_issue_in_listen_handle ←
+    four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists
+      search_for_load_seq_num ctrlers
   
   let replay_issue_name := replay_issue_load_to_mem
   let replay_state := Pipeline.Description.state replay_issue_name replay_issue_in_listen_handle.to_block
@@ -432,7 +444,11 @@ def CreateCommitAwaitReplayCompleteState
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
 
-def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Except String (Ctrlers × CtrlerState) := do
+def CDFG.Graph.AddLoadReplayToCtrlers
+(graph : Graph) (ctrlers : Ctrlers)
+(lat_name : CtrlerName) (lat_seq_num_var lat_address_var : VarName)
+: Except String (Ctrlers × CtrlerState)
+:= do
   -- Get the relevant 4 states & ctrlers
   let commit_node ← graph.commit_state_ctrler
   let global_perform_load_node ← graph.load_global_perform_state_ctrler
@@ -486,7 +502,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers (graph : Graph) (ctrlers : Ctrlers) : Exce
   -- Issue the Replay Memory Request
   let new_issue_replay_state ← CreateReplayIssueLoadState is_issue_ctrler_and_await_response_ctrler_same
     is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩  
-    issue_ctrler_node_pred_on_commit? ctrlers 
+    issue_ctrler_node_pred_on_commit? ctrlers lat_name lat_seq_num_var lat_address_var
   
   dbg_trace s!"new_issue_replay_state: ({new_issue_replay_state})"
 
@@ -588,19 +604,38 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
   dbg_trace "$$LoadReplay ctrlers: {ctrlers}"
   dbg_trace "$$LoadReplay graph: {graph}"
 
-  let (ctrlers_with_load_replay, commit_start_replay_state_name) := ← graph.AddLoadReplayToCtrlers ctrlers
+  -- (1) Create the LAT
+  let perform_load_node ← graph.load_global_perform_state_ctrler
+    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+
+  let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
+    perform_load_node.ctrler_name perform_load_node.ctrler_name
+
+  -- (2) Add LoadReplay to Ctrlers
+  let (ctrlers_with_load_replay, commit_start_replay_state_name) :=
+    ← graph.AddLoadReplayToCtrlers ctrlers lat_name lat_seq_num_var lat_address_var
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
   dbg_trace s!"LoadReplay: MCM Ordering: ( {mcm_ordering} )"
   dbg_trace s!"LoadReplay: Commit Start Replay State Name: ( {commit_start_replay_state_name} )"
 
-  -- mcm_orderings.foldlM ( λ ctrlers mcm_ordering => do
-  --   dbg_trace s!"LoadReplay: InOrder Transform: MCM Ordering: ( {mcm_ordering} )"
-  --   CDFG.InOrderTransform ctrlers mcm_ordering (some commit_start_replay_state_name)
-  --     |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay! for Ordering ( {mcm_ordering} )"
-  -- ) ctrlers_with_load_replay
+  let ctrlers' := ctrlers_with_load_replay ++ [lat]
+  
+  -- (3) Add insert_key(seq_num, address) into LAT
+  let (load_req_address, load_req_seq_num) ← perform_load_node.load_req_address_seq_num
 
-  CDFG.InOrderTransform ctrlers_with_load_replay mcm_ordering (some (commit_start_replay_state_name, load))
+  let ctrlers''  ← AddInsertToLATWhenPerform
+    ctrlers' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
+
+  -- (4) Add remove_key(seq_num) from LAT
+  let commit_node := ← graph.commit_state_ctrler
+    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+
+  let ctrlers''' ← AddRemoveFromLATWhenCommit
+    ctrlers'' lat_name commit_node.ctrler_name commit_node.current_state
+
+  -- (5) Enforce any additional orderings on the replay load
+  CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
   |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
   
   -- ** Get info about ctrlers for load replay
