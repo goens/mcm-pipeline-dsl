@@ -1063,16 +1063,14 @@ rule "reset"
 (Sta.core_[ 1 ].SQ_.num_entries = 0)
 )))))))
 ==>
- 
   var next_state : STATE;
 
 begin
 
-  -- Print reg state...
-  -- ((((Sta.core_[ 0 ].RENAME_.num_entries = 0) & (Sta.core_[ 0 ].ROB_.num_entries = 0)) & ((Sta.core_[ 1 ].RENAME_.num_entries = 0) & (Sta.core_[ 1 ].ROB_.num_entries = 0))) -> !(((Sta.core_[ 0 ].rf_.rf[ 0 ] = 1) & (Sta.core_[ 0 ].rf_.rf[ 1 ] = 0))));
-  put "Reached end.\n";
-  put Sta.core_[0].rf_;
-
+  put "  === BEGIN Reached End, Reg File: ===\n";
+  put Sta.core_[ 0 ].rf_.rf[ 0 ];
+  put Sta.core_[ 0 ].rf_.rf[ 1 ];
+  put "  === END Reached End, Reg File: ===\n";
   
   -- next_state := Sta;
   Sta := init_state_fn();
@@ -1112,68 +1110,51 @@ ruleset j : cores_t do
 
 begin
   next_state := Sta;
-  put "squash speculative loads\n";
   for load_address_table_search_all_curr_idx : load_address_table_idx_t do
     if (Sta.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) then
-
-      put next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address;
-      put next_state.core_[ j ].invalidation_listener_.invalidation_address;
-
-      if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true)
-        & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address =
-        next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
-        put "Must squash load\n";
+      if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
         violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_seq_num;
         for ROB_squash_idx : ROB_idx_t do
           if true then
-
-            put next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num;
-            put next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_seq_num;
-
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_executed) then
-              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) then
-                  for LQ_squash_idx : LQ_idx_t do
-                    if true then
-                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
-                        if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                          rob := next_state.core_[ j ].ROB_;
-                          rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
-                          -- assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
-                          rob.entries[ rob_id ].is_executed := false;
-                          next_state.core_[ j ].ROB_ := rob;
-                          next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
-                        end;
-                      elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
-                        put "load is in write_result\n";
-                        if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                          next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
-                        end;
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_mem_response) then
-                        if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                          next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := squashed_await_ld_mem_resp;
-                        end;
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = build_packet_send_mem_request) then
-                        if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                          next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
-                        end;
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_sb_fwd_check_response) then
-                        if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                          next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
-                        end;
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_fwd_check) then
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_translation) then
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_scheduled) then
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_creation) then
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = squashed_await_ld_mem_resp) then
-                      else
-                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LQ)";
+              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) then
+                for LQ_squash_idx : LQ_idx_t do
+                  if true then
+                    if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = squashed_await_ld_mem_resp) then
+                    elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                        rob := next_state.core_[ j ].ROB_;
+                        rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
+                        -- assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
+                        rob.entries[ rob_id ].is_executed := false;
+                        next_state.core_[ j ].ROB_ := rob;
+                        next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
                       end;
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+                      end;
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_mem_response) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := squashed_await_ld_mem_resp;
+                      end;
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = build_packet_send_mem_request) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+                      end;
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_sb_fwd_check_response) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
+                      end;
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_fwd_check) then
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_translation) then
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_scheduled) then
+                     elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_creation) then
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LQ)";
                     end;
-                  endfor;
-                end;
-                next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+                  end;
+                endfor;
               end;
             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num >= violating_seq_num) then
@@ -1181,7 +1162,8 @@ begin
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) then
                   for LQ_squash_idx : LQ_idx_t do
                     if true then
-                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = squashed_await_ld_mem_resp) then
+                      elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_committed) then
                         if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
                           rob := next_state.core_[ j ].ROB_;
                           rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
@@ -1190,8 +1172,7 @@ begin
                           next_state.core_[ j ].ROB_ := rob;
                           next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
                         end;
-                      elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
-                        put "load is in write_result\n";
+                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = write_result) then
                         if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
                           next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
                         end;
@@ -1211,7 +1192,6 @@ begin
                        elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_translation) then
                        elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_scheduled) then
                        elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = await_creation) then
-                       elsif (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state = squashed_await_ld_mem_resp) then
                       else
                         error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LQ)";
                       end;
@@ -1220,7 +1200,7 @@ begin
                 end;
                 next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
               end;
-            elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_creation) then
+             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_creation) then
             else
               error "Controller is not on an expected state for a msg: (squash) from: (invalidation_listener) to: (ROB)";
             end;
@@ -1236,7 +1216,7 @@ begin
                 error "Error: Found multiple entries with same key in remove_key API func";
               elsif !(remove_key_dest_already_found) then
                 next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
-                next_state.core_[ j ].load_address_table_.num_entries := next_state.core_[ j ].load_address_table_.num_entries - 1;
+                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
                 next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
               else
                 error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
@@ -1379,13 +1359,9 @@ begin
           next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
           next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
           next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
-          put "Inserted entry into LAT";
-          put next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num;
-          put next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address;
-          put next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid;
           load_address_table_found_entry := true;
         end;
-      endif;
+      end;
       if (load_address_table_offset != load_address_table_difference) then
         load_address_table_offset := (load_address_table_offset + 1);
       else
@@ -1620,7 +1596,7 @@ begin
             if (next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
               rob := next_state.core_[ j ].ROB_;
               rob_id := search_ROB_seq_num_idx(rob, next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].instruction.seq_num);
-              -- assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
+              assert (rob.entries[ rob_id ].is_executed = true) "why isn't it true?";
               rob.entries[ rob_id ].is_executed := false;
               next_state.core_[ j ].ROB_ := rob;
               next_state.core_[ j ].LQ_.entries[ LQ_squash_idx ].state := await_fwd_check;
