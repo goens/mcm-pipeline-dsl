@@ -48,7 +48,7 @@ def transformTesting : AST → Array Nat → IO Unit
       println! s!"-- print 1 --"
       let ctrlers_except := ast0019_controller_info ast
       println! s!"-- print 2 --"
-      let ctrlers := match ctrlers_except with
+      let ctrlers : Ctrlers := match ctrlers_except with
         | .ok lst_ctrlers => lst_ctrlers
         | .error msg =>
           dbg_trace s!"Error getting the ctrler info from the parsed AST! ({msg})"
@@ -130,12 +130,12 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
       --     []
 
-      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
-      let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
-        | .ok ctrler_list => ctrler_list
-        | .error msg => 
-          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-          []
+      -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
+      -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+      --     []
 
       let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
         | .ok ctrler_list => ctrler_list
