@@ -5048,8 +5048,9 @@ lst_stmts_decls
                       error "Error: Found multiple entries with same key in remove_key API func";
                     elsif ! £remove_key_dest_already_found then
                       -- remove this entry
-                      next_state .core_[j] .£dest_ctrler_ .entries[£remove_dest_ctrler_idx].valid := false;
-                      next_state .core_[j] .£dest_ctrler_ .entries[£remove_dest_ctrler_idx].state := £first_state_name;
+                      next_state .core_[j] .£dest_ctrler_ .entries[£remove_dest_ctrler_idx] .valid := false;
+                      next_state .core_[j] .£dest_ctrler_ .num_entries := next_state .core_[j] .£dest_ctrler_ .num_entries - 1;
+                      next_state .core_[j] .£dest_ctrler_ .entries[£remove_dest_ctrler_idx] .state := £first_state_name;
                       -- £remove_key_dest_already_found := true;
                       £murphi_when_stmt_stmts
                     else
@@ -5484,12 +5485,14 @@ lst_stmts_decls
                       ) do
                   --# do the search
                   £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
-                  if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].state = £dest_ctrler_'await_insert'_state) then
-                    -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
-                    £insert_unused_entry_murphi_when_stmt;
-                    next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].valid := true;
-                    £ctrler_found_entry := true;
-                  end;
+                  if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ] .valid = false) then
+                    if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ] .state = £dest_ctrler_'await_insert'_state) then
+                      -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
+                      £insert_unused_entry_murphi_when_stmt;
+                      next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].valid := true;
+                      £ctrler_found_entry := true;
+                    end;
+                  endif;
                   if (£ctrler_offset != £ctrler_difference) then
                     £ctrler_offset := £ctrler_offset + 1;
                   else
