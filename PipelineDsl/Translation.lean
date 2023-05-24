@@ -1667,39 +1667,39 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 :=
     -- get this controller from the
     -- controller name
-  let this_ctrler : controller_info :=
+  let this_ctrler : Ctrler :=
     -- dbg_trace "===== list_ident_to_murphi_designator_ctrler_var_check ====="
     get_ctrler_matching_name ctrler_name lst_ctrlers
   dbg_trace s!"Translate Ident Var. Ctrler: ({ctrler_name})"
   dbg_trace s!"Translate Ident Var. tail_entry: ({tail_entry})"
   dbg_trace s!"Translate Ident Var. specific_murphi_dest_expr: ({specific_murphi_dest_expr})"
   dbg_trace s!"Translate Ident Var. qual_name_idents: ({qual_name_idents})"
-  let this_ctrler_state_vars := this_ctrler.state_vars
+  -- let this_ctrler_state_vars := this_ctrler.state_vars
 
-  let entry_or_ctrler_translation : entry_or_ctrler :=
-    if this_ctrler.init_trans.isSome then
-      entry_or_ctrler.entry
-    else if this_ctrler.ctrler_init_trans.isSome then
-      entry_or_ctrler.ctrler
-    else
-      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({this_ctrler})"
-        default
-  let state_vars_to_use : List TypedIdentifier :=
-    if this_ctrler.init_trans.isSome then
-      this_ctrler.state_vars.get!
-    else if this_ctrler.ctrler_init_trans.isSome then
-      this_ctrler.ctrler_state_vars.get!
-    else
-      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({this_ctrler})"
-        default
+  -- let entry_or_ctrler_translation : entry_or_ctrler :=
+  --   if this_ctrler.init_trans.isSome then
+  --     entry_or_ctrler.entry
+  --   else if this_ctrler.ctrler_init_trans.isSome then
+  --     entry_or_ctrler.ctrler
+  --   else
+  --     dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({this_ctrler})"
+  --       default
+
+  -- let state_vars_to_use : List TypedIdentifier :=
+  --   this_ctrler.get_state_vars
+
+  let c_type := match this_ctrler.type with
+    | .ok ctype => ctype
+    | .error msg =>
+      dbg_trace s!"Error, Couldn't get ctrler type in list_ident_to_murphi_designator_ctrler_var_check. Msg: ({msg})"
+      default
 
   let state_var_idents : List Identifier :=
-  state_vars_to_use.map (
-    λ t_ident =>
-      match t_ident with
-      | TypedIdentifier.mk _ ident =>
-        ident
-  )
+    match this_ctrler.state_var_names with
+    | .ok state_var_names => state_var_names
+    | .error msg =>
+      dbg_trace s!"ERROR, ctrler doesn't have state var names? ({this_ctrler}), Msg: ({msg})"
+      default
 
   let designator : Murϕ.Designator :=
   match qual_name_idents with
@@ -1738,9 +1738,9 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
       dbg_trace s!"Translate Ident Var. is_indexable: ({is_indexable})"
       let ctrler_name_ : String := ctrler_name.append "_"
       let ctrler_not_entry_bool : Bool :=
-        match entry_or_ctrlr_desig_prefix with
-        | .entry => false
-        | .ctrler => true
+        match c_type with
+        | .FIFO | .Unordered => false
+        | .BasicCtrler => true
       if is_indexable
       then
         -- if fifo, then make it with 
@@ -1832,10 +1832,10 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
           dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): ({msg})"
           false
       | [] =>
-        dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): No ctrlers matching name: ({h})"
+        dbg_trace s!"while translating Qualified Identifier ({qual_name_idents}): No ctrlers matching name: ({h})"
         false
       | _ :: _ =>
-        dbg_trace s!"Error while translating Qualified Identifier ({qual_name_idents}): Multiple ctrlers matching name: ({ctrlers_with_h_as_name.map (·.name)})"
+        dbg_trace s!"while translating Qualified Identifier ({qual_name_idents}): Multiple ctrlers matching name: ({ctrlers_with_h_as_name.map (·.name)})"
         false
 
     -- This is for the second check,
@@ -1939,9 +1939,12 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
 
       let ctrler_not_entry_bool : Bool :=
         h_is_ctrler_type ||
-        match entry_or_ctrlr_desig_prefix with
-        | .entry => false
-        | .ctrler => true
+        match c_type with
+        | .FIFO | .Unordered => false
+        | .BasicCtrler => true
+        -- match entry_or_ctrlr_desig_prefix with
+        -- | .entry => false
+        -- | .ctrler => true
       dbg_trace s!"Translate term for ctrler-type? : ({ctrler_not_entry_bool})";
       dbg_trace s!"h_is_ctrler_type: ({h_is_ctrler_type})";
       dbg_trace s!"entry_or_ctrlr_desig_prefix: ({entry_or_ctrlr_desig_prefix})";
@@ -2163,6 +2166,31 @@ partial def ast_term_to_murphi_expr
       dbg_trace s!"term.var translation Src_Ctrler: ({term_trans_info.src_ctrler})"
       dbg_trace s!"term.var translation is_rhs?: ({term_trans_info.is_rhs})"
 
+      let curr_ctrler : Ctrler := get_ctrler_matching_name curr_ctrler_name lst_ctrlers
+      let ctrler_vars := match curr_ctrler.state_var_names with
+        | .ok lst_state_var_names => lst_state_var_names
+        | .error msg =>
+          dbg_trace s!"Error getting ctrler vars: ({msg})"
+          []
+
+      let src_ctrler_vars : List String :=
+        match src_ctrler with
+        | some src_ctrler_ident =>
+          let src_ctrler_obj : Ctrler :=
+            get_ctrler_matching_name src_ctrler_ident lst_ctrlers
+          dbg_trace s!"Term.qualified_var, call didn't pass lst_src_args, using ctrler state vars: ({src_ctrler_obj.name})"
+          match src_ctrler_obj.state_var_names with
+          | .ok lst_state_var_names => lst_state_var_names
+          | .error msg =>
+            dbg_trace s!"Error getting src ctrler vars in Qual Var -> Murphi Translation: ({msg})"
+            []
+        | none => []
+
+      let ident_in_src_ctrler_vars : Bool :=
+        src_ctrler_vars.contains ident
+      let ident_in_ctrler_vars : Bool :=
+        ctrler_vars.contains ident
+
       if ident_in_args
       then
         dbg_trace " IDENT_IN_ARGS TRANSLATION CASE"
@@ -2238,9 +2266,9 @@ partial def ast_term_to_murphi_expr
           tail_or_entry.entry
 
         let (ctrler_to_use, specific_or_curr_designator_idx) : String × (Option Murϕ.Expr) :=
-          if term_trans_info.src_ctrler.isSome then
+          if ident_in_src_ctrler_vars /-ident_in_ctrler_vars-/ /- term_trans_info.src_ctrler.isSome -/ then
             (term_trans_info.src_ctrler.get!, term_trans_info.specific_murphi_dest_expr)
-          else
+          else -- if ident_in_src_ctrler_vars /- && !ident_in_ctrler_vars -/ then
             ( curr_ctrler_name, term_trans_info.curr_ctrler_designator_idx)
 
         let murphi_designator : Murϕ.Designator := (
@@ -2391,11 +2419,16 @@ partial def ast_term_to_murphi_expr
           let src_ctrler_obj : Ctrler :=
             get_ctrler_matching_name src_ctrler_ident lst_ctrlers
           dbg_trace s!"Term.qualified_var, call didn't pass lst_src_args, using ctrler state vars: ({src_ctrler_obj.name})"
-          src_ctrler_obj.state_vars.get!.map (
-            λ state_var : TypedIdentifier =>
-              match state_var with
-              | .mk _ ident => ident
-          )
+          match src_ctrler_obj.state_var_names with
+          | .ok lst_state_var_names => lst_state_var_names
+          | .error msg =>
+            dbg_trace s!"Error getting src ctrler vars in Qual Var -> Murphi Translation: ({msg})"
+            []
+          -- src_ctrler_obj.get_state_vars.map (
+          --   λ state_var : TypedIdentifier =>
+          --     match state_var with
+          --     | .mk _ ident => ident
+          -- )
         | none => []
       let ident_in_args : Bool :=
         lst_src_args_extracted.contains ident
