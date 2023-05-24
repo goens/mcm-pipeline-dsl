@@ -319,4 +319,51 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
     let stmt'' := ← stmt'.map_rhs_vars_src_to_dest src_vars dest_vars
     pure $ Statement.labelled_statement label stmt''
 end
+
+def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
+| .mk type' identifier => (type', identifier)
+
+def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
+| typed_ident =>
+  let (type', ident) := typed_ident.type_ident
+  if (type' == "element_ordering") && (ident == "ordering") then
+    true
+  else
+    false
+
+def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
+| expr => do
+  match expr with
+  | .some_term term =>
+    match term with
+    | .var ident' => pure ident'
+    | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
+  | _ => throw "Expr is not 'some_term' (i.e. a var)"
+
+def filter_lst_of_stmts_for_ordering_asn
+(lst_stmts : List Pipeline.Statement)
+:=
+  List.filter (
+    λ stmt => 
+      match stmt with
+      -- | Statement.variable_assignment qual_name expr =>
+      --   match qual_name with
+      --   | QualifiedName.mk lst_idents' =>
+      --     if (lst_idents'.contains "element_ordering")
+      --       then true
+      --       else false
+      | Statement.value_declaration typed_ident expr =>
+        match typed_ident with
+        | TypedIdentifier.mk tident ident =>
+          if (
+            or
+            (tident == "element_ordering")
+            (ident == "ordering")
+          )
+          then true
+          else false
+      | _ => false
+        
+  )
+  lst_stmts
     

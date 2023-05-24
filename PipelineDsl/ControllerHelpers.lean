@@ -265,23 +265,106 @@ def Pipeline.Description.inject_state_stmts
   | true => do UpdateState state inst_type stmts_to_inject InjectStmtsAt
   | false => do pure state
 
-open Pipeline
+def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
+| stmt => do
+  match stmt with
+  | .value_declaration typed_ident expr => do
+    -- let (type', ident) := typed_ident.type_ident
+    match typed_ident.is_ident_ordering with
+    | true => do
+      let var_ident ← expr.var_ident 
+      if var_ident == "FIFO" then
+        pure $ CtrlerType.FIFO
+      else if var_ident == "Unordered" then
+        pure $ CtrlerType.Unordered
+      else
+        throw "Expr.var_ident is not a valid ordering"
+    | false => throw "Statement's LHS isn't Ordering"
+  | _ =>
+    let msg := s!"Statement is not a variable assignment: ({stmt})"
+    throw msg
 
+def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (CtrlerType)
+| stmt => do
+  let blk ← stmt.stmt_block
+  let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
+  let ordering_asgn ←
+    match ordering_list with
+    | [] => throw "No ordering found in stmt block"
+    | [ordering] => pure ordering
+    | _ => throw "Multiple orderings found in stmt block"
+  ordering_asgn.var_asgn_ordering
+
+def Pipeline.Description.ctrler_type : Pipeline.Description → Except String CtrlerType
+| descript => do
+  match descript with
+  | .controller /- identifier -/ _ stmt =>
+    stmt.ordering_from_stmt_block
+  | _ => throw "Description is not a controller: ({descript})"
+
+def controller_info.type : controller_info → Except String CtrlerType
+| ctrler =>
+  if ctrler.entry_descript.isSome then
+    ctrler.controller_descript.ctrler_type
+  else
+    pure CtrlerType.BasicCtrler
+
+open Pipeline in
+def Ctrler.get_state_vars (ctrler : Ctrler)
+: Except String (List TypedIdentifier)
+:= do
+  match ← ctrler.type with
+  | .BasicCtrler => do
+    match ctrler.ctrler_state_vars with
+    | some state_vars => do pure state_vars
+    | none => do throw "BasicCtrler doesn't have state vars"
+  | .FIFO | .Unordered => do
+    match ctrler.state_vars with
+    | some state_vars => do pure state_vars
+    | none => do throw "FIFO/Unordered Queue doesn't have state vars"
+
+def Ctrler.state_var_names (ctrler : Ctrler)
+: Except String (List Identifier)
+:= do
+  let state_vars ← ctrler.get_state_vars
+  let state_var_names : List Identifier := state_vars.map (·.type_ident.snd)
+  pure state_var_names
+
+open Pipeline in
 def Ctrler.inject_states
 (ctrler : Ctrler)
 (states : List Description)
-: Ctrler := {
-  name := ctrler.name,
-  controller_descript := ctrler.controller_descript,
-  entry_descript := ctrler.entry_descript,
-  init_trans := ctrler.init_trans,
-  state_vars := ctrler.state_vars,
-  transition_list := some states,
-  ctrler_init_trans := ctrler.ctrler_init_trans,
-  ctrler_trans_list := ctrler.ctrler_trans_list,
-  ctrler_state_vars := ctrler.ctrler_state_vars
-}
+: Except String Ctrler := do
+  let c_type ← ctrler.type
+  match c_type with
+  | .FIFO | .Unordered => do
+    let new_ctrler : Ctrler := {
+      name := ctrler.name,
+      controller_descript := ctrler.controller_descript,
+      entry_descript := ctrler.entry_descript,
+      init_trans := ctrler.init_trans,
+      state_vars := ctrler.state_vars,
+      transition_list := some states,
+      ctrler_init_trans := ctrler.ctrler_init_trans,
+      ctrler_trans_list := ctrler.ctrler_trans_list,
+      ctrler_state_vars := ctrler.ctrler_state_vars
+    }
+    pure new_ctrler
+  | .BasicCtrler => do
+    let new_ctrler : Ctrler := {
+      name := ctrler.name,
+      controller_descript := ctrler.controller_descript,
+      entry_descript := ctrler.entry_descript,
+      init_trans := ctrler.init_trans,
+      state_vars := ctrler.state_vars,
+      transition_list := ctrler.transition_list,
+      ctrler_init_trans := ctrler.ctrler_init_trans,
+      ctrler_trans_list := some states,
+      ctrler_state_vars := ctrler.ctrler_state_vars
+    }
+    pure new_ctrler
 
+open Pipeline in
 def Ctrler.inject_ctrler_state
 (ctrler : Ctrler)
 (ctrler_name : CtrlerName)
@@ -295,7 +378,7 @@ def Ctrler.inject_ctrler_state
   | true => do
     let states := ← ctrler.states
     let updated_states := ← states.mapM (·.inject_state_stmts state_name inst_type stmts_to_inject UpdateState InjectStmtsAt)
-    pure $ ctrler.inject_states updated_states
+    ctrler.inject_states updated_states
   | false => do
     pure ctrler
 

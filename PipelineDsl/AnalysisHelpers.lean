@@ -25,33 +25,6 @@ murphi_code : Murϕ.Program
 open Pipeline
 open Murϕ
 
-def filter_lst_of_stmts_for_ordering_asn
-(lst_stmts : List Pipeline.Statement)
-:=
-  List.filter (
-    λ stmt => 
-      match stmt with
-      -- | Statement.variable_assignment qual_name expr =>
-      --   match qual_name with
-      --   | QualifiedName.mk lst_idents' =>
-      --     if (lst_idents'.contains "element_ordering")
-      --       then true
-      --       else false
-      | Statement.value_declaration typed_ident expr =>
-        match typed_ident with
-        | TypedIdentifier.mk tident ident =>
-          if (
-            or
-            (tident == "element_ordering")
-            (ident == "ordering")
-          )
-          then true
-          else false
-      | _ => false
-        
-  )
-  lst_stmts
-
 def get_val_decl_stmt_var
 (stmt : Pipeline.Statement)
 := 
@@ -168,91 +141,6 @@ def dsl_type_to_murphi_type
   Murϕ.TypeExpr.previouslyDefined murphi_type_name
 
   murphi_type_expr
-
-def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
-| .mk type' identifier => (type', identifier)
-
-def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
-| typed_ident =>
-  let (type', ident) := typed_ident.type_ident
-  if (type' == "element_ordering") && (ident == "ordering") then
-    true
-  else
-    false
-
-def Pipeline.Expr.var_ident : Pipeline.Expr → Except String Identifier
-| expr => do
-  match expr with
-  | .some_term term =>
-    match term with
-    | .var ident' => pure ident'
-    | _ => throw "Expr.some_term Term is not 'var' (i.e. a var)"
-  | _ => throw "Expr is not 'some_term' (i.e. a var)"
-
-def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
-| stmt => do
-  match stmt with
-  | .value_declaration typed_ident expr => do
-    -- let (type', ident) := typed_ident.type_ident
-    match typed_ident.is_ident_ordering with
-    | true => do
-      let var_ident ← expr.var_ident 
-      if var_ident == "FIFO" then
-        pure $ CtrlerType.FIFO
-      else if var_ident == "Unordered" then
-        pure $ CtrlerType.Unordered
-      else
-        throw "Expr.var_ident is not a valid ordering"
-    | false => throw "Statement's LHS isn't Ordering"
-  | _ =>
-    let msg := s!"Statement is not a variable assignment: ({stmt})"
-    throw msg
-
-def Pipeline.Statement.ordering_from_stmt_block : Pipeline.Statement → Except String (CtrlerType)
-| stmt => do
-  let blk ← stmt.stmt_block
-  let ordering_list : List Pipeline.Statement:= filter_lst_of_stmts_for_ordering_asn blk
-  let ordering_asgn ←
-    match ordering_list with
-    | [] => throw "No ordering found in stmt block"
-    | [ordering] => pure ordering
-    | _ => throw "Multiple orderings found in stmt block"
-  ordering_asgn.var_asgn_ordering
-
-def Pipeline.Description.ctrler_type : Pipeline.Description → Except String CtrlerType
-| descript => do
-  match descript with
-  | .controller /- identifier -/ _ stmt =>
-    stmt.ordering_from_stmt_block
-  | _ => throw "Description is not a controller: ({descript})"
-
-def controller_info.type : controller_info → Except String CtrlerType
-| ctrler =>
-  if ctrler.entry_descript.isSome then
-    ctrler.controller_descript.ctrler_type
-  else
-    pure CtrlerType.BasicCtrler
-
-open Pipeline in
-def Ctrler.get_state_vars (ctrler : Ctrler)
-: Except String (List TypedIdentifier)
-:= do
-  match ← ctrler.type with
-  | .BasicCtrler => do
-    match ctrler.ctrler_state_vars with
-    | some state_vars => do pure state_vars
-    | none => do throw "BasicCtrler doesn't have state vars"
-  | .FIFO | .Unordered => do
-    match ctrler.state_vars with
-    | some state_vars => do pure state_vars
-    | none => do throw "FIFO/Unordered Queue doesn't have state vars"
-
-def Ctrler.state_var_names (ctrler : Ctrler)
-: Except String (List Identifier)
-:= do
-  let state_vars ← ctrler.get_state_vars
-  let state_var_names : List Identifier := state_vars.map (·.type_ident.snd)
-  pure state_var_names
 
 -- open /-Murphi-/Murϕ in
 def ast0048_generate_controller_murphi_record
@@ -560,7 +448,6 @@ def ast0048_generate_controller_murphi_record
         ],
       range_enum_decl := [ctrler_entries_range_decl, ctrler_entries_count_decl],
       entry_state_decl := ctrler_entry_state
-
       }
     ctrler_entry_const_decls
 
