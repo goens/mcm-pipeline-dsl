@@ -3418,11 +3418,54 @@ List (Murϕ.Expr × lst_stmts_decls)
       -- once we have different structure types,
       -- the dest structure may not have entries, and we
       -- may not need the .entries part
+
+      let ctrler_state_term := match trans_and_func.stmt_trans_info.translate_entry_or_ctrler with
+        | .ctrler => [trans_and_func.stmt_trans_info.ctrler_name, DSLKeyword.state].to_term
+        | .entry => ( DSLKeyword.state : Identifier ).to_term
+      let state_check_expr := equal
+        ctrler_state_term trans_name.to_term
+
+      let state_check_trans_info : expr_translation_info := {
+        expr := state_check_expr,
+        lst_ctrlers := trans_and_func.stmt_trans_info.lst_ctrlers,
+        -- set the ctrler we're translating for to
+        -- just this structure actually.
+        -- so we can use the same ctrler name.
+        ctrler_name := trans_and_func.stmt_trans_info.ctrler_name,
+        -- is there a src ctrler?
+        -- well, we still have args in the handle blk, so 
+        -- we want the args to be from the "src" ctrler,
+        -- i.e. ROB if doing a squash to LQ
+        -- and so I assume the caller has provided this..?
+        -- or I set the manually here.
+        src_ctrler := trans_and_func.stmt_trans_info.src_ctrler, -- expected_struct,
+        lst_src_args := match args with
+        | [] => Option.none
+        | _ => Option.some args
+        ,
+        func := expected_func,
+        is_await := trans_and_func.stmt_trans_info.is_await,
+        -- don't think we need this here, but...
+        entry_keyword_dest := trans_and_func.dest_ctrler_name,
+        trans_obj := trans_and_func.trans,
+        specific_murphi_dest_expr := trans_and_func.specific_murphi_dest_expr,
+        lst_decls := trans_and_func.stmt_trans_info.lst_decls,
+        is_rhs := trans_and_func.stmt_trans_info.is_rhs,
+        use_specific_dest_in_transition := trans_and_func.stmt_trans_info.use_specific_dest_in_transition
+        curr_ctrler_designator_idx := trans_and_func.curr_ctrler_designator_idx
+        lhs_var_is_just_default := trans_and_func.stmt_trans_info.lhs_var_is_just_default
+        translate_entry_or_ctrler := trans_and_func.stmt_trans_info.translate_entry_or_ctrler
+      }
+
       let ctrler_name_ : String := trans_and_func.dest_ctrler_name.append "_"
       let dest_struct_entry := trans_and_func.specific_murphi_dest_expr
       let murphi_entry_is_on_state_cond : Murϕ.Expr :=
-        [murϕ|
-        next_state .core_[ j ] .£ctrler_name_ .entries[ £dest_struct_entry ] .state = £trans_name]
+        ast_expr_to_murphi_expr state_check_trans_info
+        -- match trans_and_func.stmt_trans_info.translate_entry_or_ctrler with
+        -- | .entry =>
+        --   [murϕ| next_state .core_[ j ] .£ctrler_name_ .entries[ £dest_struct_entry ] .state = £trans_name]
+        -- | .ctrler =>
+        --   [murϕ| next_state .core_[ j ] .£ctrler_name_ .state = £trans_name]
 
       [(murphi_entry_is_on_state_cond, if_blk_stmts)]
     | how_many_found.two_or_more =>
@@ -3484,21 +3527,19 @@ lst_stmts_decls
   -- construct if / else stmt which does something
   -- based on each state's / transitions listen/await
   -- stmts
-  let this_ctrler : controller_info :=
+  let this_ctrler : Ctrler :=
   -- dbg_trace "===== ROB SQUASH api gen ====="
     get_ctrler_matching_name ctrler_to_translate_handle_blks ctrlers_lst
 
   let ctrler_squash_idx := queue_idx
   -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
-
+  let c_type := match this_ctrler.type with
+    | .ok t => t
+    | .error msg =>
+      dbg_trace s!"Couldn't get ctrler type in state if case translation: Msg: ({msg})"
+      default
   let entry_or_ctrler_translation : entry_or_ctrler :=
-    if this_ctrler.init_trans.isSome then
-      entry_or_ctrler.entry
-    else if this_ctrler.ctrler_init_trans.isSome then
-      entry_or_ctrler.ctrler
-    else
-      dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({this_ctrler})"
-        default
+    c_type.entry_or_ctrler
   let states_to_search : List Description :=
     if this_ctrler.init_trans.isSome then
       this_ctrler.transition_list.get!
@@ -5590,14 +5631,30 @@ lst_stmts_decls
               translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
             }
 
+            let dest_ctrler : Ctrler := get_ctrler_matching_name dest_ctrler_name stmt_trans_info.lst_ctrlers
+            let dest_type := match dest_ctrler.type with
+              | .ok c_type => c_type
+              | .error msg => 
+                dbg_trace s!"Couldn't get Ctrler type in Squash API translation. MSG: ({msg})"
+                default
+
+            let ctrler_curr_idx : String := dest_ctrler_name.append "_squash_curr_idx"
             dbg_trace s!"**search for squash handlers for ctrler: ({dest_ctrler_name}) from ctrler: ({ctrler_name})"
             let ctrler_idx : String := dest_ctrler_name.append "_idx_t"
             -- let squash_idx : Murϕ.Expr := [murϕ| £ctrler_idx]
             let ctrler_squash_idx : String := dest_ctrler_name.append "_squash_idx"
-            let ctrler_squash_idx_expr : Murϕ.Expr := [murϕ| £ctrler_squash_idx]
+
+            let ctrler_squash_designator_expr : Murϕ.Expr :=
+              match dest_type with
+              | .Unordered =>
+                [murϕ| £ctrler_squash_idx]
+              | .FIFO =>
+                [murϕ| £ctrler_curr_idx]
+              | .BasicCtrler => default
+
             let state_handle_squash_if_stmt : lst_stmts_decls := (
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
-              if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
+              if_stmt_trans_info) dest_ctrler_name ctrler_squash_designator_expr (
               dest_ctrler_name) expected_func expected_struct none none
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
@@ -5606,18 +5663,65 @@ lst_stmts_decls
             -- place into murphi statements
             -- TODO NOTE: Should do this based on the structure type!
             -- i.e. if it's a structure or a queue to reset state with.. etc.
-            let squash_entries_loop : List Murϕ.Statement := [murϕ|
-              for £ctrler_squash_idx : £ctrler_idx do
-                -- Forstmt error if not as 1 stmt?
-                if (true) then
-                  £squash_handle_by_state
-                endif;
-              endfor;
-            ]
+            let (squash_stmts, squash_decls) : List Murϕ.Statement × List Murϕ.Decl :=
+              match dest_type with
+              | .Unordered =>
+                ([murϕ|
+                  for £ctrler_squash_idx : £ctrler_idx do
+                    -- Forstmt error if not as 1 stmt?
+                    if (true) then
+                      £squash_handle_by_state
+                    endif;
+                  endfor;
+                ], [])
+              | .BasicCtrler =>
+                (squash_handle_by_state, [])
+              | .FIFO =>
+                let ctrler_while_break : String := dest_ctrler_name.append "_while_break"
+                let ctrler_found_entry : String := dest_ctrler_name.append "_found_entry"
+                let ctrler_entry_idx : String :=   dest_ctrler_name.append "_entry_idx"
+                let ctrler_difference : String :=  dest_ctrler_name.append "_difference"
+                let ctrler_offset : String :=      dest_ctrler_name.append "_offset"
+                -- let ctrler_curr_idx : String := dest_ctrler_name.append "_curr_idx"
+                let dest_ctrler_name_ := dest_ctrler_name.append "_"
+                let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
+
+                let s_decls :=
+                  let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+                  [murϕ_var_decls| var £ctrler_while_break : boolean] ++
+                  [murϕ_var_decls| var £ctrler_found_entry : boolean] ++
+                  [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
+                  [murϕ_var_decls| var £ctrler_difference : £ctrler_idx_t] ++
+                  [murϕ_var_decls| var £ctrler_offset : £ctrler_idx_t] ++
+                  [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t]
+
+                let s_stmts :=
+                  [murϕ|
+                    £ctrler_while_break := false;
+                    £ctrler_found_entry := false;
+                    if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
+                      £ctrler_while_break := true;
+                    endif;
+                    £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
+                    £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+                    £ctrler_offset := 0;].concat
+                  [murϕ_statement|
+                    while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+                      £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
+                      if true then
+                        £squash_handle_by_state
+                      endif;
+                      if (£ctrler_offset != £ctrler_difference) then
+                        £ctrler_offset := £ctrler_offset + 1;
+                      else
+                        £ctrler_while_break := true;
+                      endif;
+                    end]
+                (s_stmts, s_decls)
 
             let stmts_decls : lst_stmts_decls := {
-              stmts := squash_entries_loop
-              decls := state_handle_squash_if_stmt.decls
+              stmts := squash_stmts
+              decls := state_handle_squash_if_stmt.decls ++ squash_decls
             }
             stmts_decls
           -- NOTE: probably don't need a <ctrler>.remove() api?
@@ -6372,7 +6476,7 @@ partial def api_term_func_to_murphi_func
       is_await := term_trans_info.is_await,
       entry_keyword_dest := Option.some dest_ctrler_name,
       trans_obj := term_trans_info.trans_obj,
-      specific_murphi_dest_expr := term_trans_info.specific_murphi_dest_expr,
+      specific_murphi_dest_expr := Option.some murphi_ctrler_curr_idx,
       lst_decls := term_trans_info.lst_decls,
       is_rhs := term_trans_info.is_rhs,
       use_specific_dest_in_transition := false
