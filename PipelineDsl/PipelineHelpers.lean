@@ -120,6 +120,11 @@ def Pipeline.Statement.get_when_stmt_src_args
       s!"Instead got this stmt: ({when_stmt})"
     throw msg
 
+def Identifier.to_term (ident : Identifier) : Term :=
+  var_term ident
+def List.to_term (idents : List Identifier) : Term :=
+  qual_var_term idents
+
 -- #check "a.b".splitOn "."
 -- #eval "a.b".splitOn "."
 -- #eval "ab".splitOn "."

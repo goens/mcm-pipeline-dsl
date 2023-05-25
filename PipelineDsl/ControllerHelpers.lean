@@ -85,6 +85,14 @@ def entry_or_ctrler.toString : entry_or_ctrler → String
 | .ctrler => "Currently translating for a ctrler-type structure"
 instance : ToString entry_or_ctrler where toString := entry_or_ctrler.toString
 
+def CtrlerType.entry_or_ctrler
+(ctrler_type : CtrlerType)
+: entry_or_ctrler :=
+  match ctrler_type with
+  | .FIFO
+  | .Unordered => entry_or_ctrler.entry
+  | .BasicCtrler => entry_or_ctrler.ctrler
+
 abbrev Ctrlers := List controller_info
 abbrev Ctrler := controller_info
 

@@ -11,6 +11,7 @@ abbrev CtrlerName := String
 def reg_file : String := "reg_file"
 def write := "write"
 def read := "read"
+def DSLKeyword.state : Identifier := "state"
 
 def instruction := "instruction"
 def op := "op"
