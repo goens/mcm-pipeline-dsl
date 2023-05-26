@@ -2675,6 +2675,13 @@ partial def ast_term_to_murphi_expr
         let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
         let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
         [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
+      else if qual_name_list[1]! == "empty" then
+        -- Then do sth like 
+        -- Sta.core[j].<ctrler>_.num_entries == <ctrler>_NUM_ENTRIES_CONST
+        let dest_ctrler_name : String := qual_name_list[0]!
+        let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
+        -- let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
+        [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = 0]
       else if qual_name_list[1]! == "out_busy" && qual_name_list[0]! == "memory_interface"  then
         [murϕ| Sta .core_[j] .mem_interface_ .out_busy = true]
       else if qual_name_list[1]! == "read" && qual_name_list[0]! == "reg_file" then
@@ -5705,11 +5712,12 @@ lst_stmts_decls
                       £ctrler_while_break := true;
                     endif;
                     £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
-                    if ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) > £dest_num_entries_const_name then
-                      £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
-                    else
-                      £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head );
-                    endif;
+                    -- if ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) > £dest_num_entries_const_name then
+                    --   £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+                    -- else
+                    --   £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head );
+                    -- endif;
+                    £ctrler_difference := next_state .core_[j] .£dest_ctrler_name_ .num_entries;
                     £ctrler_offset := 0;].concat
                   [murϕ_statement|
                     while ( (£ctrler_offset < £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
