@@ -4757,11 +4757,11 @@ lst_stmts_decls
               -- NOTE: the -1 is because tail is actually 1 more than the actual tail, so it acts as an "insert" location
               £ctrler_found_entry := false;
               -- difference := ( ( (£dest_num_entries_const_name - 1 + £dest_num_entries_const_name) - 1 ) - £ctrler_entry_idx ) % £dest_num_entries_const_name;
-              £ctrler_difference := (£dest_num_entries_const_name - 1 );
+              -- £ctrler_difference := (£dest_num_entries_const_name - 1 );
               £ctrler_offset := 0;
               --#if (difference != -1) then
-              while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_loop_break = false) & (£ctrler_found_entry = false)
-                      & (£ctrler_difference >= 0)
+              while ( (£ctrler_offset < £dest_num_entries_const_name) & (£ctrler_loop_break = false) & (£ctrler_found_entry = false)
+                      -- & (£ctrler_difference >= 0)
                     ) do
                 --# do the search
                 £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
@@ -4770,10 +4770,10 @@ lst_stmts_decls
                   £murphi_when_stmt;
                   £ctrler_found_entry := true;
                 end;
-                if (£ctrler_offset != £ctrler_difference) then
+                if (£ctrler_offset < £dest_num_entries_const_name) then
                   £ctrler_offset := £ctrler_offset + 1;
-                else
-                  £ctrler_loop_break := true;
+                -- else
+                --   £ctrler_loop_break := true;
                 endif;
               end;
               next_state .core_[j] .£dest_ctrler_name_ .num_entries := (next_state .core_[j] .£dest_ctrler_name_ .num_entries + 1);
@@ -4789,14 +4789,15 @@ lst_stmts_decls
             ]
 
             let ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t"
+            let ctrler_count_t : String := dest_ctrler_name ++ "_count_t"
             let decls : List Murϕ.Decl := 
               -- [murϕ_decl| ctrler : £dest_ctrler_name]
               -- (Murϕ.Decl.var ["rob"] (Murϕ.TypeExpr.previouslyDefined "ROB") ),
               [murϕ_var_decls| var £ctrler_loop_break : boolean;] ++
               [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
               [murϕ_var_decls| var £ctrler_found_entry : boolean] ++
-              [murϕ_var_decls| var £ctrler_difference : £ctrler_idx_t] ++
-              [murϕ_var_decls| var £ctrler_offset : £ctrler_idx_t] ++
+              -- [murϕ_var_decls| var £ctrler_difference : £ctrler_count_t] ++
+              [murϕ_var_decls| var £ctrler_offset : £ctrler_count_t] ++
               [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t] ++
               murphi_when_stmts_decls.decls
 
@@ -5688,11 +5689,12 @@ lst_stmts_decls
 
                 let s_decls :=
                   let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+                  let ctrler_count_t := dest_ctrler_name.append "_count_t"
                   [murϕ_var_decls| var £ctrler_while_break : boolean] ++
                   [murϕ_var_decls| var £ctrler_found_entry : boolean] ++
                   [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
-                  [murϕ_var_decls| var £ctrler_difference : £ctrler_idx_t] ++
-                  [murϕ_var_decls| var £ctrler_offset : £ctrler_idx_t] ++
+                  [murϕ_var_decls| var £ctrler_difference : £ctrler_count_t] ++
+                  [murϕ_var_decls| var £ctrler_offset : £ctrler_count_t] ++
                   [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t]
 
                 let s_stmts :=
@@ -6242,6 +6244,7 @@ partial def api_term_func_to_murphi_func
     -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
 
     let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+    let ctrler_count_t := dest_ctrler_name.append "_count_t"
     let decls : List Murϕ.Decl := [
       (Murϕ.Decl.var [ctrler_while_break] (Murϕ.TypeExpr.previouslyDefined "boolean")),
       (Murϕ.Decl.var [ctrler_found_entry] (Murϕ.TypeExpr.previouslyDefined "boolean")),
@@ -6249,8 +6252,8 @@ partial def api_term_func_to_murphi_func
       --   var found_entry : boolean
       -- ],
       (Murϕ.Decl.var [ctrler_entry_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_count_t)),
+      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_count_t)),
       (Murϕ.Decl.var [ctrler_curr_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
       -- [murϕ_var_decls|
       --   var curr_idx : £ctrler_idx_t
@@ -6258,18 +6261,18 @@ partial def api_term_func_to_murphi_func
     ]
     let dest_ctrler_name_ := dest_ctrler_name.append "_"
     let overall_murphi_tail_search_template : List Murϕ.Statement :=
-    [
       -- AZ TODO: introduce a type for the ACCESS_HASH
       -- or ACCESS_TAIL and just set it at the beginning
 
       -- [murϕ| next_state := Sta]
       -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
       -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
-      [murϕ|  £ctrler_while_break := false],
-      [murϕ|  £ctrler_found_entry := false],
-      [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
+      [murϕ|
+        £ctrler_while_break := false;
+        £ctrler_found_entry := false;
+        if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
           £ctrler_while_break := true;
-        endif],
+        endif;
         -- AZ TODO:
         -- no, can just map the condition check
 
@@ -6279,10 +6282,15 @@ partial def api_term_func_to_murphi_func
       --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_TAIL) then
       --     st_idx := (£dest_ctrler_name .sq_tail + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
       --   endif],
-      [murϕ|  £ctrler_entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-      [murϕ|  £ctrler_difference := ( £ctrler_entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
-      [murϕ|  £ctrler_offset := 0],
-      [murϕ|   while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+        £ctrler_entry_idx := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ;
+        -- if ( £ctrler_entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) > £dest_num_entries_const_name then
+        --   £ctrler_difference := ( £ctrler_entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+        -- else
+        --   £ctrler_difference := ( £ctrler_entry_idx + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) ;
+        -- endif;
+        £ctrler_difference := next_state .core_[j] .£dest_ctrler_name_ .num_entries;
+        £ctrler_offset := 0;
+        while ( (£ctrler_offset < £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
           £ctrler_curr_idx := ( £ctrler_entry_idx + £dest_num_entries_const_name - £ctrler_offset ) % £dest_num_entries_const_name;
           if (
             -- AZ TODO:
@@ -6312,16 +6320,15 @@ partial def api_term_func_to_murphi_func
           endif;
     
           -- This is not really necessary
-          if (£ctrler_offset != £ctrler_difference) then
+          if (£ctrler_offset < £ctrler_difference) then
             £ctrler_offset := £ctrler_offset + 1;
-          else
-            £ctrler_while_break := true;
+          -- else
+          --   £ctrler_while_break := true;
           endif;
-        end],
-      [murϕ|
+        end;
         if (£ctrler_found_entry = false) then
           £when_search_fail_murphi_stmts.stmts
-        endif]
+        endif;
     ]
 
 
@@ -6526,6 +6533,7 @@ partial def api_term_func_to_murphi_func
     -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
 
     let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
+    let ctrler_count_t := dest_ctrler_name.append "_count_t"
     let decls : List Murϕ.Decl := [
       (Murϕ.Decl.var [ctrler_while_break] (Murϕ.TypeExpr.previouslyDefined "boolean")),
       (Murϕ.Decl.var [ctrler_found_entry] (Murϕ.TypeExpr.previouslyDefined "boolean")),
@@ -6533,8 +6541,8 @@ partial def api_term_func_to_murphi_func
       --   var found_entry : boolean
       -- ],
       (Murϕ.Decl.var [ctrler_entry_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
-      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t)),
+      (Murϕ.Decl.var [ctrler_difference] (Murϕ.TypeExpr.previouslyDefined ctrler_count_t)),
+      (Murϕ.Decl.var [ctrler_offset] (Murϕ.TypeExpr.previouslyDefined ctrler_count_t)),
       (Murϕ.Decl.var [ctrler_curr_idx] (Murϕ.TypeExpr.previouslyDefined ctrler_idx_t))
       -- [murϕ_var_decls|
       --   var curr_idx : £ctrler_idx_t
@@ -6542,18 +6550,18 @@ partial def api_term_func_to_murphi_func
     ]
     let dest_ctrler_name_ := dest_ctrler_name.append "_"
     let overall_murphi_head_search_template : List Murϕ.Statement :=
-    [
       -- AZ TODO: introduce a type for the ACCESS_HASH
       -- or ACCESS_head and just set it at the beginning
 
       -- [murϕ| next_state := Sta]
       -- [murϕ|  sq := Sta.core_[j].lsq_.sq_],
       -- [murϕ|  lq := Sta.core_[j].lsq_.lq_],
-      [murϕ|  £ctrler_while_break := false],
-      [murϕ|  £ctrler_found_entry := false],
-      [murϕ|  if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
+      [murϕ|
+        £ctrler_while_break := false;
+        £ctrler_found_entry := false;
+        if (next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0) then
           £ctrler_while_break := true;
-        endif],
+        endif;
         -- AZ TODO:
         -- no, can just map the condition check
 
@@ -6563,10 +6571,15 @@ partial def api_term_func_to_murphi_func
       --   elsif (£dest_ctrler_name .sq_msg_enum = SQ_ACCESS_head) then
       --     st_idx := (£dest_ctrler_name .sq_head + ( SQ_ENTRY_NUM + 1) - 1) % ( SQ_ENTRY_NUM + 1 );
       --   endif],
-      [murϕ|  £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head],-- (next_state .core_[j] .£dest_ctrler_name_ .head + £dest_num_entries_const_name - 1) % £dest_num_entries_const_name ],
-      [murϕ|  £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name],
-      [murϕ|  £ctrler_offset := 0],
-      [murϕ|   while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+        £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
+        -- if ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) > £dest_num_entries_const_name then
+        --   £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+        -- else
+        --   £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head );
+        -- endif;
+        £ctrler_difference := next_state .core_[j] .£dest_ctrler_name_ .num_entries;
+        £ctrler_offset := 0;
+        while ( (£ctrler_offset < £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
           £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
           if (
             -- AZ TODO:
@@ -6598,14 +6611,13 @@ partial def api_term_func_to_murphi_func
           -- This is not really necessary
           if (£ctrler_offset != £ctrler_difference) then
             £ctrler_offset := £ctrler_offset + 1;
-          else
-            £ctrler_while_break := true;
+          -- else
+          --   £ctrler_while_break := true;
           endif;
-        end],
-      [murϕ|
+        end;
         if (£ctrler_found_entry = false) then
           £when_search_fail_murphi_stmts.stmts
-        endif]
+        endif;
     ]
 
 
