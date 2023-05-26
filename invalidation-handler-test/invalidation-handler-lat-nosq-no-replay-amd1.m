@@ -80,7 +80,7 @@ IQ : record
   entries : array [IQ_idx_t] of IQ_entry_values;
   num_entries : IQ_count_t;
 end;
-memory_unit_sender_state : enum {memory_unit_load_result_write, memory_unit_receiver, memory_unit_stage_send, mem_unit_send_get_input, memory_unit_send_init};
+memory_unit_sender_state : enum {squashed_memory_unit_receiver, memory_unit_load_result_write, memory_unit_receiver, memory_unit_stage_send, mem_unit_send_get_input, memory_unit_send_init};
 memory_unit_sender : record
   instruction : INST;
   phys_addr : addr_idx_t;
@@ -615,10 +615,11 @@ begin
   mem_interface := Sta.core_[ j ].mem_interface_;
   -- Do this based on the stage state
   put "CORE-ACK: About to check if 1st mem unit or 2nd mem unit is the recipient..\n";
-  if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver) &
+  if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver | (Sta.core_[j].memory_unit_sender_.state = squashed_memory_unit_receiver)) &
     (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
     put "CORE-ACK: 1st Mem unit is the recipient, check if load or store..\n";
     if (mem_interface.in_msg.r_w = read) then
+      if Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver then
       rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].memory_unit_sender_.instruction.seq_num);
       put "CORE-ACK: Rob id: (";
       put rob_id;
@@ -635,6 +636,11 @@ begin
       -- rob.entries[rob_id].is_executed := true;
       next_state.core_[j].memory_unit_sender_.state := memory_unit_load_result_write;
       next_state.core_[j].memory_unit_sender_.read_value := mem_interface.in_msg.value;
+      elsif (Sta.core_[j].memory_unit_sender_.state = squashed_memory_unit_receiver) then
+        -- consume the stale message
+        -- go to reset state
+        next_state.core_[j].memory_unit_sender_.state := memory_unit_stage_send;
+      endif;
     mem_interface.in_busy := false;
     elsif (mem_interface.in_msg.store_state = await_handling) & (mem_interface.in_msg.r_w = write) then
           -- Overview: Send back an ack for the invalidation sent..
@@ -754,9 +760,14 @@ ruleset j : cores_t do
   var IQ_loop_break : boolean;
   var IQ_entry_idx : IQ_idx_t;
   var IQ_found_entry : boolean;
-  var IQ_difference : IQ_idx_t;
-  var IQ_offset : IQ_idx_t;
+  var IQ_offset : IQ_count_t;
   var IQ_curr_idx : IQ_idx_t;
+  var ROB_while_break : boolean;
+  var ROB_found_entry : boolean;
+  var ROB_entry_idx : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_squash_curr_idx : ROB_idx_t;
   var remove_key_dest_already_found : boolean;
   var next_state : STATE;
   var found_msg_in_ic : boolean;
@@ -764,64 +775,73 @@ ruleset j : cores_t do
 
 begin
   next_state := Sta;
-  put "Begin squash\n";
   for load_address_table_search_all_curr_idx : load_address_table_idx_t do
-
-    put Sta.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid;
-
     if (Sta.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) then
-      put next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address;
-      put next_state.core_[ j ].invalidation_listener_.invalidation_address;
-
       if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
         violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_seq_num;
-        for ROB_squash_idx : ROB_idx_t do
+        ROB_while_break := false;
+        ROB_found_entry := false;
+        if (next_state.core_[ j ].ROB_.num_entries = 0) then
+          ROB_while_break := true;
+        end;
+        ROB_entry_idx := next_state.core_[ j ].ROB_.head;
+        ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+        ROB_offset := 0;
+        while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+          ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
           if true then
-            put ROB_squash_idx;
-            put "\n";
-            put next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state;
-            put "End Puts for this squash..\n";
-            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_is_executed) then
-            elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_based_on_inst) then
-             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
-              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                put "Hit the case we want!\n";
-                -- if next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed then
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                  IQ_loop_break := false;
-                  if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
-                    IQ_loop_break := true;
-                  end;
-                  IQ_entry_idx := 0;
-                  IQ_found_entry := false;
-                  IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
-                  IQ_offset := 0;
-                  while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
-                    IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
-                      next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction;
-                      next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
-                      IQ_found_entry := true;
-                    end;
-                    if (IQ_offset != IQ_difference) then
-                      IQ_offset := (IQ_offset + 1);
-                    else
-                      IQ_loop_break := true;
-                    end;
-                  end;
-                  next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
-                  if (IQ_found_entry = false) then
-                    error "Couldn't find an empty entry to insert into";
-                  end;
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_is_executed;
-                -- end;
+            if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_is_executed) then
+              if (next_state.core_[ j ].memory_unit_sender_.state = squashed_memory_unit_receiver) then
+              elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write) then
+                if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num = violating_seq_num) then
+                  next_state.core_[ j ].memory_unit_sender_.state := memory_unit_stage_send;
+                end;
+               elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_receiver) then
+                if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num = violating_seq_num) then
+                  next_state.core_[ j ].memory_unit_sender_.state := squashed_memory_unit_receiver;
+                end;
+               elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) then
+               elsif (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
+              else
+                error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (memory_unit_sender)";
               end;
-             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_creation) then
+            elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_based_on_inst) then
+             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
+              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
+                IQ_loop_break := false;
+                if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
+                  IQ_loop_break := true;
+                end;
+                IQ_entry_idx := 0;
+                IQ_found_entry := false;
+                IQ_offset := 0;
+                while ((IQ_offset < IQ_NUM_ENTRIES_CONST) & ((IQ_loop_break = false) & (IQ_found_entry = false))) do
+                  IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
+                  if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
+                    next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                    next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
+                    IQ_found_entry := true;
+                  end;
+                  if (IQ_offset < IQ_NUM_ENTRIES_CONST) then
+                    IQ_offset := (IQ_offset + 1);
+                  end;
+                end;
+                next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
+                if (IQ_found_entry = false) then
+                  error "Couldn't find an empty entry to insert into";
+                end;
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_is_executed;
+              end;
+             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_creation) then
             else
               error "Controller is not on an expected state for a msg: (squash) from: (invalidation_listener) to: (ROB)";
             end;
           end;
-        endfor;
+          if (ROB_offset < ROB_difference) then
+            ROB_offset := (ROB_offset + 1);
+          end;
+        end;
         remove_key_dest_already_found := false;
         for remove_load_address_table_idx : load_address_table_idx_t do
           if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
@@ -1039,8 +1059,8 @@ ruleset j : cores_t; i : IQ_idx_t do
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_idx_t;
-  var ROB_offset : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
   var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
@@ -1067,9 +1087,9 @@ begin
         ROB_while_break := true;
       end;
       ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-      ROB_difference := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - next_state.core_[ j ].ROB_.head)) % ROB_NUM_ENTRIES_CONST);
+      ROB_difference := next_state.core_[ j ].ROB_.num_entries;
       ROB_offset := 0;
-      while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+      while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
         ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
         if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].IQ_.entries[ i ].instruction.seq_num) then
           if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_is_executed) then
@@ -1080,10 +1100,8 @@ begin
           end;
           ROB_found_entry := true;
         end;
-        if (ROB_offset != ROB_difference) then
+        if (ROB_offset < ROB_difference) then
           ROB_offset := (ROB_offset + 1);
-        else
-          ROB_while_break := true;
         end;
       end;
       if (ROB_found_entry = false) then
@@ -1119,15 +1137,15 @@ end;
 
 
 ruleset j : cores_t do 
-  rule "memory_unit_sender memory_unit_load_result_write ===> mem_unit_send_get_input" 
+  rule "memory_unit_sender memory_unit_load_result_write ===> mem_unit_send_get_input || memory_unit_stage_send" 
 (Sta.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write)
 ==>
  
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_idx_t;
-  var ROB_offset : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
   var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
@@ -1140,9 +1158,9 @@ begin
     ROB_while_break := true;
   end;
   ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-  ROB_difference := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - next_state.core_[ j ].ROB_.head)) % ROB_NUM_ENTRIES_CONST);
+  ROB_difference := next_state.core_[ j ].ROB_.num_entries;
   ROB_offset := 0;
-  while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+  while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].memory_unit_sender_.instruction.seq_num) then
       if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_is_executed) then
@@ -1154,10 +1172,8 @@ begin
       next_state.core_[ j ].memory_unit_sender_.instruction.seq_num := 0;
       ROB_found_entry := true;
     end;
-    if (ROB_offset != ROB_difference) then
+    if (ROB_offset < ROB_difference) then
       ROB_offset := (ROB_offset + 1);
-    else
-      ROB_while_break := true;
     end;
   end;
   if (ROB_found_entry = false) then
@@ -1279,8 +1295,7 @@ ruleset j : cores_t; i : RENAME_idx_t do
   var IQ_loop_break : boolean;
   var IQ_entry_idx : IQ_idx_t;
   var IQ_found_entry : boolean;
-  var IQ_difference : IQ_idx_t;
-  var IQ_offset : IQ_idx_t;
+  var IQ_offset : IQ_count_t;
   var IQ_curr_idx : IQ_idx_t;
   var next_state : STATE;
 
@@ -1314,19 +1329,16 @@ begin
         end;
         IQ_entry_idx := 0;
         IQ_found_entry := false;
-        IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
         IQ_offset := 0;
-        while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
+        while ((IQ_offset < IQ_NUM_ENTRIES_CONST) & ((IQ_loop_break = false) & (IQ_found_entry = false))) do
           IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
           if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
             IQ_found_entry := true;
           end;
-          if (IQ_offset != IQ_difference) then
+          if (IQ_offset < IQ_NUM_ENTRIES_CONST) then
             IQ_offset := (IQ_offset + 1);
-          else
-            IQ_loop_break := true;
           end;
         end;
         next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
