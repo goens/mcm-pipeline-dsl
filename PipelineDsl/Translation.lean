@@ -5703,18 +5703,22 @@ lst_stmts_decls
                       £ctrler_while_break := true;
                     endif;
                     £ctrler_entry_idx := next_state .core_[j] .£dest_ctrler_name_ .head;
-                    £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+                    if ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) > £dest_num_entries_const_name then
+                      £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head ) % £dest_num_entries_const_name;
+                    else
+                      £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head );
+                    endif;
                     £ctrler_offset := 0;].concat
                   [murϕ_statement|
-                    while ( (£ctrler_offset <= £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
+                    while ( (£ctrler_offset < £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
                       £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
                       if true then
                         £squash_handle_by_state
                       endif;
-                      if (£ctrler_offset != £ctrler_difference) then
+                      if (£ctrler_offset < £ctrler_difference) then
                         £ctrler_offset := £ctrler_offset + 1;
-                      else
-                        £ctrler_while_break := true;
+                      -- else
+                      --   £ctrler_while_break := true;
                       endif;
                     end]
                 (s_stmts, s_decls)
