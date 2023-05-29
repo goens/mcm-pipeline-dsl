@@ -2675,16 +2675,16 @@ partial def ast_term_to_murphi_expr
         let dest_ctrler_name : String := qual_name_list[0]!
         let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
         let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
-        [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
+        [murϕ| next_state .core_[j] .£dest_ctrler_name_ .num_entries = £dest_ctrler_max_entries]
       else if qual_name_list[1]! == "empty" then
         -- Then do sth like 
         -- Sta.core[j].<ctrler>_.num_entries == <ctrler>_NUM_ENTRIES_CONST
         let dest_ctrler_name : String := qual_name_list[0]!
         let dest_ctrler_name_ : String := dest_ctrler_name ++ "_"
         -- let dest_ctrler_max_entries : String := dest_ctrler_name ++ "_NUM_ENTRIES_CONST"
-        [murϕ| Sta .core_[j] .£dest_ctrler_name_ .num_entries = 0]
+        [murϕ| next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0]
       else if qual_name_list[1]! == "out_busy" && qual_name_list[0]! == "memory_interface"  then
-        [murϕ| Sta .core_[j] .mem_interface_ .out_busy = true]
+        [murϕ| next_state .core_[j] .mem_interface_ .out_busy = true]
       else if qual_name_list[1]! == "read" && qual_name_list[0]! == "reg_file" then
         dbg_trace "== Translating reg_file read API =="
         let reg_idx_expr := lst_expr[0]!
@@ -4179,7 +4179,7 @@ lst_stmts_decls
             ]
             let overall_murphi_head_search_squash_template : List Murϕ.Statement :=
             [murϕ|
-            rob := Sta .core_[j] .ROB_;
+            rob := next_state .core_[j] .ROB_;
             loop_break := false;
             if next_state .core_[j] .£dest_ctrler_name_ .num_entries = 0 then
               loop_break := true;
@@ -4865,7 +4865,7 @@ lst_stmts_decls
             -- let init_stmt_trans_info := assn_stmt_to_stmt_translation_info stmt_trans_info init_stmt
             -- let curr_head_ : String := "curr_head_"
               dbg_trace s!"Translate remove_head() call for ctrler: ({dest_ctrler_name})"
-            let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .head]
+            let murphi_expr_curr_head_ : Murϕ.Expr := [murϕ| next_state .core_[j] .£dest_ctrler_ .head]
             let init_stmt_trans_info := {
               stmt := init_stmt_without_transition,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -5210,7 +5210,7 @@ lst_stmts_decls
                 panic! msg'
             -- Convert to Murphi Stmt
 
-            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| Sta .core_[j] .£dest_ctrler_ .tail]
+            let murphi_dest_idx_expr : Murϕ.Expr := [murϕ| next_state .core_[j] .£dest_ctrler_ .tail]
             let when_stmt_trans_info : stmt_translation_info := {
               stmt := when_stmt,
               lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -5271,8 +5271,8 @@ lst_stmts_decls
               --# NOTE: Auto generate the standard "insert" book keeping part
               -- insert inst is not so 'standard'
               -- curr_tail_entry .instruction := inst;
-              next_state .core_[j] .£dest_ctrler_ .tail := ( Sta .core_[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
-              next_state .core_[j] .£dest_ctrler_ .num_entries := Sta .core_[j] .£dest_ctrler_ .num_entries + 1;
+              next_state .core_[j] .£dest_ctrler_ .tail := ( next_state .core_[j] .£dest_ctrler_ .tail + 1 ) % (£dest_num_entries_const);
+              next_state .core_[j] .£dest_ctrler_ .num_entries := next_state .core_[j] .£dest_ctrler_ .num_entries + 1;
             ]
             let murphi_decls : List Murϕ.Decl := [] ++ murphi_when_stmts_decls.decls
             let stmts_decls : lst_stmts_decls := {
@@ -5533,7 +5533,7 @@ lst_stmts_decls
               insert_key_check_found := false;
               found_double_key_check := false;
               for £dest_ctrler_key_check_idx : £dest_ctrler_idx_t do
-                if (Sta .core_[j] .£dest_ctrler_ .entries[£dest_ctrler_key_check_idx] .valid) then
+                if (next_state .core_[j] .£dest_ctrler_ .entries[£dest_ctrler_key_check_idx] .valid) then
                   if (£murphi_key_var = £murphi_key_arg) then
                     -- Update the entry
                     £insert_existing_entry_murphi_when_stmt;
@@ -6811,7 +6811,7 @@ partial def api_term_func_to_murphi_func
   found_entry := false;
   for £dest_ctrler_iter : £dest_ctrler_idx_t do
     -- TODO: Put an if condition which checks if the seq_num if invalid (i.e. is 0)
-    if (Sta .core_[ j ] .£dest_ctrler_name_ .entries[ £dest_ctrler_iter ] .instruction .seq_num != 0) then
+    if (next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £dest_ctrler_iter ] .instruction .seq_num != 0) then
     -- if seq_num is invalid, don't do anything.
       -- TODO: £condition (API Argument 1)
       if ( £condition ) then
@@ -7162,7 +7162,7 @@ partial def api_term_func_to_murphi_func
   -- found_entry := false;
   for £ctrler_curr_idx : £dest_ctrler_idx_t do
     -- TODO: Put an if condition which checks if the seq_num if invalid (i.e. is 0)
-    if (Sta .core_[ j ] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ] .valid = true) then
+    if (next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ] .valid = true) then
     -- if entry is invalid, don't do anything.
       -- TODO: £condition (API Argument 1)
       if ( £murphi_match_cond_expr ) then
