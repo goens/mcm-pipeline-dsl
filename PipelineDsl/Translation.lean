@@ -5041,6 +5041,8 @@ lst_stmts_decls
               find_when_from_transition states_to_search api_func_name ctrler_name
 
             let when_stmt_args : List String :=
+              -- ← when_stmt.when_stmt_arguments
+              --   |>.throw
               match (when_stmt.when_stmt_arguments) with
               | .error msg =>
                 let msg' : String := s!"Error getting when stmt args in 'remove_key' API func: ({msg})"
@@ -5696,6 +5698,7 @@ lst_stmts_decls
                 let dest_ctrler_name_ := dest_ctrler_name.append "_"
                 let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
 
+                let squash_remove_count := "squash_remove_count"
                 let s_decls :=
                   let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
                   let ctrler_count_t := dest_ctrler_name.append "_count_t"
@@ -5704,7 +5707,9 @@ lst_stmts_decls
                   [murϕ_var_decls| var £ctrler_entry_idx : £ctrler_idx_t] ++
                   [murϕ_var_decls| var £ctrler_difference : £ctrler_count_t] ++
                   [murϕ_var_decls| var £ctrler_offset : £ctrler_count_t] ++
-                  [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t]
+                  [murϕ_var_decls| var £ctrler_curr_idx : £ctrler_idx_t] ++
+                  [murϕ_var_decls| var £squash_remove_count : £ctrler_count_t]
+                  -- [murϕ_var_decls| var £prev_entry_squashed : boolean]
 
                 let s_stmts :=
                   [murϕ|
@@ -5720,8 +5725,8 @@ lst_stmts_decls
                     --   £ctrler_difference := ( next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - next_state .core_[j] .£dest_ctrler_name_ .head );
                     -- endif;
                     £ctrler_difference := next_state .core_[j] .£dest_ctrler_name_ .num_entries;
-                    £ctrler_offset := 0;].concat
-                  [murϕ_statement|
+                    £ctrler_offset := 0;
+                    £squash_remove_count := 0;
                     while ( (£ctrler_offset < £ctrler_difference) & (£ctrler_while_break = false) & ( £ctrler_found_entry = false ) ) do
                       £ctrler_curr_idx := ( £ctrler_entry_idx + £ctrler_offset ) % £dest_num_entries_const_name;
                       if true then
@@ -5732,7 +5737,7 @@ lst_stmts_decls
                       -- else
                       --   £ctrler_while_break := true;
                       endif;
-                    end]
+                    end;]
                 (s_stmts, s_decls)
 
             let stmts_decls : lst_stmts_decls := {
@@ -5943,8 +5948,21 @@ lst_stmts_decls
 
             -- name of func call is just "is_head"
             -- then translate term as curr_ctrler.head == i
+            -- NOTE: Add a line to set valid to false
             let murphi_stmt : List Murϕ.Statement := [murϕ|
               next_state .core_[j] .£curr_ctrler_name_ .num_entries := (next_state .core_[j] .£curr_ctrler_name_ .num_entries - 1);
+            ]
+            -- murphi_expr
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmt,
+              decls := []
+            }
+            stmts_decls
+          else if ( qual_name_list[0]! == "squash_remove" ) then
+            -- Use with FIFOs only
+            let squash_remove_count := "squash_remove_count"
+            let murphi_stmt : List Murϕ.Statement := [murϕ|
+              £squash_remove_count := £squash_remove_count + 1;
             ]
             -- murphi_expr
             let stmts_decls : lst_stmts_decls := {
