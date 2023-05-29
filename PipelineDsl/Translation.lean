@@ -2662,6 +2662,7 @@ partial def ast_term_to_murphi_expr
     | QualifiedName.mk lst_names => lst_names
     let is_len_one_name : Bool := qual_name_list.length == 1
     let has_is_head_name : Bool := qual_name_list.contains "is_head"
+    let has_empty_name : Bool := qual_name_list.contains "empty"
     let no_input_args : Bool := lst_expr.length == 0
 
   -- Check the qual name list, if it contains "full"
@@ -2717,8 +2718,6 @@ partial def ast_term_to_murphi_expr
           -- murphi_func_id (lst_expr.map ast_expr_to_murphi_expr)
         murphi_expr
     else if is_len_one_name && has_is_head_name && no_input_args then
-      -- for when statements
-
       let curr_ctrler_name_ : String := curr_ctrler_name.append "_"
 
       -- name of func call is just "is_head"
@@ -2727,6 +2726,9 @@ partial def ast_term_to_murphi_expr
         next_state .core_[j] .£curr_ctrler_name_ .head = i
       ]
       murphi_expr
+    else if is_len_one_name && has_empty_name && no_input_args then
+      let curr_ctrler_name_ : String := curr_ctrler_name.append "_"
+      [murϕ| next_state .core_[j] .£curr_ctrler_name_ .num_entries = 0 ]
     else 
       let msg : String :=
         "Not prepared to handle other functions, or user defined funcs!¬"++
