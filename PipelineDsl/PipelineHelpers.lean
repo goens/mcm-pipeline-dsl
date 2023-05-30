@@ -12,7 +12,7 @@ abbrev less_than := Expr.less_than -- less_than
 abbrev await := Statement.await -- await
 
 abbrev str_lit := Const.str_lit
-abbrev term_expr := Term.expr
+abbrev term_expr := Expr.some_term
 abbrev binand := Expr.binand
 
 abbrev SearchStatement := Statement
@@ -33,6 +33,9 @@ abbrev complete := Statement.complete
 abbrev state := Description.state
 abbrev stray_expr := Statement.stray_expr
 abbrev variable_declaration := Statement.variable_declaration
+
+abbrev handle := HandleBlock.mk
+abbrev listen := Statement.listen_handle
 
 abbrev value_decl := Statement.value_declaration
 
