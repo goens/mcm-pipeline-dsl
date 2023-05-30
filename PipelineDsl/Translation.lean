@@ -1707,7 +1707,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
     let ident_matches_state_var :=
     ident_matches_ident_list state_var_idents one_ident 
 
-    let ident_matches_state_var := ident_matches_state_var || (one_ident == "curr_state") || (one_ident == "state")
+    let ident_matches_state_var := ident_matches_state_var || (one_ident == "curr_state") || (one_ident == "state") || (one_ident == "valid")
     let one_ident := if (one_ident == "curr_state") then "state" else one_ident
 
     -- dbg_trace "!!! BEGIN IDENT !!!"
@@ -5737,7 +5737,10 @@ lst_stmts_decls
                       -- else
                       --   £ctrler_while_break := true;
                       endif;
-                    end;]
+                    end;
+                    next_state .core_[j] .£dest_ctrler_name_ .tail := (next_state .core_[j] .£dest_ctrler_name_ .tail + £dest_num_entries_const_name - £squash_remove_count ) % £dest_num_entries_const_name;
+                    next_state .core_[j] .£dest_ctrler_name_ .num_entries := (next_state .core_[j] .£dest_ctrler_name_ .num_entries - £squash_remove_count );
+                    ]
                 (s_stmts, s_decls)
 
             let stmts_decls : lst_stmts_decls := {
@@ -5949,13 +5952,34 @@ lst_stmts_decls
             -- name of func call is just "is_head"
             -- then translate term as curr_ctrler.head == i
             -- NOTE: Add a line to set valid to false
+            let dsl_valid_asn_false := var_asn_var ["valid"] "false"
+            let valid_to_false_trans_info : stmt_translation_info := {
+              stmt := dsl_valid_asn_false,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := stmt_trans_info.ctrler_name,--stmt_trans_info.ctrler_name,
+              src_ctrler := stmt_trans_info.ctrler_name, -- stmt_trans_info.src_ctrler,
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := false
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
+            let murphi_asn_false := ast_stmt_to_murphi_stmts valid_to_false_trans_info
             let murphi_stmt : List Murϕ.Statement := [murϕ|
               next_state .core_[j] .£curr_ctrler_name_ .num_entries := (next_state .core_[j] .£curr_ctrler_name_ .num_entries - 1);
+              £murphi_asn_false.stmts
             ]
             -- murphi_expr
             let stmts_decls : lst_stmts_decls := {
               stmts := murphi_stmt,
-              decls := []
+              decls := [] ++ murphi_asn_false.decls
             }
             stmts_decls
           else if ( qual_name_list[0]! == "squash_remove" ) then
