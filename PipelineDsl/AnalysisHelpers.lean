@@ -2314,7 +2314,7 @@ def InstType.to_const_term : InstType → Pipeline.Term
 -- maybe able to compose
 
 def Pipeline.Expr.to_term (expr : Pipeline.Expr) : Pipeline.Term :=
-  term_expr expr
+  expr_term expr
 
 def CtrlerName.FIFOOlderInstSearch
 (dest_ctrler_name : CtrlerName)
