@@ -10,6 +10,7 @@ def CDFG.Graph.CreateInvalidationListener
 (table_name : CtrlerName) -- "seq_num_to_address_table"
 (table_seq_num_name : VarName) -- "table_address"
 (table_address_name : VarName) -- "table_address"
+(inval_listener_name : CtrlerName) -- "invalidation_listener"
 : Except String Ctrler := do
   -- create a ctrler to listen for invalidation
 
@@ -52,9 +53,9 @@ def CDFG.Graph.CreateInvalidationListener
 
   -- squash msg call
   -- something like: ROB.squash(LAT_seq_num)
-  let commit_ctrler_name := commit_node.ctrler_name
-  let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr table_seq_num_name]
-  let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
+  -- let commit_ctrler_name := commit_node.ctrler_name
+  -- let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr table_seq_num_name]
+  -- let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
 
   let post_send_ld_req' := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
   let post_send_ld_req := post_send_ld_req'.filter (· != global_perform_load_node)
@@ -71,13 +72,21 @@ def CDFG.Graph.CreateInvalidationListener
   -- let if_address_matches := conditional_stmt <| if_statement expr_address_eq_table_address search_squash_stmt
 
   -- Remove the entry upon match as well, so that it doesn't get squashed again
-  let remove_entry_at_key := stray_expr $ some_term $
-    function_call [table_name, remove_key].to_qual_name [var_expr table_seq_num_name]
+  -- let remove_entry_at_key := stray_expr $ some_term $
+  --   function_call [table_name, remove_key].to_qual_name [var_expr table_seq_num_name]
 
   -- table_address_name is the LAT's address, and check if invalidation listener's address (from the inval msg) matches
+  -- let search_for_addr := table_name.TableUnorderedSearchAll
+  --   table_address_name invalidation_address
+  --   [search_squash_stmt, remove_entry_at_key] []
+
+  let squash_search_all_msg := function_call [table_name, squash].to_qual_name [var_expr table_seq_num_name]
+  let squash_table_stmt := stray_expr $ some_term squash_search_all_msg
+
   let search_for_addr := table_name.TableUnorderedSearch
     table_address_name invalidation_address
-    [search_squash_stmt, remove_entry_at_key] []
+    [squash_table_stmt /-search_squash_stmt, remove_entry_at_key-/] []
+    $ term_expr [table_seq_num_name].EntryQualVar
 
 
   -- (i)
@@ -99,7 +108,7 @@ def CDFG.Graph.CreateInvalidationListener
   let squash_state := state squash_speculative_loads_state_name squash_speculative_loads_stmts.to_block
 
   -- 0. Create the ctrler
-  let invalidation_listener_ctrler_name := "invalidation_listener"
+  -- let inval_listener_name := "invalidation_listener"
 
   -- (i) Create init state
   let init_state_name := "init_inval_listener"
@@ -117,11 +126,11 @@ def CDFG.Graph.CreateInvalidationListener
   let address_decl := variable_declaration address_tident
   let init_state_decl := variable_assignment [ "init_state" ].to_qual_name <| var_expr init_state_name
 
-  let inval_controller : Description := Description.controller invalidation_listener_ctrler_name [
+  let inval_controller : Description := Description.controller inval_listener_name [
     seq_num_decl, address_decl, init_state_decl ].to_block
   
   let inval_ctrler : Ctrler :=
-    ⟨invalidation_listener_ctrler_name, inval_controller,
+    ⟨inval_listener_name, inval_controller,
       none, none, none, none,
       some init_state_name, some [init_state, squash_state, await_invalidation_state], some [seq_num_tident, address_tident]⟩  
 
@@ -136,12 +145,16 @@ def Ctrlers.AddInvalidationListener
 (graph : Graph)
 (commit_node : Node)
 (global_perform_load_node : Node)
+
+(inval_listener_name : CtrlerName)
 : Except String Ctrlers := do
   let inval_listener_ctrler : Ctrler :=
     ← graph.CreateInvalidationListener
       commit_node global_perform_load_node
       -- ctrlers
       lat_name lat_seq_num_name lat_address_name
+      -- name of the invalidation listener we're creating
+      inval_listener_name
 
   let ctrlers' := inval_listener_ctrler :: ctrlers
 
@@ -165,15 +178,18 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   -- 3. Add a stmt to insert_key into the invalidation listener to perform load
   -- 4. Add a stmt to remove_key from the invalidation listener to commit load
 
+  let inval_listener_name := "invalidation_listener"
+
   -- (1) Create the LAT
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
-    perform_load_node.ctrler_name perform_load_node.ctrler_name
+    perform_load_node.ctrler_name commit_node.ctrler_name inval_listener_name
 
   let ctrlers' := ctrlers ++ [lat]
 
   -- (2) Create the invalidation listener
   let ctrlers''   ← AddInvalidationListener
     ctrlers' lat_name lat_seq_num_var lat_address_var graph commit_node perform_load_node
+    inval_listener_name
 
   -- (3) Add a stmt to insert_key into the invalidation listener to perform load
   -- Get the global_perform_load API's args: (the seq_num expr, and address expr) (should be in fixed positions..)

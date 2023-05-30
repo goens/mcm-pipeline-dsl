@@ -607,9 +607,12 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
   -- (1) Create the LAT
   let perform_load_node ← graph.load_global_perform_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting perform load node"
+  let commit_node ← graph.commit_state_ctrler
+    |>.throw_exception_nesting_msg s!"Error getting perform load node"
 
+  let lat_squashing_ctrler := commit_node.ctrler_name
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
-    perform_load_node.ctrler_name perform_load_node.ctrler_name
+    perform_load_node.ctrler_name perform_load_node.ctrler_name lat_squashing_ctrler
 
   -- (2) Add LoadReplay to Ctrlers
   let (ctrlers_with_load_replay, commit_start_replay_state_name) :=

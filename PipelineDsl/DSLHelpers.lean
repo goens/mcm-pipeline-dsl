@@ -125,7 +125,7 @@ def minOp (expr : Expr) : Expr :=
 def minEntryVarOp (entry_var : List Identifier) (check_constructor : Term → Term → Expr) (check_var : List Identifier) : Expr :=
   minOp <| EntryVarOp entry_var check_constructor check_var
 
-def CtrlerName.TableUnorderedSearch
+def CtrlerName.TableUnorderedSearchAll
 (dest_ctrler : CtrlerName)
 (table_key : VarName)
 (search_key : VarName)
@@ -145,8 +145,38 @@ def CtrlerName.TableUnorderedSearch
   let await_search := await (some search_call) [when_search_success, when_search_failure]
   await_search
 
+def minEntry (entry_var : List Identifier) : Expr :=
+  minOp <| term_expr entry_var.EntryQualVar
+
+def CtrlerName.TableUnorderedSearch
+(dest_ctrler : CtrlerName)
+(table_key : VarName)
+(search_key : VarName)
+(search_success_stmts : List Statement)
+(search_failure_stmts : List Statement)
+-- (src_ctrler : CtrlerName)
+(min_expr : Expr)
+: Statement :=
+  let if_valid_expr := EntryVarCompare ["valid"] equal ["true"]
+  let key_match_expr := EntryVarCompare [ table_key ] equal [ search_key ]
+  let valid_and_key_match := binand (expr_term if_valid_expr) (expr_term key_match_expr)
+  let min_cond := minOp min_expr
+  let search_call := function_call [dest_ctrler, search].to_qual_name [valid_and_key_match, min_cond]
+
+  let when_search_success := when_stmt [dest_ctrler, search_success].to_qual_name [] search_success_stmts.to_block
+  let when_search_failure := when_stmt [dest_ctrler, search_fail ].to_qual_name [] search_failure_stmts.to_block
+
+  let await_search := await (some search_call) [when_search_success, when_search_failure]
+  await_search
+
+def List.TermVar (idents : List Identifier) : Term :=
+  match idents with
+  | [one] => var_term one
+  | _ => qual_var_term idents
+  -- | [] => throw s!"Error: List of Idents -> Var function: Provided an empty list of idents"
+
 def VarCompare (var1 : List Identifier) (check_constructor : Term → Term → Expr) (var2 : List Identifier) : Expr :=
-  check_constructor var1.QualVar var2.QualVar
+  check_constructor var1.TermVar var2.TermVar
 
 -- NOTE: Better to explicitly error with a msg at specific points, to get a "stack trace" where I care
 def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : Except String α := do

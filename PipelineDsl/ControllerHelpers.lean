@@ -137,6 +137,9 @@ def CreateTableQueue -- CAM like table
 (remove_args : List VarName)
 (remove_actions : List Statement)
 (remove_from : CtrlerName)
+
+(commit_ctrler : CtrlerName)
+(squash_sender : CtrlerName)
 : Except String Ctrler := do
   -- ====== controller description ======
   -- Stmts needed:
@@ -188,7 +191,28 @@ def CreateTableQueue -- CAM like table
     remove_args
     (remove_actions ++ [complete await_insert_remove_state_name]).to_block
   let await_when_remove_stmt := await none [when_insert_stmt, when_remove_stmt]
-  let await_insert_remove_state := state await_insert_remove_state_name await_when_remove_stmt.to_block
+
+  -- a handle block to handle squashing
+  -- handle block checks if an entry's seq_num is >= a provided seq_num
+  -- if it is, then remove the entry
+  let violating_seq_num := "violating_seq_num"
+  -- if expr
+  let squash_cond := VarCompare [entry_key] Expr.geq [violating_seq_num]
+  -- remove this entry
+  let remove_entry := stray_expr $ term_expr $ function_call [table_name, remove_key].to_qual_name [var_expr entry_key]
+  -- squash Commit Ctrler entries as well
+  let squash_commit_entry := stray_expr $ term_expr $ function_call [commit_ctrler, squash].to_qual_name [var_expr violating_seq_num]
+  -- reset to self
+  let reset_await := reset await_insert_remove_state_name
+  -- if stmt
+  let if_squash := conditional_stmt $ if_statement squash_cond [remove_entry, squash_commit_entry, reset_await].to_block
+
+  -- handle squash
+  let handle_squash := handle [squash_sender, squash].to_qual_name [violating_seq_num] [if_squash].to_block
+  let listen_handle_squash := listen await_when_remove_stmt.to_block [handle_squash]
+
+  -- Create the state
+  let await_insert_remove_state := state await_insert_remove_state_name listen_handle_squash.to_block
 
 /- -- If I later decide it's better to have 2 states....
   let await_remove_state_name := table_name ++ "_await_remove"
@@ -233,6 +257,7 @@ def CreateTableQueue -- CAM like table
 def CreateLoadAddressTableCtrler
 (perform_load_node_ctrler_name : CtrlerName)
 (commit_node_ctrler_name : CtrlerName)
+(squash_sender : CtrlerName)
 : Except String (Ctrler × CtrlerName × VarName × VarName) := do
   let lat_address_var := "_".intercalate ["lat", address]
   let lat_seq_num_var := "_".intercalate ["lat", seq_num]
@@ -258,6 +283,8 @@ def CreateLoadAddressTableCtrler
     entries entry_key
     insert_args insert_actions insert_from
     remove_args remove_actions remove_from
+    commit_node_ctrler_name
+    squash_sender
   
   pure (lat, lat_name, lat_seq_num_var, lat_address_var)
 
