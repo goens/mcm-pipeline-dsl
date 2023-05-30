@@ -17,7 +17,7 @@ load_address_table_NUM_ENTRIES_CONST : 2;
 type
 val_t : 0 .. MAX_VALUE;
 inst_idx_t : 0 .. CORE_INST_NUM;
-inst_count_t : 0 .. (CORE_INST_NUM + 1);
+inst_count_t : 0 .. (CORE_INST_NUM + 5); -- make it 2, allow for reseting once in a core
 addr_idx_t : 0 .. ADDR_NUM;
 reg_idx_t : 0 .. REG_NUM;
 ic_idx_t : 0 .. IC_ENTRY_NUM;
@@ -75,19 +75,20 @@ IQ_entry_values : record
   instruction : INST;
   seq_num : inst_count_t;
   state : IQ_state;
+  valid : boolean;
 end;
 IQ : record
   entries : array [IQ_idx_t] of IQ_entry_values;
   num_entries : IQ_count_t;
 end;
-memory_unit_sender_state : enum {squashed_memory_unit_receiver, memory_unit_load_result_write, memory_unit_receiver, memory_unit_stage_send, mem_unit_send_get_input, memory_unit_send_init};
+memory_unit_sender_state : enum {memory_unit_load_result_write, memory_unit_receiver, memory_unit_stage_send, mem_unit_send_get_input, memory_unit_send_init};
 memory_unit_sender : record
   instruction : INST;
   phys_addr : addr_idx_t;
   read_value : val_t;
   state : memory_unit_sender_state;
 end;
-RENAME_state : enum {issue_if_head, init_rename_entry};
+RENAME_state : enum {rename_await_creation, issue_if_head, init_rename_entry};
 RENAME_idx_t : 0 .. RENAME_NUM_ENTRIES_ENUM_CONST;
 RENAME_count_t : 0 .. RENAME_NUM_ENTRIES_CONST;
 RENAME_entry_values : record
@@ -101,6 +102,11 @@ RENAME : record
   tail : RENAME_idx_t;
 end;
 STORE_STATE : enum {await_handling, await_invalidation_received, store_send_completion};
+SeqNumReg_state : enum {seq_num_interface, init_seq_num_counter};
+SeqNumReg : record
+  seq_num_counter : inst_count_t;
+  state : SeqNumReg_state;
+end;
 load_address_table_state : enum {init_table_load_address_table, load_address_table_await_insert_remove};
 load_address_table_idx_t : 0 .. load_address_table_NUM_ENTRIES_ENUM_CONST;
 load_address_table_count_t : 0 .. load_address_table_NUM_ENTRIES_CONST;
@@ -151,6 +157,7 @@ CORE : record
   IQ_ : IQ;
   memory_unit_sender_ : memory_unit_sender;
   RENAME_ : RENAME;
+  SeqNumReg_ : SeqNumReg;
   load_address_table_ : load_address_table;
   rf_ : REG_FILE;
   mem_interface_ : MEM_INTERFACE;
@@ -338,6 +345,10 @@ begin
         mem_stage_two.phys_addr := 0;
         mem_stage_two.state := second_mem_unit_get_inputs;
       endfor;
+    end;
+    alias seqnumreg : init_state.core_[core].SeqNumReg_ do
+      seqnumreg.seq_num_counter := 0;
+      seqnumreg.state := seq_num_interface;
     end;
   endfor;
   alias rename_c0 : init_state.core_[ 0 ].RENAME_ do
@@ -615,11 +626,14 @@ begin
   mem_interface := Sta.core_[ j ].mem_interface_;
   -- Do this based on the stage state
   put "CORE-ACK: About to check if 1st mem unit or 2nd mem unit is the recipient..\n";
-  if (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver | (Sta.core_[j].memory_unit_sender_.state = squashed_memory_unit_receiver)) &
-    (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num) then
+  if (mem_interface.in_msg.r_w = read)
+    then
     put "CORE-ACK: 1st Mem unit is the recipient, check if load or store..\n";
-    if (mem_interface.in_msg.r_w = read) then
-      if Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver then
+    -- if (mem_interface.in_msg.r_w = read) then
+    if
+    (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver) &
+    (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num)
+      then
       rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].memory_unit_sender_.instruction.seq_num);
       put "CORE-ACK: Rob id: (";
       put rob_id;
@@ -636,71 +650,54 @@ begin
       -- rob.entries[rob_id].is_executed := true;
       next_state.core_[j].memory_unit_sender_.state := memory_unit_load_result_write;
       next_state.core_[j].memory_unit_sender_.read_value := mem_interface.in_msg.value;
-      elsif (Sta.core_[j].memory_unit_sender_.state = squashed_memory_unit_receiver) then
-        -- consume the stale message
-        -- go to reset state
-        next_state.core_[j].memory_unit_sender_.state := memory_unit_stage_send;
-      endif;
-    mem_interface.in_busy := false;
-    elsif (mem_interface.in_msg.store_state = await_handling) & (mem_interface.in_msg.r_w = write) then
-          -- Overview: Send back an ack for the invalidation sent..
-          -- match this message with it's copy in the IC, set it's ack bool to true.
-
-          next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
-          next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
-          next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
-
-
-          assert mem_interface.in_busy = true "This should still be busy...";
-    elsif (mem_interface.in_msg.r_w = write) then
-      error "CORE-ACK: first memory stage got a write, but it doesn't handle stores...\n";
-    end;
-  elsif (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
-    (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
-    put "CORE-ACK: Second mem unit is the recipient, check if load or store..\n";
-    if (mem_interface.in_msg.r_w = write) then
-
-      if (mem_interface.in_msg.store_state = await_handling) then
-        -- Overview: Send back an ack for the invalidation sent..
-        -- match this message with it's copy in the IC, set it's ack bool to true.
-
-        next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
-        next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
-        next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
-
-
-        assert mem_interface.in_busy = true "This should still be busy...";
-      elsif (mem_interface.in_msg.store_state = store_send_completion) then
-        rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
-        assert(rob.entries[rob_id].state = rob_wait_store_completed);
-        rob.entries[rob_id].state := rob_complete_store;
-        -- sb := associative_ack_st(sb, mem_interface.in_msg);
+      -- elsif (Sta.core_[j].memory_unit_sender_.state = squashed_memory_unit_receiver) then
+      --   -- consume the stale message
+      --   -- go to reset state
+      --   next_state.core_[j].memory_unit_sender_.state := memory_unit_stage_send;
+      mem_interface.in_busy := false;
+    elsif (Sta.core_[j].memory_unit_sender_.instruction.seq_num != mem_interface.in_msg.seq_num) then
+      if (mem_interface.in_msg.seq_num <= next_state.core_[j].SeqNumReg_.seq_num_counter) then
         mem_interface.in_busy := false;
-      end;
+        -- ignore a seq_num mismatch
+      else
+        error "This would have been a stale read? but it's seq num isn't less than or equal the one in the seq_num reg?";
+      endif;
     end;
-      put "CORE-ACK: Rob id: (";
-      put rob_id;
-      put ")\n";
-      put "CORE-ACK: mem_seq_num in: (";
-      put mem_interface.in_msg.seq_num;
-      put ")\n";
-      put "CORE-ACK: second_memory_stage seq_num: (";
-      put Sta.core_[j].second_memory_stage_.instruction.seq_num;
-      put ")\n";
-    next_state.core_[j].second_memory_stage_.state := second_mem_unit_get_inputs;
-    -- Directly handle the invalidation case here
-  elsif (mem_interface.in_msg.store_state = await_handling) & (mem_interface.in_msg.r_w = write) then
-        -- Overview: Send back an ack for the invalidation sent..
-        -- match this message with it's copy in the IC, set it's ack bool to true.
+  elsif (mem_interface.in_msg.r_w = write) then
+    if (mem_interface.in_msg.store_state = store_send_completion) &
+      (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
+      (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
+        -- elsif (mem_interface.in_msg.store_state = store_send_completion) then
+          rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+          assert(rob.entries[rob_id].state = rob_wait_store_completed);
+          rob.entries[rob_id].state := rob_complete_store;
+          -- sb := associative_ack_st(sb, mem_interface.in_msg);
+          mem_interface.in_busy := false;
+        -- end;
+        put "CORE-ACK: Rob id: (";
+        put rob_id;
+        put ")\n";
+        put "CORE-ACK: mem_seq_num in: (";
+        put mem_interface.in_msg.seq_num;
+        put ")\n";
+        put "CORE-ACK: second_memory_stage seq_num: (";
+        put Sta.core_[j].second_memory_stage_.instruction.seq_num;
+        put ")\n";
+      next_state.core_[j].second_memory_stage_.state := second_mem_unit_get_inputs;
+      -- Directly handle the invalidation case here
+    elsif (mem_interface.in_msg.store_state = await_handling) then
+      -- Overview: Send back an ack for the invalidation sent..
+      -- match this message with it's copy in the IC, set it's ack bool to true.
 
-        next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
-        next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
-        next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
+      next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
+      next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
+      next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
 
 
-        assert mem_interface.in_busy = true "This should still be busy...";
+      assert mem_interface.in_busy = true "This should still be busy...";
+    endif;
   else
-    error "CORE-ACK: Got a message but don't know which unit to send it to!\n";
+    error "CORE-ACK: Got a message but don't know what to do with it!\n";
   endif;
   put "CORE-ACK: Reached end of if stmt..\n";
   -- next_state.core_[ j ].LSQ_ := lq;
@@ -757,17 +754,13 @@ ruleset j : cores_t do
 (Sta.core_[ j ].invalidation_listener_.state = squash_speculative_loads)
 ==>
  
-  var IQ_loop_break : boolean;
-  var IQ_entry_idx : IQ_idx_t;
-  var IQ_found_entry : boolean;
-  var IQ_offset : IQ_count_t;
-  var IQ_curr_idx : IQ_idx_t;
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
   var ROB_difference : ROB_count_t;
   var ROB_offset : ROB_count_t;
   var ROB_squash_curr_idx : ROB_idx_t;
+  var squash_remove_count : ROB_count_t;
   var remove_key_dest_already_found : boolean;
   var next_state : STATE;
   var found_msg_in_ic : boolean;
@@ -776,7 +769,7 @@ ruleset j : cores_t do
 begin
   next_state := Sta;
   for load_address_table_search_all_curr_idx : load_address_table_idx_t do
-    if (Sta.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) then
+    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) then
       if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
         violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_seq_num;
         ROB_while_break := false;
@@ -787,53 +780,55 @@ begin
         ROB_entry_idx := next_state.core_[ j ].ROB_.head;
         ROB_difference := next_state.core_[ j ].ROB_.num_entries;
         ROB_offset := 0;
+        squash_remove_count := 0;
         while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
           ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
           if true then
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_is_executed) then
-              if (next_state.core_[ j ].memory_unit_sender_.state = squashed_memory_unit_receiver) then
-              elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write) then
-                if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num = violating_seq_num) then
-                  next_state.core_[ j ].memory_unit_sender_.state := memory_unit_stage_send;
+              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                if (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write) then
+                  if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                    next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                  end;
+                elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_receiver) then
+                  if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                    next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                  end;
+                 elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) then
+                  if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                    next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                  end;
+                 elsif (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
+                else
+                  error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (memory_unit_sender)";
                 end;
-               elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_receiver) then
-                if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num = violating_seq_num) then
-                  next_state.core_[ j ].memory_unit_sender_.state := squashed_memory_unit_receiver;
-                end;
-               elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) then
-               elsif (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
-              else
-                error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (memory_unit_sender)";
+                squash_remove_count := (squash_remove_count + 1);
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
               end;
             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_based_on_inst) then
+              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                squash_remove_count := (squash_remove_count + 1);
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+              end;
              elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                squash_remove_count := (squash_remove_count + 1);
                 next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
-                IQ_loop_break := false;
-                if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
-                  IQ_loop_break := true;
-                end;
-                IQ_entry_idx := 0;
-                IQ_found_entry := false;
-                IQ_offset := 0;
-                while ((IQ_offset < IQ_NUM_ENTRIES_CONST) & ((IQ_loop_break = false) & (IQ_found_entry = false))) do
-                  IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
-                  if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
-                    next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
-                    next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
-                    IQ_found_entry := true;
-                  end;
-                  if (IQ_offset < IQ_NUM_ENTRIES_CONST) then
-                    IQ_offset := (IQ_offset + 1);
-                  end;
-                end;
-                next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
-                if (IQ_found_entry = false) then
-                  error "Couldn't find an empty entry to insert into";
-                end;
-                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_is_executed;
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
               end;
-             elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_creation) then
             else
               error "Controller is not on an expected state for a msg: (squash) from: (invalidation_listener) to: (ROB)";
             end;
@@ -842,6 +837,8 @@ begin
             ROB_offset := (ROB_offset + 1);
           end;
         end;
+        next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - squash_remove_count)) % ROB_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - squash_remove_count);
         remove_key_dest_already_found := false;
         for remove_load_address_table_idx : load_address_table_idx_t do
           if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
@@ -901,11 +898,11 @@ ruleset j : cores_t; i : ROB_idx_t do
 
 begin
   next_state := Sta;
-  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-  next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-  next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+  next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+  next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+  next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+  next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+  next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
   next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
   next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
   Sta := next_state;
@@ -915,7 +912,7 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_commit_based_on_inst ===> rob_await_creation || rob_await_creation || rob_wait_store_completed" 
+  rule "ROB rob_commit_based_on_inst ===> rob_await_creation || rob_await_creation || rob_wait_store_completed || rob_await_creation" 
 (Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_based_on_inst)
 ==>
  
@@ -925,20 +922,20 @@ begin
   next_state := Sta;
   if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = mfence) then
     next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-    next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+    next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
     next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
     next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
   else
     if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) then
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-      next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+      next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
       next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
       next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
     else
@@ -962,8 +959,8 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_commit_if_head ===> rob_commit_based_on_inst || rob_commit_if_head || rob_await_is_executed || rob_await_is_executed" 
-(((Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_if_head) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST)) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST))
+  rule "ROB rob_commit_if_head ===> rob_commit_based_on_inst || rob_commit_if_head || rob_await_is_executed || rob_await_creation" 
+((Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_if_head) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST))
 ==>
  
   var next_state : STATE;
@@ -1009,7 +1006,7 @@ ruleset j : cores_t do
 
 begin
   next_state := Sta;
-  if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
+  if !((next_state.core_[ j ].mem_interface_.out_busy = true)) then
     if (next_state.core_[ j ].second_memory_stage_.instruction.op = st) then
       next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].second_memory_stage_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := write;
@@ -1137,7 +1134,7 @@ end;
 
 
 ruleset j : cores_t do 
-  rule "memory_unit_sender memory_unit_load_result_write ===> mem_unit_send_get_input || memory_unit_stage_send" 
+  rule "memory_unit_sender memory_unit_load_result_write ===> mem_unit_send_get_input || mem_unit_send_get_input" 
 (Sta.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write)
 ==>
  
@@ -1186,7 +1183,7 @@ end;
 
 
 ruleset j : cores_t do 
-  rule "memory_unit_sender memory_unit_stage_send ===> memory_unit_receiver" 
+  rule "memory_unit_sender memory_unit_stage_send ===> memory_unit_receiver || mem_unit_send_get_input" 
 ((Sta.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
@@ -1202,12 +1199,12 @@ ruleset j : cores_t do
 
 begin
   next_state := Sta;
-  if !((Sta.core_[ j ].mem_interface_.out_busy = true)) then
+  if !((next_state.core_[ j ].mem_interface_.out_busy = true)) then
     if (next_state.core_[ j ].memory_unit_sender_.instruction.op = ld) then
       insert_key_check_found := false;
       found_double_key_check := false;
       for load_address_table_key_check_idx : load_address_table_idx_t do
-        if Sta.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
+        if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
           if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].memory_unit_sender_.instruction.seq_num) then
             next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].memory_unit_sender_.instruction.seq_num;
             next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].memory_unit_sender_.phys_addr;
@@ -1301,26 +1298,40 @@ ruleset j : cores_t; i : RENAME_idx_t do
 
 begin
   next_state := Sta;
-  if (next_state.core_[ j ].RENAME_.head = i) then
+  if ((next_state.core_[ j ].RENAME_.head = i) & (!((next_state.core_[ j ].RENAME_.num_entries = 0)) & !((next_state.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST)))) then
     if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].RENAME_.entries[ i ].instruction.imm;
-      next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].RENAME_.entries[ i ].instruction.write_value;
-      if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
+      next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := next_state.core_[ j ].SeqNumReg_.seq_num_counter;
+      if (next_state.core_[ j ].SeqNumReg_.state = seq_num_interface) then
+        next_state.core_[ j ].SeqNumReg_.seq_num_counter := (next_state.core_[ j ].SeqNumReg_.seq_num_counter + 1);
+        next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
       else
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_await_is_executed;
+        error "Controller is not on an expected state for a msg: (increment) from: (RENAME) to: (SeqNumReg)";
       end;
-      next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
-      next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
-      next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.op := inval;
-      next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
-      next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].state := issue_if_head;
-      next_state.core_[ j ].RENAME_.head := ((Sta.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].RENAME_.entries[ i ].instruction.imm;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].RENAME_.entries[ i ].instruction.write_value;
+      if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
+      else
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_await_is_executed;
+      end;
+      next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries + 1);
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.op := inval;
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].state := rename_await_creation;
+      next_state.core_[ j ].RENAME_.head := ((next_state.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
       next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries - 1);
-      next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+      next_state.core_[ j ].RENAME_.entries[ i ].state := rename_await_creation;
     else
-      if (!((Sta.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) & !((Sta.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST))) then
+      if !((next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) then
+        next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := next_state.core_[ j ].SeqNumReg_.seq_num_counter;
+        if (next_state.core_[ j ].SeqNumReg_.state = seq_num_interface) then
+          next_state.core_[ j ].SeqNumReg_.seq_num_counter := (next_state.core_[ j ].SeqNumReg_.seq_num_counter + 1);
+          next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
+        else
+          error "Controller is not on an expected state for a msg: (increment) from: (RENAME) to: (SeqNumReg)";
+        end;
         if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = st) then
         end;
         IQ_loop_break := false;
@@ -1345,22 +1356,22 @@ begin
         if (IQ_found_entry = false) then
           error "Couldn't find an empty entry to insert into";
         end;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].RENAME_.entries[ i ].instruction.imm;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].RENAME_.entries[ i ].instruction.write_value;
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].phys_addr := next_state.core_[ j ].RENAME_.entries[ i ].instruction.imm;
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].write_value := next_state.core_[ j ].RENAME_.entries[ i ].instruction.write_value;
         if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
         else
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_await_is_executed;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_await_is_executed;
         end;
-        next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.op := inval;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].state := issue_if_head;
-        next_state.core_[ j ].RENAME_.head := ((Sta.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries + 1);
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.op := inval;
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].state := rename_await_creation;
+        next_state.core_[ j ].RENAME_.head := ((next_state.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
         next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries - 1);
-        next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+        next_state.core_[ j ].RENAME_.entries[ i ].state := rename_await_creation;
       else
         next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
       end;
@@ -1384,6 +1395,23 @@ begin
   next_state.core_[ j ].RENAME_.entries[ i ].instruction.op := inval;
   next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := 0;
   next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+  Sta := next_state;
+
+end;
+end;
+
+
+ruleset j : cores_t do 
+  rule "SeqNumReg init_seq_num_counter ===> seq_num_interface" 
+(Sta.core_[ j ].SeqNumReg_.state = init_seq_num_counter)
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  next_state.core_[ j ].SeqNumReg_.seq_num_counter := 0;
+  next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
   Sta := next_state;
 
 end;
