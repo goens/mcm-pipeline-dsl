@@ -265,6 +265,31 @@ def Pipeline.Expr.map_stray_expr_src_vars_to_dest_vars
     pure $ Expr.some_term term'
   | _ => do throw s!"Error: Pipeline.Expr.map_stray_expr_src_vars_to_dest_vars: expr is not a term: ({expr})"
 
+open Pipeline in
+def AssignSrcToDestVar
+(dest_var : Identifier)
+(src_var : Expr)
+: Statement :=
+  variable_assignment [dest_var].to_qual_name src_var
+
+open Pipeline in
+def AssignSrcToDestVarPair
+: Identifier × Expr → Statement
+| (dest_var, src_var) => AssignSrcToDestVar dest_var src_var
+
+open Pipeline in
+def AssignSrcToDestVars
+(dest_vars : List Identifier)
+(src_vars : List Expr)
+: Except String (List Statement) :=
+  let same_length := dest_vars.length == src_vars.length
+  match same_length with
+  | true =>
+    let var_pairs := dest_vars.zip src_vars
+    pure $ var_pairs.map AssignSrcToDestVarPair
+  | false =>
+    throw s!"Error: AssignSrcToDestVars: Message Argument dest_vars and src_vars are not the same length. dest_vars: ({dest_vars}), src_vars: ({src_vars})"
+
 mutual
 partial def Pipeline.Conditional.map_rhs_vars_src_to_dest
 (cond : Conditional)
