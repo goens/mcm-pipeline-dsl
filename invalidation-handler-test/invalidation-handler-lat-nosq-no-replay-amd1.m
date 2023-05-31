@@ -17,7 +17,7 @@ load_address_table_NUM_ENTRIES_CONST : 2;
 type
 val_t : 0 .. MAX_VALUE;
 inst_idx_t : 0 .. CORE_INST_NUM;
-inst_count_t : 0 .. (CORE_INST_NUM + 5); -- make it 2, allow for reseting once in a core
+inst_count_t : 0 .. (CORE_INST_NUM + 6); -- make it 2, allow for reseting once in a core
 addr_idx_t : 0 .. ADDR_NUM;
 reg_idx_t : 0 .. REG_NUM;
 ic_idx_t : 0 .. IC_ENTRY_NUM;
@@ -347,7 +347,7 @@ begin
       endfor;
     end;
     alias seqnumreg : init_state.core_[core].SeqNumReg_ do
-      seqnumreg.seq_num_counter := 0;
+      seqnumreg.seq_num_counter := 1;
       seqnumreg.state := seq_num_interface;
     end;
   endfor;
@@ -763,7 +763,7 @@ ruleset j : cores_t do
   var ROB_squash_curr_idx : ROB_idx_t;
   var squash_remove_count : ROB_count_t;
   var found_entry : boolean;
-  var found_element : inst_idx_t;
+  var found_element : inst_count_t;
   var found_idx : load_address_table_idx_t;
   var next_state : STATE;
   var found_msg_in_ic : boolean;
@@ -773,9 +773,8 @@ begin
   next_state := Sta;
   found_entry := false;
   for load_address_table_iter : load_address_table_idx_t do
-    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid) then
+    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid then
       if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
-        violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
         if (found_entry = false) then
           found_element := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
           found_idx := load_address_table_iter;
@@ -794,6 +793,7 @@ begin
     for load_address_table_squash_idx : load_address_table_idx_t do
       if true then
         if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+          violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ found_idx ].lat_seq_num;
           if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
             remove_key_dest_already_found := false;
             for remove_load_address_table_idx : load_address_table_idx_t do
@@ -824,30 +824,39 @@ begin
               ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
               if true then
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_is_executed) then
+                  violating_seq_num := violating_seq_num;
                   if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
                     if (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write) then
+                      violating_seq_num := violating_seq_num;
                       if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
                         next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
                       end;
                     elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_receiver) then
+                      violating_seq_num := violating_seq_num;
                       if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
                         next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
                       end;
                      elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) then
+                      violating_seq_num := violating_seq_num;
                       if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
                         next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
                       end;
                      elsif (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
+                      violating_seq_num := violating_seq_num;
                     else
                       error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (memory_unit_sender)";
                     end;
                     for IQ_squash_idx : IQ_idx_t do
                       if true then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
-                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
-                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
                         elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                          violating_seq_num := violating_seq_num;
                         else
                           error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
                         end;
@@ -861,6 +870,7 @@ begin
                     next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
                   end;
                 elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_based_on_inst) then
+                  violating_seq_num := violating_seq_num;
                   if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
                     squash_remove_count := (squash_remove_count + 1);
                     next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
@@ -871,6 +881,7 @@ begin
                     next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
                   end;
                  elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
+                  violating_seq_num := violating_seq_num;
                   if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
                     squash_remove_count := (squash_remove_count + 1);
                     next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
@@ -1388,6 +1399,7 @@ begin
           if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
+            next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].valid := true;
             IQ_found_entry := true;
           end;
           if (IQ_offset < IQ_NUM_ENTRIES_CONST) then
