@@ -316,6 +316,7 @@ structure trans_and_expected_func where
 expected_func : Identifier
 expected_struct : Identifier
 trans : Pipeline.Description
+parent_trans_info : stmt_translation_info
 stmt_trans_info : stmt_translation_info
 dest_ctrler_name : Identifier
 -- dest_ctrler_entry : Murϕ.Expr
@@ -3214,6 +3215,7 @@ partial def find_state_name_matching_when_msg
 -- ===== transition & listen/handle -> murphi if stmt ======
 partial def state_listen_handle_to_murphi_if_stmt
 ( trans_and_func : trans_and_expected_func )
+( args_to_map_to : List Pipeline.Expr )
 :
 -- List of (if Condition, and List of if cond stmts)
 List (Murϕ.Expr × lst_stmts_decls)
@@ -3347,13 +3349,49 @@ List (Murϕ.Expr × lst_stmts_decls)
         
 
       --with the handle blk, match to access it's parts
-      let args_and_stmts : ( List Identifier × Pipeline.Statement ) :=
+      let (args, stmt_blk') : ( List Identifier × Pipeline.Statement ) :=
         match func's_handle_blk with
         | Pipeline.HandleBlock.mk qual_name lst_ident stmts_blk =>
           (lst_ident, stmts_blk)
 
-      let args : List Identifier := args_and_stmts.1
-      let stmt_blk : Pipeline.Statement := args_and_stmts.2
+      let assign_map_to_args : List Pipeline.Statement :=
+        match AssignSrcToDestVars args args_to_map_to with
+        | .ok arg_stmts => arg_stmts
+        | .error msg =>
+          dbg_trace s!"Error Assigning Message Passing Args. Message Name: ({expected_func}). Dest Ctrler: ({expected_struct}): Error Message: ({msg})"
+          default
+
+      dbg_trace s!"Message Name: ({expected_func}). Dest Ctrler: ({expected_struct}) Assigning Args: ({assign_map_to_args})"
+      
+      -- let stmt_blk := match stmt_blk'.pre_append_to_block assign_map_to_args with
+      --   | .ok pre_appended => pre_appended
+      --   | .error msg =>
+      --     dbg_trace s!"Error Pre-Appending Passed Message Args. Message Name: ({expected_func}). Dest Ctrler: ({expected_struct}): Error Message: ({msg})"
+      --     default
+
+      -- dbg_trace s!"Message Name: ({expected_func}). Dest Ctrler: ({expected_struct}) Updated Stmt Blk: ({stmt_blk})"
+      let parent_trans_info := trans_and_func.parent_trans_info
+      
+      let assign_trans_info : stmt_translation_info := {
+        stmt := assign_map_to_args.to_block
+        lst_ctrlers := parent_trans_info.lst_ctrlers,
+        ctrler_name := parent_trans_info.ctrler_name,
+        src_ctrler := parent_trans_info.src_ctrler,
+        lst_src_args := parent_trans_info.lst_src_args,
+        func := parent_trans_info.func
+        is_await := parent_trans_info.is_await
+        entry_keyword_dest := parent_trans_info.entry_keyword_dest,
+        trans_obj := parent_trans_info.trans_obj,
+        specific_murphi_dest_expr := parent_trans_info.specific_murphi_dest_expr,
+        lst_decls := parent_trans_info.lst_decls,
+        is_rhs := parent_trans_info.is_rhs,
+        use_specific_dest_in_transition := parent_trans_info.use_specific_dest_in_transition
+        curr_ctrler_designator_idx := parent_trans_info.curr_ctrler_designator_idx
+        lhs_var_is_just_default := parent_trans_info.lhs_var_is_just_default
+        translate_entry_or_ctrler := parent_trans_info.translate_entry_or_ctrler
+      }
+      let assign_input_args : lst_stmts_decls :=
+        ast_stmt_to_murphi_stmts assign_trans_info
 
       -- provide the translation info;
       -- the args and stmt_blk
@@ -3368,7 +3406,7 @@ List (Murϕ.Expr × lst_stmts_decls)
 -- entry_keyword_dest : Option Identifier
 -- trans_obj : Description
       let stmt_trans_info : stmt_translation_info := {
-        stmt := stmt_blk,
+        stmt := stmt_blk',
         lst_ctrlers := trans_and_func.stmt_trans_info.lst_ctrlers,
         -- set the ctrler we're translating for to
         -- just this structure actually.
@@ -3403,7 +3441,11 @@ List (Murϕ.Expr × lst_stmts_decls)
       dbg_trace "##  END THE PASSED SPECIFIC ACCESSOR"
       -- TODO NOTE: THIS MUST BE TESTED!
 
-      let if_blk_stmts : lst_stmts_decls := ast_stmt_to_murphi_stmts stmt_trans_info
+      let if_blk_stmts' : lst_stmts_decls := ast_stmt_to_murphi_stmts stmt_trans_info
+      let if_blk_stmts : lst_stmts_decls := {
+        stmts := assign_input_args.stmts ++ if_blk_stmts'.stmts
+        decls := assign_input_args.decls ++ if_blk_stmts'.decls
+      }
 
       -- Okay, this means I need to know how to index into the
       -- current entry as well!
@@ -3505,6 +3547,8 @@ partial def ctrler_trans_handle_stmts_to_murphi_if_stmt
 
 (murphi_when_stmts : Option (List Murϕ.Statement))
 (if_in_when_state : Option Murϕ.Expr)
+(args_to_map_to : List Pipeline.Expr)
+(parent_trans_info : stmt_translation_info)
 :
 -- List Murϕ.Statement -- if stmt..
 lst_stmts_decls
@@ -3558,6 +3602,24 @@ lst_stmts_decls
       dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({this_ctrler})"
         default
 
+  -- let parent_trans_info' : stmt_translation_info := {
+  --   stmt := stmt_trans_info.stmt,
+  --   lst_ctrlers := stmt_trans_info.lst_ctrlers,
+  --   ctrler_name := ctrler_to_translate_handle_blks,
+  --   src_ctrler := expected_struct,
+  --   lst_src_args := stmt_trans_info.lst_src_args,
+  --   func := stmt_trans_info.func,
+  --   is_await := stmt_trans_info.is_await,
+  --   entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
+  --   trans_obj := stmt_trans_info.trans_obj,
+  --   specific_murphi_dest_expr := Option.some ctrler_squash_idx -- stmt_trans_info.specific_murphi_dest_expr,
+  --   lst_decls := stmt_trans_info.lst_decls,
+  --   is_rhs := stmt_trans_info.is_rhs,
+  --   use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition,
+  --   curr_ctrler_designator_idx := Option.some ctrler_squash_idx -- stmt_trans_info.curr_ctrler_designator_idx
+  --   lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+  --   translate_entry_or_ctrler := entry_or_ctrler_translation
+  -- }
   let stmt_trans_info' : stmt_translation_info := {
     stmt := stmt_trans_info.stmt,
     lst_ctrlers := stmt_trans_info.lst_ctrlers,
@@ -3583,6 +3645,7 @@ lst_stmts_decls
     expected_func := expected_func,
     expected_struct := expected_struct,
     trans := trans',
+    parent_trans_info := parent_trans_info
     stmt_trans_info := stmt_trans_info',
     dest_ctrler_name := ctrler_to_translate_handle_blks --dest_ctrler_name,
     specific_murphi_dest_expr := ctrler_squash_idx
@@ -3592,7 +3655,8 @@ lst_stmts_decls
   )
 
   let trans_handle_squash_list : List (Murϕ.Expr × (lst_stmts_decls)) :=
-  List.join (handle_trans_info_lst.map state_listen_handle_to_murphi_if_stmt)
+    handle_trans_info_lst.map (state_listen_handle_to_murphi_if_stmt · args_to_map_to)
+    |>.join
 
   dbg_trace "##### BEGIN match handle block #####"
   dbg_trace ctrler_to_translate_handle_blks
@@ -4121,6 +4185,7 @@ lst_stmts_decls
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) speculative_ld_unit_name squash_ld_id (
               dest_ctrler_name) expected_func expected_struct none none
+              lst_expr stmt_trans_info
             )
             dbg_trace "===== BEGIN LQ Handle finder ====="
             dbg_trace ld_trans_handle_squash_if_stmt.stmts
@@ -4136,6 +4201,7 @@ lst_stmts_decls
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               stmt_trans_info) speculative_st_unit_name squash_st_id (
               dest_ctrler_name) expected_func expected_struct none none
+              lst_expr stmt_trans_info
             )
 
             dbg_trace "===== BEGIN SQ Handle finder ====="
@@ -5708,6 +5774,7 @@ lst_stmts_decls
               ctrler_trans_handle_stmts_to_murphi_if_stmt (
               if_stmt_trans_info) dest_ctrler_name ctrler_squash_designator_expr (
               dest_ctrler_name) expected_func expected_struct none none
+              lst_expr stmt_trans_info
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
@@ -5968,6 +6035,7 @@ lst_stmts_decls
               if_stmt_trans_info) dest_ctrler_name ctrler_squash_idx_expr (
               dest_ctrler_name) expected_func expected_struct
               (murphi_when_stmt_stmts?) (some ctrler_is_on_state_check)
+              lst_expr stmt_trans_info
             )
             let squash_handle_by_state : List Murϕ.Statement := state_handle_squash_if_stmt.stmts
 
@@ -6893,7 +6961,7 @@ partial def api_term_func_to_murphi_func
   found_entry := false;
   for £dest_ctrler_iter : £dest_ctrler_idx_t do
     -- TODO: Put an if condition which checks if the seq_num if invalid (i.e. is 0)
-    if (next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £dest_ctrler_iter ] .instruction .seq_num != 0) then
+    if (next_state .core_[ j ] .£dest_ctrler_name_ .entries[ £dest_ctrler_iter ] .valid) then
     -- if seq_num is invalid, don't do anything.
       -- TODO: £condition (API Argument 1)
       if ( £condition ) then
