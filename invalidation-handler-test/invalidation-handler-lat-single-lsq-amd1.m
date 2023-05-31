@@ -19,7 +19,7 @@ load_address_table_NUM_ENTRIES_CONST : 2;
 type
 val_t : 0 .. MAX_VALUE;
 inst_idx_t : 0 .. CORE_INST_NUM;
-inst_count_t : 0 .. (CORE_INST_NUM + 1);
+inst_count_t : 0 .. (CORE_INST_NUM + 6); -- make it 2, allow for reseting once in a core
 addr_idx_t : 0 .. ADDR_NUM;
 reg_idx_t : 0 .. REG_NUM;
 ic_idx_t : 0 .. IC_ENTRY_NUM;
@@ -45,7 +45,7 @@ invalidation_listener : record
   invalidation_address : addr_idx_t;
   state : invalidation_listener_state;
 end;
-LSQ_state : enum {lsq_st_await_committed, lsq_squashed_await_ld_mem_resp, lsq_ld_await_committed, lsq_ld_write_result, lsq_await_load_mem_response, lsq_build_packet_send_mem_request, lsq_ld_st_fwd_branch, lsq_await_translation, lsq_await_scheduled, lsq_await_creation, init_default_state};
+LSQ_state : enum {lsq_st_await_committed, lsq_ld_await_committed, lsq_ld_write_result, lsq_await_load_mem_response, lsq_build_packet_send_mem_request, lsq_ld_st_fwd_branch, lsq_await_translation, lsq_await_scheduled, lsq_await_creation, init_default_state};
 LSQ_idx_t : 0 .. LSQ_NUM_ENTRIES_ENUM_CONST;
 LSQ_count_t : 0 .. LSQ_NUM_ENTRIES_CONST;
 LSQ_entry_values : record
@@ -93,7 +93,7 @@ IQ : record
   entries : array [IQ_idx_t] of IQ_entry_values;
   num_entries : IQ_count_t;
 end;
-RENAME_state : enum {issue_if_head, init_rename_entry};
+RENAME_state : enum {issue_if_head, rename_await_creation, init_rename_entry};
 RENAME_idx_t : 0 .. RENAME_NUM_ENTRIES_ENUM_CONST;
 RENAME_count_t : 0 .. RENAME_NUM_ENTRIES_CONST;
 RENAME_entry_values : record
@@ -107,6 +107,11 @@ RENAME : record
   tail : RENAME_idx_t;
 end;
 STORE_STATE : enum {await_handling, await_invalidation_received, store_send_completion};
+SeqNumReg_state : enum {seq_num_interface, init_seq_num_counter};
+SeqNumReg : record
+  seq_num_counter : inst_count_t;
+  state : SeqNumReg_state;
+end;
 load_address_table_state : enum {init_table_load_address_table, load_address_table_await_insert_remove};
 load_address_table_idx_t : 0 .. load_address_table_NUM_ENTRIES_ENUM_CONST;
 load_address_table_count_t : 0 .. load_address_table_NUM_ENTRIES_CONST;
@@ -156,6 +161,7 @@ CORE : record
   ROB_ : ROB;
   IQ_ : IQ;
   RENAME_ : RENAME;
+  SeqNumReg_ : SeqNumReg;
   load_address_table_ : load_address_table;
   rf_ : REG_FILE;
   mem_interface_ : MEM_INTERFACE;
@@ -250,17 +256,12 @@ begin
     curr_entry_id := ((lq_iter + i) % LSQ_NUM_ENTRIES_CONST);
     curr_entry := lq_new.entries[ curr_entry_id ];
     if (curr_entry.instruction.seq_num = seq_num) then
-      put lq_new.entries[curr_entry_id].instruction.seq_num;
-      put seq_num;
-      assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)
-        --| (curr_entry.state = replay_generated_lsq_await_load_mem_response)
-        ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+      -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+      assert (curr_entry.state = lsq_await_load_mem_response) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
       if (curr_entry.state = lsq_await_load_mem_response) then
         curr_entry.state := lsq_ld_write_result;
-      elsif (curr_entry.state = lsq_squashed_await_ld_mem_resp) then
-        curr_entry.state := lsq_ld_st_fwd_branch;
-      -- elsif (curr_entry.state = replay_generated_lsq_await_load_mem_response) then
-      --   curr_entry.state := replay_compare_and_check_state;
+      -- elsif (curr_entry.state = lsq_squashed_await_ld_mem_resp) then
+      --   curr_entry.state := lsq_ld_st_fwd_branch;
       end;
       curr_entry.read_value := msg.value;
       lq_new.entries[ curr_entry_id ] := curr_entry;
@@ -411,6 +412,10 @@ begin
         lat.entries[i].valid := false;
       endfor;
       lat.num_entries := 0;
+    end;
+    alias seqnumreg : init_state.core_[core].SeqNumReg_ do
+      seqnumreg.seq_num_counter := 1;
+      seqnumreg.state := seq_num_interface;
     end;
   endfor;
   alias rename_c0 : init_state.core_[ 0 ].RENAME_ do
@@ -707,32 +712,6 @@ begin
       next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
       next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
 
-      -- NOTE AZ: Moved to the invalidation listener, as the "ack_invalidation" API msg passing.
-      -- found_msg_in_ic := false;
-      -- for ic_idx : ic_idx_t do
-      --   -- if msg entry is valid & seq num matches, use this...
-      --   -- ..and ack the IC entry
-      --   if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = mem_interface.in_msg.seq_num)
-      --     & (Sta.ic_.buffer[ic_idx].dest_id = mem_interface.in_msg.dest_id) then
-
-      --     -- (1) send ack
-      --     next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
-
-
-      --     if found_msg_in_ic = true then
-      --       error "we found 2 matching ic entries? shouldn't happen...";
-      --     elsif found_msg_in_ic = false then
-      --       found_msg_in_ic := true;
-      --     endif;
-      --   endif;
-      -- endfor;
-
-      -- then clear the message entry..
-      -- ..so the core can accept new msgs
-
-      -- (2) clear the entry
-
-      -- mem_interface.in_busy := false;
 
       assert mem_interface.in_busy = true "This should still be busy...";
     elsif (mem_interface.in_msg.store_state = store_send_completion) then
@@ -757,6 +736,10 @@ rule "reset"
   var next_state : STATE;
 
 begin
+  put "  === BEGIN Reached End, Reg File: ===\n";
+  put Sta.core_[ 0 ].rf_.rf[ 0 ];
+  put Sta.core_[ 0 ].rf_.rf[ 1 ];
+  put "  === END Reached End, Reg File: ===\n";
   next_state := Sta;
   Sta := init_state_fn();
 
@@ -787,39 +770,554 @@ ruleset j : cores_t do
 ==>
  
   var remove_key_dest_already_found : boolean;
+  var LSQ_while_break : boolean;
+  var LSQ_found_entry : boolean;
+  var LSQ_entry_idx : LSQ_idx_t;
+  var LSQ_difference : LSQ_count_t;
+  var LSQ_offset : LSQ_count_t;
+  var LSQ_squash_curr_idx : LSQ_idx_t;
+  var squash_remove_count : LSQ_count_t;
+  var ROB_while_break : boolean;
+  var ROB_found_entry : boolean;
+  var ROB_entry_idx : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_squash_curr_idx : ROB_idx_t;
+  var found_entry : boolean;
+  var found_element : inst_count_t;
+  var found_idx : load_address_table_idx_t;
   var next_state : STATE;
   var found_msg_in_ic : boolean;
+  var violating_seq_num : inst_count_t;
 
 begin
   next_state := Sta;
-  for load_address_table_search_all_curr_idx : load_address_table_idx_t do
-    if (Sta.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) then
-      if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
-        for ROB_squash_idx : ROB_idx_t do
-          if true then
+  found_entry := false;
+  for load_address_table_iter : load_address_table_idx_t do
+    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid then
+      if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
+        if (found_entry = false) then
+          found_element := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
+          found_idx := load_address_table_iter;
+        else
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num < found_element) then
+            found_element := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
+            found_idx := load_address_table_iter;
           end;
-        endfor;
-        remove_key_dest_already_found := false;
-        for remove_load_address_table_idx : load_address_table_idx_t do
-          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
-            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_search_all_curr_idx ].lat_seq_num) then
-              if remove_key_dest_already_found then
-                error "Error: Found multiple entries with same key in remove_key API func";
-              elsif !(remove_key_dest_already_found) then
-                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
-                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
-                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
-              else
-                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
-              end;
-            end;
-          end;
-        endfor;
+        end;
+        found_entry := true;
       end;
     end;
   endfor;
+  if (found_entry = false) then
+  elsif (found_entry = true) then
+    for load_address_table_squash_idx : load_address_table_idx_t do
+      if true then
+        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+          violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ found_idx ].lat_seq_num;
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+            remove_key_dest_already_found := false;
+            for remove_load_address_table_idx : load_address_table_idx_t do
+              if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                  if remove_key_dest_already_found then
+                    error "Error: Found multiple entries with same key in remove_key API func";
+                  elsif !(remove_key_dest_already_found) then
+                    next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                    next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                    next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                  else
+                    error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                  end;
+                end;
+              end;
+            endfor;
+            ROB_while_break := false;
+            ROB_found_entry := false;
+            if (next_state.core_[ j ].ROB_.num_entries = 0) then
+              ROB_while_break := true;
+            end;
+            ROB_entry_idx := next_state.core_[ j ].ROB_.head;
+            ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+            ROB_offset := 0;
+            squash_remove_count := 0;
+            while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+              ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
+              if true then
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_executed) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    LSQ_while_break := false;
+                    LSQ_found_entry := false;
+                    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+                      LSQ_while_break := true;
+                    end;
+                    LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+                    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+                    LSQ_offset := 0;
+                    squash_remove_count := 0;
+                    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+                      LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
+                      if true then
+                        if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LSQ)";
+                        end;
+                      end;
+                      if (LSQ_offset < LSQ_difference) then
+                        LSQ_offset := (LSQ_offset + 1);
+                      end;
+                    end;
+                    next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
+                    for IQ_squash_idx : IQ_idx_t do
+                      if true then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    squash_remove_count := (squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_clear_lsq_store_head) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    LSQ_while_break := false;
+                    LSQ_found_entry := false;
+                    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+                      LSQ_while_break := true;
+                    end;
+                    LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+                    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+                    LSQ_offset := 0;
+                    squash_remove_count := 0;
+                    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+                      LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
+                      if true then
+                        if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LSQ)";
+                        end;
+                      end;
+                      if (LSQ_offset < LSQ_difference) then
+                        LSQ_offset := (LSQ_offset + 1);
+                      end;
+                    end;
+                    next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
+                    for IQ_squash_idx : IQ_idx_t do
+                      if true then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    squash_remove_count := (squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                 elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_time_await_st_mem_resp) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    LSQ_while_break := false;
+                    LSQ_found_entry := false;
+                    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+                      LSQ_while_break := true;
+                    end;
+                    LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+                    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+                    LSQ_offset := 0;
+                    squash_remove_count := 0;
+                    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+                      LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
+                      if true then
+                        if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LSQ)";
+                        end;
+                      end;
+                      if (LSQ_offset < LSQ_difference) then
+                        LSQ_offset := (LSQ_offset + 1);
+                      end;
+                    end;
+                    next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
+                    for IQ_squash_idx : IQ_idx_t do
+                      if true then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    squash_remove_count := (squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                 elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_po) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    LSQ_while_break := false;
+                    LSQ_found_entry := false;
+                    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+                      LSQ_while_break := true;
+                    end;
+                    LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+                    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+                    LSQ_offset := 0;
+                    squash_remove_count := 0;
+                    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+                      LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
+                      if true then
+                        if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LSQ)";
+                        end;
+                      end;
+                      if (LSQ_offset < LSQ_difference) then
+                        LSQ_offset := (LSQ_offset + 1);
+                      end;
+                    end;
+                    next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
+                    for IQ_squash_idx : IQ_idx_t do
+                      if true then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    squash_remove_count := (squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                 elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    LSQ_while_break := false;
+                    LSQ_found_entry := false;
+                    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+                      LSQ_while_break := true;
+                    end;
+                    LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+                    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+                    LSQ_offset := 0;
+                    squash_remove_count := 0;
+                    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+                      LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
+                      if true then
+                        if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                         elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                            squash_remove_count := (squash_remove_count + 1);
+                            next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                          end;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (LSQ)";
+                        end;
+                      end;
+                      if (LSQ_offset < LSQ_difference) then
+                        LSQ_offset := (LSQ_offset + 1);
+                      end;
+                    end;
+                    next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
+                    for IQ_squash_idx : IQ_idx_t do
+                      if true then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    squash_remove_count := (squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                else
+                  error "Controller is not on an expected state for a msg: (squash) from: (load_address_table) to: (ROB)";
+                end;
+              end;
+              if (ROB_offset < ROB_difference) then
+                ROB_offset := (ROB_offset + 1);
+              end;
+            end;
+            next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - squash_remove_count)) % ROB_NUM_ENTRIES_CONST);
+            next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - squash_remove_count);
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+          end;
+        else
+          error "Controller is not on an expected state for a msg: (squash) from: (invalidation_listener) to: (load_address_table)";
+        end;
+      end;
+    endfor;
+  end;
   next_state.core_[ j ].invalidation_listener_.state := await_invalidation;
-  Sta := next_state;
 
       found_msg_in_ic := false;
       for ic_idx : ic_idx_t do
@@ -844,20 +1342,21 @@ begin
       assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
       assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
       next_state.core_[j].mem_interface_.in_busy := false;
+  Sta := next_state;
 end;
 end;
 
 
 ruleset j : cores_t; i : LSQ_idx_t do 
-  rule "LSQ lsq_ld_write_result ===> lsq_ld_await_committed || lsq_ld_st_fwd_branch || lsq_ld_st_fwd_branch" 
+  rule "LSQ lsq_ld_write_result ===> lsq_ld_await_committed || lsq_await_creation || lsq_await_creation" 
 (Sta.core_[ j ].LSQ_.entries[ i ].state = lsq_ld_write_result)
 ==>
  
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_idx_t;
-  var ROB_offset : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
   var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
@@ -870,9 +1369,9 @@ begin
     ROB_while_break := true;
   end;
   ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-  ROB_difference := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - next_state.core_[ j ].ROB_.head)) % ROB_NUM_ENTRIES_CONST);
+  ROB_difference := next_state.core_[ j ].ROB_.num_entries;
   ROB_offset := 0;
-  while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+  while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num) then
       if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) then
@@ -883,10 +1382,8 @@ begin
       end;
       ROB_found_entry := true;
     end;
-    if (ROB_offset != ROB_difference) then
+    if (ROB_offset < ROB_difference) then
       ROB_offset := (ROB_offset + 1);
-    else
-      ROB_while_break := true;
     end;
   end;
   if (ROB_found_entry = false) then
@@ -899,7 +1396,7 @@ end;
 
 
 ruleset j : cores_t; i : LSQ_idx_t do 
-  rule "LSQ lsq_build_packet_send_mem_request ===> lsq_await_load_mem_response || lsq_ld_st_fwd_branch || lsq_ld_st_fwd_branch" 
+  rule "LSQ lsq_build_packet_send_mem_request ===> lsq_await_load_mem_response || lsq_await_creation || lsq_await_creation" 
 ((Sta.core_[ j ].LSQ_.entries[ i ].state = lsq_build_packet_send_mem_request) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
@@ -918,7 +1415,7 @@ begin
   insert_key_check_found := false;
   found_double_key_check := false;
   for load_address_table_key_check_idx : load_address_table_idx_t do
-    if Sta.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
+    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
       if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num) then
         next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num;
         next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].LSQ_.entries[ i ].phys_addr;
@@ -979,7 +1476,7 @@ end;
 
 
 ruleset j : cores_t; i : LSQ_idx_t do 
-  rule "LSQ lsq_ld_st_fwd_branch ===> lsq_build_packet_send_mem_request || lsq_ld_write_result || lsq_st_await_committed" 
+  rule "LSQ lsq_ld_st_fwd_branch ===> lsq_build_packet_send_mem_request || lsq_ld_write_result || lsq_st_await_committed || lsq_await_creation || lsq_await_creation" 
 (Sta.core_[ j ].LSQ_.entries[ i ].state = lsq_ld_st_fwd_branch)
 ==>
  
@@ -987,14 +1484,17 @@ ruleset j : cores_t; i : LSQ_idx_t do
   var LSQ_while_break : boolean;
   var LSQ_found_entry : boolean;
   var LSQ_entry_idx : LSQ_idx_t;
-  var LSQ_difference : LSQ_idx_t;
-  var LSQ_offset : LSQ_idx_t;
+  var LSQ_difference : LSQ_count_t;
+  var LSQ_offset : LSQ_count_t;
   var LSQ_curr_idx : LSQ_idx_t;
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_idx_t;
-  var ROB_offset : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_squash_curr_idx : ROB_idx_t;
+  var squash_remove_count : ROB_count_t;
+  var LSQ_squash_curr_idx : LSQ_idx_t;
   var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
@@ -1007,19 +1507,17 @@ begin
       LSQ_while_break := true;
     end;
     LSQ_entry_idx := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - 1)) % LSQ_NUM_ENTRIES_CONST);
-    LSQ_difference := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LSQ_.head)) % LSQ_NUM_ENTRIES_CONST);
+    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
     LSQ_offset := 0;
-    while ((LSQ_offset <= LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
       LSQ_curr_idx := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - LSQ_offset)) % LSQ_NUM_ENTRIES_CONST);
       if ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.op = st) & ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].phys_addr = next_state.core_[ j ].LSQ_.entries[ i ].phys_addr) & ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num) & ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state != lsq_await_creation) & ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state != lsq_await_scheduled) & (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state != lsq_await_translation)))))) then
         next_state.core_[ j ].LSQ_.entries[ i ].read_value := next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].write_value;
         next_state.core_[ j ].LSQ_.entries[ i ].state := lsq_ld_write_result;
         LSQ_found_entry := true;
       end;
-      if (LSQ_offset != LSQ_difference) then
+      if (LSQ_offset < LSQ_difference) then
         LSQ_offset := (LSQ_offset + 1);
-      else
-        LSQ_while_break := true;
       end;
     end;
     if (LSQ_found_entry = false) then
@@ -1033,91 +1531,209 @@ begin
         LSQ_while_break := true;
       end;
       LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
-      LSQ_difference := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LSQ_.head)) % LSQ_NUM_ENTRIES_CONST);
+      LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
       LSQ_offset := 0;
-      while ((LSQ_offset <= LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+      while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
         LSQ_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
         if ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].phys_addr = next_state.core_[ j ].LSQ_.entries[ i ].phys_addr) & ((next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num > next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.op = ld))) then
           violating_seq_num := next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num;
-          for ROB_squash_idx : ROB_idx_t do
+          ROB_while_break := false;
+          ROB_found_entry := false;
+          if (next_state.core_[ j ].ROB_.num_entries = 0) then
+            ROB_while_break := true;
+          end;
+          ROB_entry_idx := next_state.core_[ j ].ROB_.head;
+          ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+          ROB_offset := 0;
+          squash_remove_count := 0;
+          while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+            ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
             if true then
-              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_executed) then
-              elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_clear_lsq_store_head) then
-               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_time_await_st_mem_resp) then
-               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_po) then
-                if ((next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) & (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num)) then
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+              if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_executed) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  for IQ_squash_idx : IQ_idx_t do
+                    if true then
+                      if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                        violating_seq_num := violating_seq_num;
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                        end;
+                      else
+                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                      end;
+                    end;
+                  endfor;
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                  next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                  next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
                 end;
-               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
-                if ((next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) & (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num)) then
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                  next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
+              elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_clear_lsq_store_head) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  for IQ_squash_idx : IQ_idx_t do
+                    if true then
+                      if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                        violating_seq_num := violating_seq_num;
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                        end;
+                      else
+                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                      end;
+                    end;
+                  endfor;
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                  next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                  next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
                 end;
-               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_creation) then
+               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_time_await_st_mem_resp) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  for IQ_squash_idx : IQ_idx_t do
+                    if true then
+                      if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                        violating_seq_num := violating_seq_num;
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                        end;
+                      else
+                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                      end;
+                    end;
+                  endfor;
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                  next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                  next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                end;
+               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_po) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  for IQ_squash_idx : IQ_idx_t do
+                    if true then
+                      if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                        violating_seq_num := violating_seq_num;
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                        end;
+                      else
+                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                      end;
+                    end;
+                  endfor;
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                  next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                  next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                end;
+               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  for IQ_squash_idx : IQ_idx_t do
+                    if true then
+                      if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                        violating_seq_num := violating_seq_num;
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                          next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                        end;
+                      else
+                        error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                      end;
+                    end;
+                  endfor;
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                  next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                  next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                end;
+               elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_creation) then
               else
                 error "Controller is not on an expected state for a msg: (squash) from: (LSQ) to: (ROB)";
               end;
             end;
-          endfor;
-          for LSQ_squash_idx : LSQ_idx_t do
+            if (ROB_offset < ROB_difference) then
+              ROB_offset := (ROB_offset + 1);
+            end;
+          end;
+          next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - squash_remove_count)) % ROB_NUM_ENTRIES_CONST);
+          next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - squash_remove_count);
+          LSQ_while_break := false;
+          LSQ_found_entry := false;
+          if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+            LSQ_while_break := true;
+          end;
+          LSQ_entry_idx := next_state.core_[ j ].LSQ_.head;
+          LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+          LSQ_offset := 0;
+          squash_remove_count := 0;
+          while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+            LSQ_squash_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
             if true then
-              if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_st_await_committed) then
-                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state := lsq_ld_st_fwd_branch;
+              if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_st_await_committed) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
                 end;
-              elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_ld_await_committed) then
-                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                  for ROB_squash_idx : ROB_idx_t do
-                    if true then
-                      if (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_executed) then
-                      elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_clear_lsq_store_head) then
-                       elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_time_await_st_mem_resp) then
-                       elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_po) then
-                        if ((next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) & (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num)) then
-                          next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                          next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
-                        end;
-                       elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_commit_if_head) then
-                        if ((next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.op = ld) & (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].instruction.seq_num > violating_seq_num)) then
-                          next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].is_executed := false;
-                          next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state := rob_await_executed;
-                        end;
-                       elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_idx ].state = rob_await_creation) then
-                      else
-                        error "Controller is not on an expected state for a msg: (squash) from: (LSQ) to: (ROB)";
-                      end;
-                    end;
-                  endfor;
-                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state := lsq_ld_st_fwd_branch;
+              elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_await_committed) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
                 end;
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_ld_write_result) then
-                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state := lsq_ld_st_fwd_branch;
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_write_result) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
                 end;
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_await_load_mem_response) then
-                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state := lsq_squashed_await_ld_mem_resp;
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_load_mem_response) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
                 end;
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_build_packet_send_mem_request) then
-                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
-                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state := lsq_ld_st_fwd_branch;
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_build_packet_send_mem_request) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
                 end;
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_ld_st_fwd_branch) then
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_await_translation) then
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_await_scheduled) then
-               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_idx ].state = lsq_await_creation) then
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_ld_st_fwd_branch) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                end;
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_translation) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                end;
+               elsif (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state = lsq_await_scheduled) then
+                violating_seq_num := violating_seq_num;
+                if (next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                  squash_remove_count := (squash_remove_count + 1);
+                  next_state.core_[ j ].LSQ_.entries[ LSQ_squash_curr_idx ].state := lsq_await_creation;
+                end;
               else
                 error "Controller is not on an expected state for a msg: (squash) from: (LSQ) to: (LSQ)";
               end;
             end;
-          endfor;
+            if (LSQ_offset < LSQ_difference) then
+              LSQ_offset := (LSQ_offset + 1);
+            end;
+          end;
+          next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - squash_remove_count)) % LSQ_NUM_ENTRIES_CONST);
+          next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - squash_remove_count);
           LSQ_found_entry := true;
         end;
         if (LSQ_offset != LSQ_difference) then
           LSQ_offset := (LSQ_offset + 1);
-        else
-          LSQ_while_break := true;
         end;
       end;
       if (LSQ_found_entry = false) then
@@ -1128,9 +1744,9 @@ begin
         ROB_while_break := true;
       end;
       ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-      ROB_difference := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - next_state.core_[ j ].ROB_.head)) % ROB_NUM_ENTRIES_CONST);
+      ROB_difference := next_state.core_[ j ].ROB_.num_entries;
       ROB_offset := 0;
-      while ((ROB_offset <= ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+      while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
         ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
         if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num = next_state.core_[ j ].LSQ_.entries[ i ].instruction.seq_num) then
           if (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) then
@@ -1141,10 +1757,8 @@ begin
           end;
           ROB_found_entry := true;
         end;
-        if (ROB_offset != ROB_difference) then
+        if (ROB_offset < ROB_difference) then
           ROB_offset := (ROB_offset + 1);
-        else
-          ROB_while_break := true;
         end;
       end;
       if (ROB_found_entry = false) then
@@ -1159,7 +1773,7 @@ end;
 
 
 ruleset j : cores_t; i : LSQ_idx_t do 
-  rule "LSQ lsq_await_translation ===> lsq_ld_st_fwd_branch" 
+  rule "LSQ lsq_await_translation ===> lsq_ld_st_fwd_branch || lsq_await_creation || lsq_await_creation" 
 (Sta.core_[ j ].LSQ_.entries[ i ].state = lsq_await_translation)
 ==>
  
@@ -1199,67 +1813,63 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_clear_lsq_store_head ===> rob_await_creation" 
+  rule "ROB rob_clear_lsq_store_head ===> rob_await_creation || rob_await_creation || rob_await_creation" 
 (Sta.core_[ j ].ROB_.entries[ i ].state = rob_clear_lsq_store_head)
 ==>
  
   var LSQ_while_break : boolean;
   var LSQ_found_entry : boolean;
   var LSQ_entry_idx : LSQ_idx_t;
-  var LSQ_difference : LSQ_idx_t;
-  var LSQ_offset : LSQ_idx_t;
+  var LSQ_difference : LSQ_count_t;
+  var LSQ_offset : LSQ_count_t;
   var LSQ_curr_idx : LSQ_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  if true then
-    LSQ_while_break := false;
-    LSQ_found_entry := false;
-    if (next_state.core_[ j ].LSQ_.num_entries = 0) then
-      LSQ_while_break := true;
-    end;
-    LSQ_entry_idx := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - 1)) % LSQ_NUM_ENTRIES_CONST);
-    LSQ_difference := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LSQ_.head)) % LSQ_NUM_ENTRIES_CONST);
-    LSQ_offset := 0;
-    while ((LSQ_offset <= LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
-      LSQ_curr_idx := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - LSQ_offset)) % LSQ_NUM_ENTRIES_CONST);
-      if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-        if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state = lsq_st_await_committed) then
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].virt_addr := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].phys_addr := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].read_value := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].write_value := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].seq_num := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].instruction.seq_num := 0;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].instruction.op := inval;
-          next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].state := lsq_await_creation;
-          next_state.core_[ j ].LSQ_.head := ((Sta.core_[ j ].LSQ_.head + 1) % LSQ_NUM_ENTRIES_CONST);
-          next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - 1);
-          next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state := lsq_await_creation;
-        else
-          error "Controller is not on an expected state for a msg: (store_committed) from: (ROB) to: (LSQ)";
-        end;
-        next_state.core_[ j ].ROB_.entries[ i ].is_executed := false;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].write_value := 0;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].phys_addr := 0;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-        next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
-        next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
-        LSQ_found_entry := true;
-      end;
-      if (LSQ_offset != LSQ_difference) then
-        LSQ_offset := (LSQ_offset + 1);
+  LSQ_while_break := false;
+  LSQ_found_entry := false;
+  if (next_state.core_[ j ].LSQ_.num_entries = 0) then
+    LSQ_while_break := true;
+  end;
+  LSQ_entry_idx := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - 1)) % LSQ_NUM_ENTRIES_CONST);
+  LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
+  LSQ_offset := 0;
+  while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+    LSQ_curr_idx := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - LSQ_offset)) % LSQ_NUM_ENTRIES_CONST);
+    if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+      if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state = lsq_st_await_committed) then
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].virt_addr := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].phys_addr := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].read_value := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].write_value := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].seq_num := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].instruction.seq_num := 0;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].instruction.op := inval;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].state := lsq_await_creation;
+        next_state.core_[ j ].LSQ_.head := ((next_state.core_[ j ].LSQ_.head + 1) % LSQ_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - 1);
+        next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state := lsq_await_creation;
       else
-        LSQ_while_break := true;
+        error "Controller is not on an expected state for a msg: (store_committed) from: (ROB) to: (LSQ)";
       end;
+      next_state.core_[ j ].ROB_.entries[ i ].is_executed := false;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].write_value := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].phys_addr := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+      next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
+      next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
+      LSQ_found_entry := true;
     end;
-    if (LSQ_found_entry = false) then
+    if (LSQ_offset < LSQ_difference) then
+      LSQ_offset := (LSQ_offset + 1);
     end;
+  end;
+  if (LSQ_found_entry = false) then
   end;
   Sta := next_state;
 
@@ -1268,28 +1878,28 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_commit_po ===> rob_await_creation || rob_await_creation || rob_commit_time_await_st_mem_resp || rob_await_executed" 
+  rule "ROB rob_commit_po ===> rob_await_creation || rob_await_creation || rob_commit_time_await_st_mem_resp || rob_await_creation || rob_await_creation" 
 ((Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_po) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
   var LSQ_while_break : boolean;
   var LSQ_found_entry : boolean;
   var LSQ_entry_idx : LSQ_idx_t;
-  var LSQ_difference : LSQ_idx_t;
-  var LSQ_offset : LSQ_idx_t;
+  var LSQ_difference : LSQ_count_t;
+  var LSQ_offset : LSQ_count_t;
   var LSQ_curr_idx : LSQ_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
   if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = mfence) then
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].write_value := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].phys_addr := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-    next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-    next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].write_value := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].phys_addr := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+    next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+    next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
     next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
     next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
   else
@@ -1299,35 +1909,35 @@ begin
       LSQ_while_break := true;
     end;
     LSQ_entry_idx := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - 1)) % LSQ_NUM_ENTRIES_CONST);
-    LSQ_difference := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LSQ_.head)) % LSQ_NUM_ENTRIES_CONST);
+    LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
     LSQ_offset := 0;
-    while ((LSQ_offset <= LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+    while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
       LSQ_curr_idx := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - LSQ_offset)) % LSQ_NUM_ENTRIES_CONST);
       if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
         if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) then
           if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state = lsq_ld_await_committed) then
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].virt_addr := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].phys_addr := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].read_value := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].write_value := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].seq_num := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].instruction.seq_num := 0;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].instruction.op := inval;
-            next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.head ].state := lsq_await_creation;
-            next_state.core_[ j ].LSQ_.head := ((Sta.core_[ j ].LSQ_.head + 1) % LSQ_NUM_ENTRIES_CONST);
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].virt_addr := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].phys_addr := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].read_value := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].write_value := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].seq_num := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].instruction.seq_num := 0;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].instruction.op := inval;
+            next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.head ].state := lsq_await_creation;
+            next_state.core_[ j ].LSQ_.head := ((next_state.core_[ j ].LSQ_.head + 1) % LSQ_NUM_ENTRIES_CONST);
             next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries - 1);
             next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state := lsq_await_creation;
           else
             error "Controller is not on an expected state for a msg: (load_committed) from: (ROB) to: (LSQ)";
           end;
           next_state.core_[ j ].ROB_.entries[ i ].is_executed := false;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].seq_num := 0;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].is_executed := false;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].write_value := 0;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].phys_addr := 0;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].instruction.seq_num := 0;
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.head ].state := rob_await_creation;
-          next_state.core_[ j ].ROB_.head := ((Sta.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].seq_num := 0;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].is_executed := false;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].write_value := 0;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].phys_addr := 0;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].instruction.seq_num := 0;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.head ].state := rob_await_creation;
+          next_state.core_[ j ].ROB_.head := ((next_state.core_[ j ].ROB_.head + 1) % ROB_NUM_ENTRIES_CONST);
           next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - 1);
           next_state.core_[ j ].ROB_.entries[ i ].state := rob_await_creation;
         else
@@ -1352,10 +1962,8 @@ begin
         end;
         LSQ_found_entry := true;
       end;
-      if (LSQ_offset != LSQ_difference) then
+      if (LSQ_offset < LSQ_difference) then
         LSQ_offset := (LSQ_offset + 1);
-      else
-        LSQ_while_break := true;
       end;
     end;
     if (LSQ_found_entry = false) then
@@ -1368,7 +1976,7 @@ end;
 
 
 ruleset j : cores_t; i : ROB_idx_t do 
-  rule "ROB rob_commit_if_head ===> rob_commit_po || rob_commit_if_head || rob_await_executed" 
+  rule "ROB rob_commit_if_head ===> rob_commit_po || rob_commit_if_head || rob_await_creation || rob_await_creation" 
 (Sta.core_[ j ].ROB_.entries[ i ].state = rob_commit_if_head)
 ==>
  
@@ -1409,15 +2017,15 @@ end;
 
 
 ruleset j : cores_t; i : IQ_idx_t do 
-  rule "IQ iq_schedule_inst ===> iq_await_creation" 
+  rule "IQ iq_schedule_inst ===> iq_await_creation || iq_await_creation" 
 (Sta.core_[ j ].IQ_.entries[ i ].state = iq_schedule_inst)
 ==>
  
   var LSQ_while_break : boolean;
   var LSQ_found_entry : boolean;
   var LSQ_entry_idx : LSQ_idx_t;
-  var LSQ_difference : LSQ_idx_t;
-  var LSQ_offset : LSQ_idx_t;
+  var LSQ_difference : LSQ_count_t;
+  var LSQ_offset : LSQ_count_t;
   var LSQ_curr_idx : LSQ_idx_t;
   var next_state : STATE;
 
@@ -1429,9 +2037,9 @@ begin
     LSQ_while_break := true;
   end;
   LSQ_entry_idx := ((next_state.core_[ j ].LSQ_.tail + (LSQ_NUM_ENTRIES_CONST - 1)) % LSQ_NUM_ENTRIES_CONST);
-  LSQ_difference := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - next_state.core_[ j ].LSQ_.head)) % LSQ_NUM_ENTRIES_CONST);
+  LSQ_difference := next_state.core_[ j ].LSQ_.num_entries;
   LSQ_offset := 0;
-  while ((LSQ_offset <= LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
+  while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
     LSQ_curr_idx := ((LSQ_entry_idx + (LSQ_NUM_ENTRIES_CONST - LSQ_offset)) % LSQ_NUM_ENTRIES_CONST);
     if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].IQ_.entries[ i ].instruction.seq_num) then
       if (next_state.core_[ j ].LSQ_.entries[ LSQ_curr_idx ].state = lsq_await_scheduled) then
@@ -1445,13 +2053,12 @@ begin
       end;
       next_state.core_[ j ].IQ_.entries[ i ].instruction.seq_num := 0;
       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
+      next_state.core_[ j ].IQ_.entries[ LSQ_curr_idx ].valid := false;
       next_state.core_[ j ].IQ_.entries[ i ].state := iq_await_creation;
       LSQ_found_entry := true;
     end;
-    if (LSQ_offset != LSQ_difference) then
+    if (LSQ_offset < LSQ_difference) then
       LSQ_offset := (LSQ_offset + 1);
-    else
-      LSQ_while_break := true;
     end;
   end;
   if (LSQ_found_entry = false) then
@@ -1482,85 +2089,92 @@ end;
 
 
 ruleset j : cores_t; i : RENAME_idx_t do 
-  rule "RENAME issue_if_head ===> issue_if_head || issue_if_head || issue_if_head || issue_if_head" 
+  rule "RENAME issue_if_head ===> rename_await_creation || rename_await_creation || issue_if_head" 
 ((Sta.core_[ j ].RENAME_.entries[ i ].state = issue_if_head) & (Sta.core_[ j ].IQ_.num_entries < IQ_NUM_ENTRIES_CONST) & (Sta.core_[j].RENAME_.num_entries > 0))
 ==>
  
   var IQ_loop_break : boolean;
   var IQ_entry_idx : IQ_idx_t;
   var IQ_found_entry : boolean;
-  var IQ_difference : IQ_idx_t;
-  var IQ_offset : IQ_idx_t;
+  var IQ_offset : IQ_count_t;
   var IQ_curr_idx : IQ_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  if (next_state.core_[ j ].RENAME_.head = i) then
+  if ((next_state.core_[ j ].RENAME_.head = i) & (!((next_state.core_[ j ].RENAME_.num_entries = 0)) & !((next_state.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST)))) then
     if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-      if !((Sta.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST)) then
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
-        if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
-        else
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_await_executed;
-        end;
-        next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.op := inval;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].state := issue_if_head;
-        next_state.core_[ j ].RENAME_.head := ((Sta.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries - 1);
-        next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+      next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := next_state.core_[ j ].SeqNumReg_.seq_num_counter;
+      if (next_state.core_[ j ].SeqNumReg_.state = seq_num_interface) then
+        next_state.core_[ j ].SeqNumReg_.seq_num_counter := (next_state.core_[ j ].SeqNumReg_.seq_num_counter + 1);
+        next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
       else
-        next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+        error "Controller is not on an expected state for a msg: (increment) from: (RENAME) to: (SeqNumReg)";
       end;
+      next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+      if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
+      else
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_await_executed;
+      end;
+      next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries + 1);
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.op := inval;
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
+      next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].state := rename_await_creation;
+      next_state.core_[ j ].RENAME_.head := ((next_state.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
+      next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries - 1);
+      next_state.core_[ j ].RENAME_.entries[ i ].state := rename_await_creation;
     else
-      if (!((Sta.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) & (!((Sta.core_[ j ].ROB_.num_entries = ROB_NUM_ENTRIES_CONST)) & !((Sta.core_[ j ].LSQ_.num_entries = LSQ_NUM_ENTRIES_CONST)))) then
+      if (!((next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST)) & !((next_state.core_[ j ].LSQ_.num_entries = LSQ_NUM_ENTRIES_CONST))) then
+        next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := next_state.core_[ j ].SeqNumReg_.seq_num_counter;
+        if (next_state.core_[ j ].SeqNumReg_.state = seq_num_interface) then
+          next_state.core_[ j ].SeqNumReg_.seq_num_counter := (next_state.core_[ j ].SeqNumReg_.seq_num_counter + 1);
+          next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
+        else
+          error "Controller is not on an expected state for a msg: (increment) from: (RENAME) to: (SeqNumReg)";
+        end;
         IQ_loop_break := false;
         if (next_state.core_[ j ].IQ_.num_entries = IQ_NUM_ENTRIES_CONST) then
           IQ_loop_break := true;
         end;
         IQ_entry_idx := 0;
         IQ_found_entry := false;
-        IQ_difference := (IQ_NUM_ENTRIES_CONST - 1);
         IQ_offset := 0;
-        while ((IQ_offset <= IQ_difference) & ((IQ_loop_break = false) & ((IQ_found_entry = false) & (IQ_difference >= 0)))) do
+        while ((IQ_offset < IQ_NUM_ENTRIES_CONST) & ((IQ_loop_break = false) & (IQ_found_entry = false))) do
           IQ_curr_idx := ((IQ_entry_idx + IQ_offset) % IQ_NUM_ENTRIES_CONST);
           if (next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state = iq_await_creation) then
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
             next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].state := iq_schedule_inst;
+            next_state.core_[ j ].IQ_.entries[ IQ_curr_idx ].valid := true;
             IQ_found_entry := true;
           end;
-          if (IQ_offset != IQ_difference) then
+          if (IQ_offset < IQ_NUM_ENTRIES_CONST) then
             IQ_offset := (IQ_offset + 1);
-          else
-            IQ_loop_break := true;
           end;
         end;
         next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries + 1);
         if (IQ_found_entry = false) then
           error "Couldn't find an empty entry to insert into";
         end;
-        next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+        next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
         if (next_state.core_[ j ].RENAME_.entries[ i ].instruction.op = mfence) then
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_commit_if_head;
         else
-          next_state.core_[ j ].ROB_.entries[ Sta.core_[ j ].ROB_.tail ].state := rob_await_executed;
+          next_state.core_[ j ].ROB_.entries[ next_state.core_[ j ].ROB_.tail ].state := rob_await_executed;
         end;
-        next_state.core_[ j ].ROB_.tail := ((Sta.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].ROB_.num_entries := (Sta.core_[ j ].ROB_.num_entries + 1);
-        next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
-        next_state.core_[ j ].LSQ_.entries[ Sta.core_[ j ].LSQ_.tail ].state := lsq_await_scheduled;
-        next_state.core_[ j ].LSQ_.tail := ((Sta.core_[ j ].LSQ_.tail + 1) % LSQ_NUM_ENTRIES_CONST);
-        next_state.core_[ j ].LSQ_.num_entries := (Sta.core_[ j ].LSQ_.num_entries + 1);
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.op := inval;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
-        next_state.core_[ j ].RENAME_.entries[ Sta.core_[ j ].RENAME_.head ].state := issue_if_head;
-        next_state.core_[ j ].RENAME_.head := ((Sta.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + 1) % ROB_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries + 1);
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.tail ].instruction := next_state.core_[ j ].RENAME_.entries[ i ].instruction;
+        next_state.core_[ j ].LSQ_.entries[ next_state.core_[ j ].LSQ_.tail ].state := lsq_await_scheduled;
+        next_state.core_[ j ].LSQ_.tail := ((next_state.core_[ j ].LSQ_.tail + 1) % LSQ_NUM_ENTRIES_CONST);
+        next_state.core_[ j ].LSQ_.num_entries := (next_state.core_[ j ].LSQ_.num_entries + 1);
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.op := inval;
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].instruction.seq_num := 0;
+        next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.head ].state := rename_await_creation;
+        next_state.core_[ j ].RENAME_.head := ((next_state.core_[ j ].RENAME_.head + 1) % RENAME_NUM_ENTRIES_CONST);
         next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries - 1);
-        next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+        next_state.core_[ j ].RENAME_.entries[ i ].state := rename_await_creation;
       else
         next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
       end;
@@ -1573,7 +2187,7 @@ end;
 
 
 ruleset j : cores_t; i : RENAME_idx_t do 
-  rule "RENAME init_rename_entry ===> issue_if_head" 
+  rule "RENAME init_rename_entry ===> rename_await_creation" 
 (Sta.core_[ j ].RENAME_.entries[ i ].state = init_rename_entry)
 ==>
  
@@ -1583,7 +2197,24 @@ begin
   next_state := Sta;
   next_state.core_[ j ].RENAME_.entries[ i ].instruction.op := inval;
   next_state.core_[ j ].RENAME_.entries[ i ].instruction.seq_num := 0;
-  next_state.core_[ j ].RENAME_.entries[ i ].state := issue_if_head;
+  next_state.core_[ j ].RENAME_.entries[ i ].state := rename_await_creation;
+  Sta := next_state;
+
+end;
+end;
+
+
+ruleset j : cores_t do 
+  rule "SeqNumReg init_seq_num_counter ===> seq_num_interface" 
+(Sta.core_[ j ].SeqNumReg_.state = init_seq_num_counter)
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  next_state.core_[ j ].SeqNumReg_.seq_num_counter := 0;
+  next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
   Sta := next_state;
 
 end;
