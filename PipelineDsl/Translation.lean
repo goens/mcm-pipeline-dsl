@@ -4750,6 +4750,45 @@ lst_stmts_decls
               -- This one is defined above
             -- let ctrler_curr_idx : String :=    /- dest_ctrler_name.append -/ "_curr_idx"
 
+            let dsl_valid_asn_true := var_asn_var ["valid"] "true"
+            let valid_to_true_trans_info : stmt_translation_info := {
+              stmt := dsl_valid_asn_true,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers,
+              ctrler_name := dest_ctrler_name,
+              src_ctrler := 
+                if stmt_trans_info.src_ctrler.isNone then
+                  Option.some when_stmt_src_ctrler
+                else
+                  if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                    Option.some stmt_trans_info.ctrler_name
+                  else
+                    Option.some stmt_trans_info.ctrler_name
+              lst_src_args := stmt_trans_info.lst_src_args,
+              func := stmt_trans_info.func,
+              is_await := stmt_trans_info.is_await,
+              entry_keyword_dest := Option.some dest_ctrler_name,
+              trans_obj := stmt_trans_info.trans_obj,
+              specific_murphi_dest_expr := 
+                if stmt_trans_info.curr_ctrler_designator_idx.isSome then
+                  stmt_trans_info.curr_ctrler_designator_idx
+                else
+                  stmt_trans_info.specific_murphi_dest_expr,
+              lst_decls := stmt_trans_info.lst_decls,
+              is_rhs := stmt_trans_info.is_rhs,
+              use_specific_dest_in_transition := true
+              curr_ctrler_designator_idx :=
+                if stmt_trans_info.src_ctrler.isNone then
+                  murphi_dest_idx_expr
+                else
+                  if (stmt_trans_info.ctrler_name) != when_stmt_src_ctrler then
+                    stmt_trans_info.curr_ctrler_designator_idx
+                  else
+                    Option.some murphi_dest_idx_expr
+              lhs_var_is_just_default := false
+              translate_entry_or_ctrler := entry_or_ctrler.entry
+            }
+            let murphi_asn_true := ast_stmt_to_murphi_stmts valid_to_true_trans_info
+
             let dest_ctrler_idx_t : String := dest_ctrler_name ++ "_idx_t";
             let dest_ctrler_name_ : String := dest_ctrler_name ++ "_";
             let stmts : List Murϕ.Statement := [murϕ| 
@@ -4777,6 +4816,7 @@ lst_stmts_decls
                 if (next_state .core_[j] .£dest_ctrler_name_ .entries[ £ctrler_curr_idx ].state = £dest_ctrler_'await_insert'_state) then
                   -- CHECKPOINT TODO: put the translated await-when block of the dest ctrler here
                   £murphi_when_stmt;
+                  £murphi_asn_true.stmts;
                   £ctrler_found_entry := true;
                 end;
                 if (£ctrler_offset < £dest_num_entries_const_name) then
@@ -4812,7 +4852,7 @@ lst_stmts_decls
 
             let stmts_decls : lst_stmts_decls := {
               stmts := stmts,
-              decls := decls
+              decls := decls ++ murphi_asn_true.decls
             }
             dbg_trace s!"SB when insert: ({murphi_when_stmts_decls})"
             dbg_trace s!"insert API call translated: ({stmts_decls})"
@@ -6895,7 +6935,7 @@ partial def api_term_func_to_murphi_func
  
     let decls : List Murϕ.Decl := [
       (Murϕ.Decl.var ["found_entry"] (Murϕ.TypeExpr.previouslyDefined "boolean")),
-      (Murϕ.Decl.var ["found_element"] (Murϕ.TypeExpr.previouslyDefined "inst_idx_t")),
+      (Murϕ.Decl.var ["found_element"] (Murϕ.TypeExpr.previouslyDefined "inst_count_t")),
       (Murϕ.Decl.var ["found_idx"] (Murϕ.TypeExpr.previouslyDefined dest_ctrler_idx_t))
     ]
 
