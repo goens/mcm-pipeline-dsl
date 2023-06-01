@@ -39,6 +39,7 @@ inductive Description
 inductive Label
 | result_write : Label
 | commit : Label
+| inst_source : Label
 
 -- one or more catch blocks
 inductive HandleBlock
@@ -140,6 +141,7 @@ private partial def descriptionToString : Description → String
 private partial def labelToString : Label → String
   | .result_write => "result_write "
   | .commit => "commit "
+  | .inst_source => "inst_source "
 
 private partial def handleBlockToString (indentationLevel := 0) ( handle : HandleBlock ) : String :=
   match handle with
