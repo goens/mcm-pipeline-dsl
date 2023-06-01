@@ -517,7 +517,8 @@ partial def StmtsToTransitions
               complete_transitions := transitions_lists.complete_transitions } : TransitionsLists)
         | .labelled_statement label stmt' =>
           match label with
-          | .result_write =>
+          | .result_write
+          | .inst_source =>
             -- Append the result write to stmts list
             let transitions_with_stmt : IncompleteTransitions :=
               transitions_lists.incomplete_transitions.map (AppendTransitionStmt · stmt)
