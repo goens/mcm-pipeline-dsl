@@ -137,19 +137,19 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
       --     []
 
+      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+          []
+
       let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error adding invalidation listener: ({msg})"
           []
           
-      -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      --     []
-
       -- let st_ld'_fence_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ store', load' ] mfence' [ load' ] Addresses.any) )
       -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers st_ld'_fence_ld with
       --   | .ok ctrler_list => ctrler_list
