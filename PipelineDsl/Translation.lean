@@ -5805,7 +5805,7 @@ lst_stmts_decls
                 let dest_ctrler_name_ := dest_ctrler_name.append "_"
                 let dest_num_entries_const_name := (String.join [dest_ctrler_name, "_NUM_ENTRIES_CONST"])
 
-                let squash_remove_count := "squash_remove_count"
+                let squash_remove_count := dest_ctrler_name.append "_squash_remove_count"
                 let s_decls :=
                   let ctrler_idx_t := dest_ctrler_name.append "_idx_t"
                   let ctrler_count_t := dest_ctrler_name.append "_count_t"
@@ -6092,7 +6092,7 @@ lst_stmts_decls
             stmts_decls
           else if ( qual_name_list[0]! == "squash_remove" ) then
             -- Use with FIFOs only
-            let squash_remove_count := "squash_remove_count"
+            let squash_remove_count := ctrler_name.append "_squash_remove_count"
             let murphi_stmt : List Murϕ.Statement := [murϕ|
               £squash_remove_count := £squash_remove_count + 1;
             ]
