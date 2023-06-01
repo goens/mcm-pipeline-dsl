@@ -27,10 +27,10 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "PATH=$HOME/.elan/bin:$PATH" >> $GITHUB_ENV
         
-      - name: Build Lean code
-        run: | 
-          lake build Foo
-          ls
+#       - name: Build Lean code
+#         run: | 
+#           lake build
+#           ls
          
 #       To do after getting files from An Qi. 
 #       Steps:
