@@ -524,6 +524,17 @@ def CDFG.Transitions.is_all_non_reset_awaits_on_any_msg (transitions : Transitio
 def CDFG.Node.is_all_non_reset_awaits_on_msg (node : Node) : Bool :=
   node.not_reset_transitions.is_all_non_reset_awaits_on_any_msg
 
+-- def CDFG.Condition.is_awaits_on_msg_from_reset_trans (cond : Condition) (graph : Graph) : Bool :=
+--   match cond with
+--   | .AwaitCondition await_stmt => true
+--   | _ => false
+-- def CDFG.Transition.is_awaits_on_msg_from_reset_trans (transition : Transition) (graph : Graph) : Bool :=
+--   transition.predicate.any (·.is_awaits_on_msg_from_reset_trans graph)
+-- def CDFG.Transitions.is_all_non_reset_awaits_on_msg_from_reset_trans (transitions : Transitions) (graph : Graph) : Bool :=
+--   transitions.all (·.is_awaits_on_msg_from_reset_trans graph)
+-- def CDFG.Node.is_all_non_reset_awaits_on_msg_from_reset_trans (node : Node) (graph : Graph) : Bool :=
+--   node.not_reset_transitions.is_all_non_reset_awaits_on_msg_from_reset_trans graph
+
 def CDFG.Message.is_awaited_by_node : Message → Node → CtrlerName → Except String Bool
 | msg, node, src_ctrler => do
   let not_reset_trans := node.not_reset_transitions
@@ -2429,18 +2440,36 @@ def CDFG.Node.wrap_stmt_with_node's_listen_handle_if_exists (node : CDFG.Node) (
 def CDFG.Graph.is_not_transitioned_to (graph : Graph) (node : Node) : Bool :=
   graph.nodes_transitioning_to_node node == []
 
+-- def CDFG.Graph.is_not_basic_trans'd_to (graph : Graph) (node : Node) : Bool :=
+--   graph.nodes_transitioning_to_node node == []
+
 def CDFG.Node.is_not_msg'd (node : Node) : Bool :=
   ! node.is_all_non_reset_awaits_on_msg
 
--- A place holder, for the finding the instruction source node of a graph
-def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node := do
-  let not_transitioned_to_nodes := graph.nodes.filter (graph.is_not_transitioned_to ·)
-  let not_msg'd_or_transitioned_to := not_transitioned_to_nodes.filter (·.is_not_msg'd)
+-- def CDFG.Node.is_not_msg'd_by_transitions (node : Node) (graph : Graph) : Bool :=
+--   ! node.is_all_non_reset_awaits_on_msg_from_reset_trans graph
 
-  match not_msg'd_or_transitioned_to with
+
+
+def CDFG.Transition.is_inst_source_transition (transition : Transition) : Bool :=
+  transition.stmts.any (·.is_inst_source_stmt)
+
+def CDFG.Node.is_inst_source_node (node : Node) : Bool :=
+  let not_reset_trans := node.not_reset_transitions
+  let is_inst_source_labelled := not_reset_trans.any (·.is_inst_source_transition)
+
+  is_inst_source_labelled
+  
+-- A place holder, for the finding the instruction source node of a graph
+def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node :=
+  -- let not_basic_trans'd_to_nodes := graph.nodes.filter (graph.is_not_basic_trans'd_to ·)
+  -- let not_msg'd_or_transitioned_to := not_basic_trans'd_to_nodes.filter (·.is_not_msg'd)
+  let inst_source_nodes := graph.nodes.filter (·.is_inst_source_node)
+
+  match inst_source_nodes with
   | [] => throw "Error: No instruction source node found"
   | [node] => pure node
-  | _ => throw s!"Error: More than one instruction source node found: ({not_msg'd_or_transitioned_to.map (·.current_state)})"
+  | _ => throw s!"Error: More than one instruction source node found: ({inst_source_nodes.map (·.current_state)})"
 
 -- TODO: Stub
 def CDFG.Graph.states_an_inst_of_type_can_be_in (graph : Graph) (inst_source_node : Node) (must_stall_at_node? : Option Node) (inst_type : InstType) : Except String Graph := do
