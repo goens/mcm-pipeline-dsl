@@ -1,0 +1,46 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Install Elan
+        run: | 
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "PATH=$HOME/.elan/bin:$PATH" >> $GITHUB_ENV
+        
+#       - name: Build Lean code
+#         run: | 
+#           lake build
+#           ls
+         
+#       To do after getting files from An Qi. 
+#       Steps:
+#       Run aql files, compare output to expected outputs stored in tests/expected using code below
+#       - name: Difference Check
+#         run: |
+#           if ! diff -q Foo.lean Foo.lean &>/dev/null; then
+#           >&2 echo "different"
+#           exit 1
+#           fi
+        
+     
+        
