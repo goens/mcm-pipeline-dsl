@@ -290,6 +290,17 @@ def AssignSrcToDestVars
   | false =>
     throw s!"Error: AssignSrcToDestVars: Message Argument dest_vars and src_vars are not the same length. dest_vars: ({dest_vars}), src_vars: ({src_vars})"
 
+def Pipeline.Statement.is_inst_source_stmt
+(stmt : Statement)
+: Bool :=
+  match stmt with
+  | .labelled_statement label _ =>
+    match label with
+    | .inst_source => true
+    | .result_write
+    | .commit => false
+  | _ => false
+
 mutual
 partial def Pipeline.Conditional.map_rhs_vars_src_to_dest
 (cond : Conditional)
@@ -399,4 +410,24 @@ def filter_lst_of_stmts_for_ordering_asn
         
   )
   lst_stmts
+
+def Pipeline.Statement.is_result_write_from_stmts : Pipeline.Statement → Bool
+| stmt =>
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .result_write => true
+    | .commit
+    | .inst_source => false
+  | _ => false
+
+def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Option Pipeline.Statement
+| stmt =>
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .result_write => some stmt
+    | .commit
+    | .inst_source => none
+  | _ => none
     
