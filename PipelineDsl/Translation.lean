@@ -5785,10 +5785,11 @@ lst_stmts_decls
             let (squash_stmts, squash_decls) : List Murϕ.Statement × List Murϕ.Decl :=
               match dest_type with
               | .Unordered =>
+                let dest_ctrler_name_ := dest_ctrler_name.append "_"
                 ([murϕ|
                   for £ctrler_squash_idx : £ctrler_idx do
                     -- Forstmt error if not as 1 stmt?
-                    if (true) then
+                    if next_state .core_[j] .£dest_ctrler_name_ .entries[£ctrler_squash_idx].valid then
                       £squash_handle_by_state
                     endif;
                   endfor;
@@ -6071,10 +6072,10 @@ lst_stmts_decls
               is_await := stmt_trans_info.is_await,
               entry_keyword_dest := stmt_trans_info.entry_keyword_dest,
               trans_obj := stmt_trans_info.trans_obj,
-              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr,
+              specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx --stmt_trans_info.specific_murphi_dest_expr,
               lst_decls := stmt_trans_info.lst_decls,
               is_rhs := stmt_trans_info.is_rhs,
-              use_specific_dest_in_transition := true
+              use_specific_dest_in_transition := false
               curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
               lhs_var_is_just_default := false
               translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
