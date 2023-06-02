@@ -332,7 +332,12 @@ def CDFG.Message.findDestStateOfTypeReachingComplete (cdfg_nodes : List CDFG.Nod
       -- let nodes_pred_on_msg_from_original_graph ← original_graph.nodes.filterM (·.is_node_transition_or_complete_pred_on_msg_from_ctrler msg src_ctrler {nodes := cdfg_nodes} inst_type |>.throw_exception_nesting_msg s!"Error trying to find dest state in original state graph ({original_graph.node_names}) of msg_name ({msg_name}), to dest ({msg_dest}) from src ({src_ctrler}))")
       -- match nodes_pred_on_msg_from_original_graph with
       -- | [] => do
-        throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({msg_name}) to msg dest: ({msg_dest}) in CDFG nodes: ({cdfg_nodes.qualified_state_names})"
+
+        -- TODO: add a check to see if the ctrler has an inst instruction field
+        -- it it doesn't can ignore, and return pure []
+        pure []
+        -- throw s!"Message: No node listening to msg from src_ctrler: ({src_ctrler}) of msg name: ({msg_name}) to msg dest: ({msg_dest}) in CDFG nodes: ({cdfg_nodes.qualified_state_names})"
+
       -- | _::_ => do
       --   pure []
   | _ :: _ => do -- NOTE: Should msgs be named uniquely?
@@ -2047,7 +2052,7 @@ def CDFG.Graph.global_perform_node_of_memory_access (graph : Graph) (inst_type :
       |>.throw_exception_nesting_msg s!"Error finding the earliest Global Perform Node for inst_type: ({inst_type}). Graph: ({graph.node_names})"
   | [] => do
     dbg_trace s!"Graph Nodes: ({graph.node_names})"
-    throw "Error: No global perform node found in graph: ({graph.node_names})"
+    throw s!"Error: No global perform node found in graph: ({graph.node_names})"
 
 def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : InstType) : Except String ( Node ) := do
   match inst_type with
