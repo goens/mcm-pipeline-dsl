@@ -1228,8 +1228,8 @@ def convert_state_names_to_dsl_or_tree_state_check
   let term_var : Pipeline.Term :=
     match ctrler_type with
     | .BasicCtrler => Pipeline.Term.qualified_var [ctrler_name, "curr_state"].to_qual_name
-    | .FIFO => ( Pipeline.Term.var "curr_state" )
-    | .Unordered => ( Pipeline.Term.var "curr_state" )
+    | .FIFO => ( Pipeline.Term.qualified_var [entry, "curr_state"].to_qual_name )
+    | .Unordered => ( Pipeline.Term.qualified_var [entry, "curr_state"].to_qual_name )
 
   match state_names with
   | [a_state_name] => -- just do this one comparison
