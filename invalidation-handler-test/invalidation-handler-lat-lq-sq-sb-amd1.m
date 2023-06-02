@@ -84,7 +84,7 @@ SQ : record
   head : SQ_idx_t;
   tail : SQ_idx_t;
 end;
-SB_state : enum {SB_Store_to_Store_stall_sb_await_send_mem_req, sb_await_mem_response, sb_await_send_mem_req, sb_await_creation, init_SB_entry};
+SB_state : enum {sb_await_mem_response, sb_await_send_mem_req, sb_await_creation, init_SB_entry, SB_Store_to_Store_stall_sb_await_send_mem_req};
 SB_idx_t : 0 .. SB_NUM_ENTRIES_ENUM_CONST;
 SB_count_t : 0 .. SB_NUM_ENTRIES_CONST;
 SB_entry_values : record
@@ -671,6 +671,7 @@ begin
         iq.entries[ i ].instruction.op := inval;
         iq.entries[ i ].instruction.seq_num := 0;
         iq.entries[ i ].state := iq_await_creation;
+        iq.entries[ i ].valid := false;
       endfor;
       iq.num_entries := 0;
     end;
@@ -905,8 +906,8 @@ begin
     ic.buffer[ i ].dest := core;
   elsif (ic.buffer[ i ].r_w = write) then
     if (ic.buffer[i].store_state = await_handling) then
-      put "Store awaiting handling\n";
-      put Sta.ic_.buffer[i].store_state;
+      -- put "Store awaiting handling\n";
+      -- put Sta.ic_.buffer[i].store_state;
 
       -- TODO AZ: maybe convert into a guard...
       -- If there exists a core that's not the dest of this msg, send an invalidation
@@ -927,8 +928,8 @@ begin
           next_state.core_[core_idx].mem_interface_.in_busy := true;
 
           ic.buffer[i].store_inval_sent[core_idx] := true;
-          put Sta.ic_.buffer[i].store_inval_sent[core_idx];
-          put ic.buffer[i].store_inval_sent[core_idx];
+          -- put Sta.ic_.buffer[i].store_inval_sent[core_idx];
+          -- put ic.buffer[i].store_inval_sent[core_idx];
         end;
       endfor;
 
@@ -945,13 +946,13 @@ begin
       end;
 
     elsif (ic.buffer[i].store_state = await_invalidation_received) then
-      put "Store awaiting invalidations ack'd\n";
-      put Sta.ic_.buffer[i].store_state;
+      -- put "Store awaiting invalidations ack'd\n";
+      -- put Sta.ic_.buffer[i].store_state;
 
       store_invals_ackd := true;
       for core_idx : cores_t do
         if (core_idx != ic.buffer[i].dest_id) then
-          put ic.buffer[i].dest_id;
+          -- put ic.buffer[i].dest_id;
           -- TODO: check if all core - dests have an invalidation sent already....
           store_invals_ackd := store_invals_ackd & ic.buffer[i].store_inval_ackd[core_idx];
         end;
@@ -960,11 +961,11 @@ begin
       if store_invals_ackd then
         ic.buffer[i].store_state := store_send_completion;
       end;
-      put store_invals_ackd;
+      -- put store_invals_ackd;
 
     elsif (ic.buffer[i].store_state = store_send_completion) then
-      put "Store: send completion.. Store got invalidations ack'd\n";
-      put Sta.ic_.buffer[i].store_state;
+      -- put "Store: send completion.. Store got invalidations ack'd\n";
+      -- put Sta.ic_.buffer[i].store_state;
       -- Set destination to core, when done with request..
 
       -- NOTE: Don't have to do this below, since there's a rule to move msgs to cores
@@ -1521,7 +1522,7 @@ begin
           -- (1) send ack
           next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
 
-          put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
+          -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
 
           if found_msg_in_ic = true then
             error "we found 2 matching ic entries? shouldn't happen...";
@@ -2275,12 +2276,11 @@ end;
 
 
 ruleset j : cores_t; i : SB_idx_t do 
-  rule "SB SB_Store_to_Store_stall_sb_await_send_mem_req ===> sb_await_send_mem_req || SB_Store_to_Store_stall_sb_await_send_mem_req || sb_await_send_mem_req || sb_await_send_mem_req" 
+  rule "SB SB_Store_to_Store_stall_sb_await_send_mem_req ===> SB_Store_to_Store_stall_sb_await_send_mem_req || sb_await_send_mem_req || sb_await_send_mem_req" 
 (Sta.core_[ j ].SB_.entries[ i ].state = SB_Store_to_Store_stall_sb_await_send_mem_req)
 ==>
  
   var RENAME_Store_is_in_state_set : boolean;
-  var SeqNumReg_Store_is_in_state_set : boolean;
   var IQ_Store_is_in_state_set : boolean;
   var SQ_Store_is_in_state_set : boolean;
   var SB_Store_is_in_state_set : boolean;
@@ -2336,16 +2336,6 @@ begin
   end;
   if (RENAME_found_entry = false) then
   end;
-  SeqNumReg_Store_is_in_state_set := false;
-  -- if ((next_state.core_[ j ].SeqNumReg_.instruction.op = st) & (next_state.core_[ j ].SeqNumReg_.instruction.seq_num != 0)) then
-  --   if (next_state.core_[ j ].SeqNumReg_.state = seq_num_interface) then
-  --     SeqNumReg_Store_is_in_state_set := true;
-  --   else
-  --     SeqNumReg_Store_is_in_state_set := false;
-  --   end;
-  -- else
-  --   next_state.core_[ j ].SB_.entries[ i ].state := sb_await_send_mem_req;
-  -- end;
   IQ_Store_is_in_state_set := false;
   found_entry := false;
   for IQ_iter : IQ_idx_t do
@@ -2366,7 +2356,7 @@ begin
   endfor;
   if (found_entry = false) then
   elsif (found_entry = true) then
-    if ((next_state.core_[ j ].IQ_.entries[ 0 ].state = iq_await_creation) | (next_state.core_[ j ].IQ_.entries[ 0 ].state = iq_schedule_inst)) then
+    if ((next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_await_creation) | (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst)) then
       IQ_Store_is_in_state_set := true;
     else
       IQ_Store_is_in_state_set := false;
@@ -2384,7 +2374,7 @@ begin
   while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
     SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
     if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
-      if ((next_state.core_[ j ].SQ_.entries[ 0 ].state = sq_await_scheduled) | ((next_state.core_[ j ].SQ_.entries[ 0 ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ 0 ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ 0 ].state = sq_await_creation)))) then
+      if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_creation)))) then
         SQ_Store_is_in_state_set := true;
       else
         SQ_Store_is_in_state_set := false;
@@ -2417,7 +2407,7 @@ begin
   endfor;
   if (found_entry = false) then
   elsif (found_entry = true) then
-    if ((next_state.core_[ j ].SB_.entries[ 0 ].state = sb_await_creation) | ((next_state.core_[ j ].SB_.entries[ 0 ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ 0 ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ 0 ].state = SB_Store_to_Store_stall_sb_await_send_mem_req)))) then
+    if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_creation) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = SB_Store_to_Store_stall_sb_await_send_mem_req)))) then
       SB_Store_is_in_state_set := true;
     else
       SB_Store_is_in_state_set := false;
@@ -2435,7 +2425,7 @@ begin
   while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
     if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
-      if ((next_state.core_[ j ].ROB_.entries[ 0 ].state = rob_await_executed) | ((next_state.core_[ j ].ROB_.entries[ 0 ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ 0 ].state = rob_await_creation))) then
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_creation))) then
         ROB_Store_is_in_state_set := true;
       else
         ROB_Store_is_in_state_set := false;
@@ -2448,7 +2438,7 @@ begin
   end;
   if (ROB_found_entry = false) then
   end;
-  is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (SeqNumReg_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set)))));
+  is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
   if (next_state.core_[ j ].SB_.entries[ i ].instruction.op = st) then
     if is_instruction_on_any_state then
       next_state.core_[ j ].SB_.entries[ i ].state := SB_Store_to_Store_stall_sb_await_send_mem_req;
