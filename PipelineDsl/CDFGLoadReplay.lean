@@ -52,7 +52,6 @@ def CreateReplayIssueLoadState
   -- Proper way should read the load API usage, and copy any
   -- dependent stmts
   -- This would also then be a list of statments
-  let replay_load_stmt : Pipeline.Statement := CreateDSLMsgCall memory_interface load_perform []
 
   let (transition_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ← 
     if is_issue_ctrler_and_await_response_ctrler_same then
@@ -87,6 +86,15 @@ def CreateReplayIssueLoadState
         let complete_to_first_state := Pipeline.Statement.complete issue_ctrler_first_state
 
         pure (complete_to_first_state, [search_api_to_send_start_replay_await_msg])
+   
+  -- TODO:
+  -- Make the replay load stmt use:
+  -- 1. The LAT's address
+  -- 2. The instruction's seq_num
+
+  -- Get the instruction from the perform load node
+  -- four_nodes.global_perform_load_node.ctrler_name
+  let replay_load_stmt : Pipeline.Statement := CreateDSLMsgCall memory_interface load_perform []
 
   -- TODO: Generate the seq_num, either check if this ctrler has an instruction state_var, if it does, use it!
   -- Or make an assumption that the commit ctrler has the instruction
