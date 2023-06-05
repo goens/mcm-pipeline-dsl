@@ -11,6 +11,8 @@ IQ_NUM_ENTRIES_ENUM_CONST : 1;
 IQ_NUM_ENTRIES_CONST : 2;
 RENAME_NUM_ENTRIES_ENUM_CONST : 1;
 RENAME_NUM_ENTRIES_CONST : 2;
+load_address_table_NUM_ENTRIES_ENUM_CONST : 1;
+load_address_table_NUM_ENTRIES_CONST : 2;
 
 type
 val_t : 0 .. MAX_VALUE;
@@ -34,6 +36,12 @@ INST : record
   src_reg2 : reg_idx_t;
   imm : val_t;
   write_value : val_t;
+end;
+invalidation_listener_state : enum {init_inval_listener, squash_speculative_loads, await_invalidation};
+invalidation_listener : record
+  invalidation_seq_num : inst_count_t;
+  invalidation_address : addr_idx_t;
+  state : invalidation_listener_state;
 end;
 ROB_state : enum {rob_await_is_executed, rob_complete_store, rob_wait_store_completed, rob_commit_based_on_inst, rob_commit_if_head, rob_await_creation, init_rob_entry};
 ROB_idx_t : 0 .. ROB_NUM_ENTRIES_ENUM_CONST;
@@ -98,6 +106,19 @@ SeqNumReg : record
   seq_num_counter : inst_count_t;
   state : SeqNumReg_state;
 end;
+load_address_table_state : enum {init_table_load_address_table, load_address_table_await_insert_remove};
+load_address_table_idx_t : 0 .. load_address_table_NUM_ENTRIES_ENUM_CONST;
+load_address_table_count_t : 0 .. load_address_table_NUM_ENTRIES_CONST;
+load_address_table_entry_values : record
+  lat_seq_num : inst_count_t;
+  lat_address : addr_idx_t;
+  state : load_address_table_state;
+  valid : boolean;
+end;
+load_address_table : record
+  entries : array [load_address_table_idx_t] of load_address_table_entry_values;
+  num_entries : load_address_table_count_t;
+end;
 R_W : enum {read, write};
 MEM_REQ : record
   addr : addr_idx_t;
@@ -126,12 +147,14 @@ REG_FILE : record
   rf : array [reg_idx_t] of val_t;
 end;
 CORE : record
+  invalidation_listener_ : invalidation_listener;
   ROB_ : ROB;
   second_memory_stage_ : second_memory_stage;
   IQ_ : IQ;
   memory_unit_sender_ : memory_unit_sender;
   RENAME_ : RENAME;
   SeqNumReg_ : SeqNumReg;
+  load_address_table_ : load_address_table;
   rf_ : REG_FILE;
   mem_interface_ : MEM_INTERFACE;
 end;
@@ -395,6 +418,19 @@ begin
   return init_state;
 end;
 
+function search_invalidation_listener_seq_num_idx (
+  invalidation_listener_ : invalidation_listener;
+  seq_num : inst_count_t
+) : invalidation_listener_idx_t;
+begin
+  for i : invalidation_listener_idx_t do
+    if (invalidation_listener_.entries[ i ].instruction.seq_num = seq_num) then
+      return i;
+    end;
+  endfor;
+  error "£ctrler_name Search: didn't find it? how? bad seq_num idx?";
+end;
+
 function search_ROB_seq_num_idx (
   ROB_ : ROB;
   seq_num : inst_count_t
@@ -467,6 +503,19 @@ function search_SeqNumReg_seq_num_idx (
 begin
   for i : SeqNumReg_idx_t do
     if (SeqNumReg_.entries[ i ].instruction.seq_num = seq_num) then
+      return i;
+    end;
+  endfor;
+  error "£ctrler_name Search: didn't find it? how? bad seq_num idx?";
+end;
+
+function search_load_address_table_seq_num_idx (
+  load_address_table_ : load_address_table;
+  seq_num : inst_count_t
+) : load_address_table_idx_t;
+begin
+  for i : load_address_table_idx_t do
+    if (load_address_table_.entries[ i ].instruction.seq_num = seq_num) then
       return i;
     end;
   endfor;
@@ -612,6 +661,189 @@ begin
   next_state := Sta;
   Sta := init_state_fn();
 
+end;
+
+
+ruleset j : cores_t do 
+  rule "invalidation_listener init_inval_listener ===> await_invalidation" 
+(Sta.core_[ j ].invalidation_listener_.state = init_inval_listener)
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := 0;
+  next_state.core_[ j ].invalidation_listener_.invalidation_address := 0;
+  next_state.core_[ j ].invalidation_listener_.state := await_invalidation;
+  Sta := next_state;
+
+end;
+end;
+
+
+ruleset j : cores_t do 
+  rule "invalidation_listener squash_speculative_loads ===> await_invalidation" 
+(Sta.core_[ j ].invalidation_listener_.state = squash_speculative_loads)
+==>
+ 
+  var remove_key_dest_already_found : boolean;
+  var ROB_while_break : boolean;
+  var ROB_found_entry : boolean;
+  var ROB_entry_idx : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_squash_curr_idx : ROB_idx_t;
+  var ROB_squash_remove_count : ROB_count_t;
+  var found_entry : boolean;
+  var found_element : inst_count_t;
+  var found_idx : load_address_table_idx_t;
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  found_entry := false;
+  for load_address_table_iter : load_address_table_idx_t do
+    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid then
+      if ((next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid = true) & (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_address = next_state.core_[ j ].invalidation_listener_.invalidation_address)) then
+        if (found_entry = false) then
+          found_element := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
+          found_idx := load_address_table_iter;
+        else
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num < found_element) then
+            found_element := next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
+            found_idx := load_address_table_iter;
+          end;
+        end;
+        found_entry := true;
+      end;
+    end;
+  endfor;
+  if (found_entry = false) then
+  elsif (found_entry = true) then
+    for load_address_table_squash_idx : load_address_table_idx_t do
+      if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+          violating_seq_num := next_state.core_[ j ].load_address_table_.entries[ found_idx ].lat_seq_num;
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+            remove_key_dest_already_found := false;
+            for remove_load_address_table_idx : load_address_table_idx_t do
+              if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                  if remove_key_dest_already_found then
+                    error "Error: Found multiple entries with same key in remove_key API func";
+                  elsif !(remove_key_dest_already_found) then
+                    next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                    next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                    next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                  else
+                    error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                  end;
+                end;
+              end;
+            endfor;
+            ROB_while_break := false;
+            ROB_found_entry := false;
+            if (next_state.core_[ j ].ROB_.num_entries = 0) then
+              ROB_while_break := true;
+            end;
+            ROB_entry_idx := next_state.core_[ j ].ROB_.head;
+            ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+            ROB_offset := 0;
+            ROB_squash_remove_count := 0;
+            while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+              ROB_squash_curr_idx := ((ROB_entry_idx + ROB_offset) % ROB_NUM_ENTRIES_CONST);
+              if true then
+                if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_is_executed) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    if (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_load_result_write) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                      end;
+                    elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_receiver) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                      end;
+                     elsif (next_state.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].memory_unit_sender_.instruction.seq_num >= violating_seq_num) then
+                        next_state.core_[ j ].memory_unit_sender_.state := mem_unit_send_get_input;
+                      end;
+                     elsif (next_state.core_[ j ].memory_unit_sender_.state = mem_unit_send_get_input) then
+                      violating_seq_num := violating_seq_num;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (memory_unit_sender)";
+                    end;
+                    for IQ_squash_idx : IQ_idx_t do
+                      if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
+                        if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num) then
+                            next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
+                            next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
+                          end;
+                        elsif (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_await_creation) then
+                          violating_seq_num := violating_seq_num;
+                        else
+                          error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (IQ)";
+                        end;
+                      end;
+                    endfor;
+                    ROB_squash_remove_count := (ROB_squash_remove_count + 1);
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_based_on_inst) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    ROB_squash_remove_count := (ROB_squash_remove_count + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                 elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
+                  violating_seq_num := violating_seq_num;
+                  if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+                    ROB_squash_remove_count := (ROB_squash_remove_count + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].is_executed := false;
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].instruction := next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction;
+                    next_state.core_[ j ].RENAME_.entries[ next_state.core_[ j ].RENAME_.tail ].state := issue_if_head;
+                    next_state.core_[ j ].RENAME_.tail := ((next_state.core_[ j ].RENAME_.tail + 1) % RENAME_NUM_ENTRIES_CONST);
+                    next_state.core_[ j ].RENAME_.num_entries := (next_state.core_[ j ].RENAME_.num_entries + 1);
+                    next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state := rob_await_creation;
+                  end;
+                else
+                  error "Controller is not on an expected state for a msg: (squash) from: (load_address_table) to: (ROB)";
+                end;
+              end;
+              if (ROB_offset < ROB_difference) then
+                ROB_offset := (ROB_offset + 1);
+              end;
+            end;
+            next_state.core_[ j ].ROB_.tail := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - ROB_squash_remove_count)) % ROB_NUM_ENTRIES_CONST);
+            next_state.core_[ j ].ROB_.num_entries := (next_state.core_[ j ].ROB_.num_entries - ROB_squash_remove_count);
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+          end;
+        else
+          error "Controller is not on an expected state for a msg: (squash) from: (invalidation_listener) to: (load_address_table)";
+        end;
+      end;
+    endfor;
+  end;
+  next_state.core_[ j ].invalidation_listener_.state := await_invalidation;
+  Sta := next_state;
+
+end;
 end;
 
 
@@ -910,12 +1142,69 @@ ruleset j : cores_t do
 ((Sta.core_[ j ].memory_unit_sender_.state = memory_unit_stage_send) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
+  var insert_key_check_found : boolean;
+  var found_double_key_check : boolean;
+  var load_address_table_loop_break : boolean;
+  var load_address_table_entry_idx : load_address_table_idx_t;
+  var load_address_table_found_entry : boolean;
+  var load_address_table_difference : load_address_table_idx_t;
+  var load_address_table_offset : load_address_table_idx_t;
+  var load_address_table_curr_idx : load_address_table_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
   if !((next_state.core_[ j ].mem_interface_.out_busy = true)) then
     if (next_state.core_[ j ].memory_unit_sender_.instruction.op = ld) then
+      insert_key_check_found := false;
+      found_double_key_check := false;
+      for load_address_table_key_check_idx : load_address_table_idx_t do
+        if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].memory_unit_sender_.instruction.seq_num) then
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].memory_unit_sender_.instruction.seq_num;
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].memory_unit_sender_.phys_addr;
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].state := load_address_table_await_insert_remove;
+            if (insert_key_check_found = false) then
+              insert_key_check_found := true;
+            else
+              found_double_key_check := true;
+            end;
+          end;
+        end;
+      endfor;
+      if (found_double_key_check = true) then
+        error "Found two entries with the same key? Was this intentional?";
+      elsif (insert_key_check_found = false) then
+        load_address_table_loop_break := false;
+        if (next_state.core_[ j ].load_address_table_.num_entries = load_address_table_NUM_ENTRIES_CONST) then
+          load_address_table_loop_break := true;
+        end;
+        load_address_table_entry_idx := 0;
+        load_address_table_found_entry := false;
+        load_address_table_difference := (load_address_table_NUM_ENTRIES_CONST - 1);
+        load_address_table_offset := 0;
+        while ((load_address_table_offset <= load_address_table_difference) & ((load_address_table_loop_break = false) & ((load_address_table_found_entry = false) & (load_address_table_difference >= 0)))) do
+          load_address_table_curr_idx := ((load_address_table_entry_idx + load_address_table_offset) % load_address_table_NUM_ENTRIES_CONST);
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid = false) then
+            if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state = load_address_table_await_insert_remove) then
+              next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num := next_state.core_[ j ].memory_unit_sender_.instruction.seq_num;
+              next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].memory_unit_sender_.phys_addr;
+              next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
+              next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
+              load_address_table_found_entry := true;
+            end;
+          end;
+          if (load_address_table_offset != load_address_table_difference) then
+            load_address_table_offset := (load_address_table_offset + 1);
+          else
+            load_address_table_loop_break := true;
+          end;
+        end;
+        next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries + 1);
+        if (load_address_table_found_entry = false) then
+          error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
+        end;
+      end;
       next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].memory_unit_sender_.phys_addr;
       next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
       next_state.core_[ j ].mem_interface_.out_msg.valid := true;
@@ -1079,6 +1368,24 @@ begin
   next_state := Sta;
   next_state.core_[ j ].SeqNumReg_.seq_num_counter := 0;
   next_state.core_[ j ].SeqNumReg_.state := seq_num_interface;
+  Sta := next_state;
+
+end;
+end;
+
+
+ruleset j : cores_t; i : load_address_table_idx_t do 
+  rule "load_address_table init_table_load_address_table ===> load_address_table_await_insert_remove" 
+(Sta.core_[ j ].load_address_table_.entries[ i ].state = init_table_load_address_table)
+==>
+ 
+  var next_state : STATE;
+
+begin
+  next_state := Sta;
+  next_state.core_[ j ].load_address_table_.entries[ i ].lat_seq_num := 0;
+  next_state.core_[ j ].load_address_table_.entries[ i ].lat_address := 0;
+  next_state.core_[ j ].load_address_table_.entries[ i ].state := load_address_table_await_insert_remove;
   Sta := next_state;
 
 end;
