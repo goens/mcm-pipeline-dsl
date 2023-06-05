@@ -3984,33 +3984,37 @@ lst_stmts_decls
           (dest_ctrler_name == "memory_interface"))
           then
 
-            let dsl_term_phys_addr : Pipeline.Term := Pipeline.Term.var ("phys_addr")
-            let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
+            if 2 == lst_expr.length then
+              let dsl_term_phys_addr : Pipeline.Expr := lst_expr[0]!
+              let dsl_term_inst_seq_num : Pipeline.Expr := lst_expr[1]!
 
-            let phys_addr_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
-            let inst_seq_num_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              let phys_addr_trans_expr : expr_translation_info :=
+                assn_stmt_to_expr_translation_info stmt_trans_info dsl_term_phys_addr
+              let inst_seq_num_trans_expr : expr_translation_info :=
+                assn_stmt_to_expr_translation_info stmt_trans_info dsl_term_inst_seq_num
 
-            let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
-            let murphi_inst_seq_num_trans_expr := ast_term_to_murphi_expr inst_seq_num_trans_term
+              let murphi_phys_addr_expr := ast_expr_to_murphi_expr phys_addr_trans_expr
+              let murphi_inst_seq_num_trans_expr := ast_expr_to_murphi_expr inst_seq_num_trans_expr
 
-            let assn_out_msg : List Murϕ.Statement := [murϕ|
-              next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
-              next_state .core_[ j ] .mem_interface_ .out_msg .r_w := read;
-              next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
-              next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
-              next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
-              next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
-              next_state .core_[ j ] .mem_interface_ .out_busy := true;
-            ]
-            dbg_trace s!"memory_interface->send_load_request() API: ({assn_out_msg})"
+              let assn_out_msg : List Murϕ.Statement := [murϕ|
+                next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
+                next_state .core_[ j ] .mem_interface_ .out_msg .r_w := read;
+                next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
+                next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
+                next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
+                next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+                next_state .core_[ j ] .mem_interface_ .out_busy := true;
+              ]
+              dbg_trace s!"memory_interface->send_load_request() API: ({assn_out_msg})"
 
-            let stmts_decls : lst_stmts_decls := {
-              stmts := assn_out_msg,
-              decls := []
-            }
-            stmts_decls
+              let stmts_decls : lst_stmts_decls := {
+                stmts := assn_out_msg,
+                decls := []
+              }
+              stmts_decls
+            else
+              dbg_trace s!"Error, send_load_request API expr args list is not = 2? Args: ({lst_expr})"
+              panic! s!"Error, send_load_request API expr args list is not = 2? Args: ({lst_expr})"
             
           else
           if (and (api_func_name == "send_store_request")
