@@ -6,7 +6,7 @@ name: CI
 on:
   # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
+    branches: [ "CI" ]
   pull_request:
     branches: [ "main" ]
     
@@ -32,12 +32,21 @@ jobs:
           
       - name: Compile Files
         run: |
+<<<<<<< HEAD
           mkdir nosq && cd nosq
           ../build/bin/aqlc -t 4 ../.github/test-files/nosq-lsq-no-replay.file
           cd ..
           mkdir single && cd nosq
           ../build/bin/aqlc -t 4 ../.github/test-files/single-lsq.file
           cd ..
+=======
+          ./build/bin/aqlc -t 4 .github/test-files/nosq-lsq-no-replay.file -m -D nosq
+          ./build/bin/aqlc -t 4 .github/test-files/single-lsq.file -m  -D single
+          ls
+          ls single
+          ls nosq
+          
+>>>>>>> 19c1ab03ae086f75cfec206af5a78440dc68741e
 
       - name: Difference Check nosq-lsq-no-replay
         run: |
