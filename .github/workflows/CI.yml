@@ -35,8 +35,9 @@ jobs:
           ./build/bin/aqlc -t 4 .github/test-files/nosq-lsq-no-replay.file -m -D nosq
           ./build/bin/aqlc -t 4 .github/test-files/single-lsq.file -m  -D single
           ls
-          ls nosq
           ls single
+          ls nosq
+          
 
       # - name: Difference Check
       #   run: |
