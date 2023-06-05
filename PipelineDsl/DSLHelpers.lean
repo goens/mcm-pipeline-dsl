@@ -13,6 +13,12 @@ def write := "write"
 def read := "read"
 def DSLKeyword.state : Identifier := "state"
 
+namespace DSL
+namespace type
+  def inst := "inst"
+end type
+end DSL
+
 def instruction := "instruction"
 def op := "op"
 def ld := "ld"
@@ -387,3 +393,14 @@ def Pipeline.Description.inject_stmts_at_stmt
 
     pure updated_state
   | _ => throw "Error: (inject stmts at perform) Expected input Pipeline.Description to be a state. Instead got ({state})"
+
+def Pipeline.TypedIdentifier.is_inst_type
+(t_ident : TypedIdentifier)
+: Bool :=
+  match t_ident with
+  | .mk type_ident /- var name -/ _ =>
+    if type_ident == DSL.type.inst then
+      true
+    else
+      false
+

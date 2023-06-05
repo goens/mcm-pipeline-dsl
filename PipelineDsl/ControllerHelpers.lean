@@ -472,3 +472,20 @@ def Ctrlers.AddRemoveFromLATWhenCommit
       commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_commit
   
   ctrlers_remove_key_from_lat
+
+--/--
+--  Get A Ctrler's State Var that is of the "inst" type (i.e. the instruction).
+--  NOTE: Create an option version if it's needed.
+---/
+
+open Pipeline in
+def Ctrler.instruction_var
+(ctrler : Ctrler)
+: Except String Identifier := do
+  let state_vars ← ctrler.get_state_vars
+
+  match state_vars.filter (·.is_inst_type) with
+  | [] => throw s!"Error: Expected to find an inst type state var in Ctrler?: State Vars: ({state_vars})"
+  | [inst] => pure inst.var_name
+  | _::_ => throw s!"Error: Expected to find one inst type state var in Ctrler?: State Vars: ({state_vars})"
+

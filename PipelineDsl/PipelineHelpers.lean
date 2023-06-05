@@ -430,4 +430,10 @@ def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Optio
     | .commit
     | .inst_source => none
   | _ => none
-    
+
+def Pipeline.TypedIdentifier.var_name
+(t_ident : TypedIdentifier)
+: Identifier :=
+  let (/-type-/_, ident) := t_ident.type_ident
+  ident
+
