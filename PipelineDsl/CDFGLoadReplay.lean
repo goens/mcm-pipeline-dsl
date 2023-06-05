@@ -94,7 +94,9 @@ def CreateReplayIssueLoadState
 
   -- Get the instruction from the perform load node
   -- four_nodes.global_perform_load_node.ctrler_name
-  let replay_load_stmt : Pipeline.Statement := CreateDSLMsgCall memory_interface load_perform []
+  let entry's_lat_addr_var := qual_var_expr [entry, lat_address_var]
+  let inst_seq_num := qual_var_expr [instruction, seq_num]
+  let replay_load_stmt : Pipeline.Statement := CreateDSLMsgCall memory_interface load_perform [entry's_lat_addr_var, inst_seq_num]
 
   -- TODO: Generate the seq_num, either check if this ctrler has an instruction state_var, if it does, use it!
   -- Or make an assumption that the commit ctrler has the instruction
@@ -247,10 +249,15 @@ def CreateReplayAwaitLoadState
   dbg_trace "##Sanity 2"
   return (await_replay_state, compare_and_check_state)
 
-def CDFG.Node.create_when_msg_stmt_that_trans_to_given_dest (node : CDFG.Node) (msg_name : MsgName) (given_dest : StateName) : Pipeline.Statement :=
-  let transition_to_issue_replay := Pipeline.Statement.transition given_dest
+open Pipeline in
+def CDFG.Node.create_when_msg_stmt_that_trans_to_given_dest
+(node : CDFG.Node) (msg_name : MsgName) (given_dest : StateName)
+(when's_args : List Identifier) (when's_stmts : List Statement)
+: Pipeline.Statement :=
+  let transition_to_issue_replay := when's_stmts ++ [ transition given_dest ]
   let ctrler := node.ctrler_name
-  let when_commit_start_msg := Pipeline.Statement.when [ctrler, msg_name].to_qual_name [] transition_to_issue_replay.to_block
+  let when_commit_start_msg :=
+    Statement.when [ctrler, msg_name].to_qual_name when's_args transition_to_issue_replay.to_block
   when_commit_start_msg
 
 def CDFG.Node.UpdateCtrlerFirstStateToAwaitMsgFrom (node : CDFG.Node) (replay_msg_prefix : String) (replay_state_prefix : String) (ctrlers : Ctrlers)
@@ -275,7 +282,13 @@ def CDFG.Node.UpdateCtrlerFirstStateToAwaitMsgFrom (node : CDFG.Node) (replay_ms
   -- 2.
   let when_commit_start_msg : Pipeline.Statement := ←
     match ← ctrler.type with
-    | .BasicCtrler => do pure $ node.create_when_msg_stmt_that_trans_to_given_dest start_replay_await_msg_name await_replay_state_name 
+    | .BasicCtrler => do
+      let inst_state_var ← ctrler.instruction_var
+      let receive_instruction := var_asn_var [inst_state_var] instruction
+      pure $
+        node.create_when_msg_stmt_that_trans_to_given_dest
+        start_replay_await_msg_name await_replay_state_name
+        [instruction] [receive_instruction]
     | .Unordered => do
       let trans_to_await_replay_start := Pipeline.Statement.transition await_replay_state_name
       pure $ Pipeline.Statement.when [node.ctrler_name, insert].to_qual_name [] trans_to_await_replay_start.to_block
@@ -386,7 +399,9 @@ def UpdateCommitCtrlerToStartReplayLoad
 
   -- prepare the msg issue ctrler msg
   --   Should be a defined name
-  let start_replay_func_call_msg : Pipeline.Statement := CreateDSLMsgCall issue_ctrler_name start_replay_msg_name []
+  let commit_ctrler_inst_var_expr := var_expr $ ← commit_ctrler.instruction_var
+  let start_replay_func_call_msg : Pipeline.Statement :=
+    CreateDSLMsgCall issue_ctrler_name start_replay_msg_name [commit_ctrler_inst_var_expr]
   let start_replay_msg : Pipeline.Statement ← issue_ctrler.queue_search_api_to_send_msg start_replay_func_call_msg []
 
   -- prepare the commit ctrlerawait replay completion state name & transition stmt to it
@@ -406,8 +421,10 @@ def UpdateCommitCtrlerToStartReplayLoad
   --     ...
   --   }
 
-  -- let commit_ctrler_name := four_nodes.commit_node.ctrler_name
-  -- let original_commit_code_state_name := original_commit_code_prefix ++ "_" ++ commit_ctrler_name
+  -- AZ TODO: find some way to communicate with
+  -- BasicCtrler? for NoSQ
+  -- issue: the msg requires the ctrler be on a specific state,
+  -- but the ctrler can be on a different state while being used by other ctrlers
 
   -- Create another if stmt: if (instruction.op == ld) {start_replay_msg, trans_to_commit_await_replay_complete}
   -- else {trans_to_original_commit_code_state}
@@ -605,7 +622,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   let commit_start_replay_state_name := ← update_commit_start_replay_state.state_name
   return (ctrlers_with_await_replay_response_state, ⟨commit_node.ctrler_name, commit_start_replay_state_name⟩)
 
-def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
+def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOrdering)
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
@@ -627,7 +644,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
     ← graph.AddLoadReplayToCtrlers ctrlers lat_name lat_seq_num_var lat_address_var
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
-  dbg_trace s!"LoadReplay: MCM Ordering: ( {mcm_ordering} )"
+  dbg_trace s!"LoadReplay: Option MCM Ordering: ( {mcm_ordering?} )"
   dbg_trace s!"LoadReplay: Commit Start Replay State Name: ( {commit_start_replay_state_name} )"
 
   let ctrlers' := ctrlers_with_load_replay ++ [lat]
@@ -646,8 +663,12 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering)
     ctrlers'' lat_name commit_node.ctrler_name commit_node.current_state
 
   -- (5) Enforce any additional orderings on the replay load
-  CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
-  |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
+  match mcm_ordering? with
+  | some mcm_ordering =>
+    CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
+      |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
+  | none =>
+    pure ctrlers'''
   
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
