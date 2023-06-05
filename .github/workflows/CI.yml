@@ -27,20 +27,23 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "PATH=$HOME/.elan/bin:$PATH" >> $GITHUB_ENV
         
-#       - name: Build Lean code
-#         run: | 
-#           lake build
-#           ls
-         
-#       To do after getting files from An Qi. 
-#       Steps:
-#       Run aql files, compare output to expected outputs stored in tests/expected using code below
-#       - name: Difference Check
-#         run: |
-#           if ! diff -q Foo.lean Foo.lean &>/dev/null; then
-#           >&2 echo "different"
-#           exit 1
-#           fi
+      - name: Build Lean code
+        run: lake update && lake build
+          
+      - name: Compile Files
+        run: |
+          ./build/bin/aqlc -t 4 .github/test-files/nosq-lsq-no-replay.file -m -D nosq
+          ./build/bin/aqlc -t 4 .github/test-files/single-lsq.file -m  -D single
+          ls
+          ls nosq
+          ls single
+
+      # - name: Difference Check
+      #   run: |
+      #     if ! diff -q Foo.lean Foo.lean &>/dev/null; then
+      #     >&2 echo "different"
+      #     exit 1
+      #     fi
         
      
         
