@@ -1,0 +1,39 @@
+{"version": 4,
+ "packagesDir": "lake-packages",
+ "packages":
+ [{"git":
+   {"url": "https://github.com/mhuisi/lean4-cli.git",
+    "subDir?": null,
+    "rev": "5a858c32963b6b19be0d477a30a1f4b6c120be7e",
+    "name": "Cli",
+    "inputRev?": "nightly"}},
+  {"git":
+   {"url": "https://github.com/gebner/quote4",
+    "subDir?": null,
+    "rev": "c71f94e34c1cda52eef5c93dc9da409ab2727420",
+    "name": "Qq",
+    "inputRev?": "master"}},
+  {"git":
+   {"url": "https://github.com/JLimperg/aesop",
+    "subDir?": null,
+    "rev": "ca73109cc40837bc61df8024c9016da4b4f99d4c",
+    "name": "aesop",
+    "inputRev?": "master"}},
+  {"git":
+   {"url": "https://github.com/goens/lean-murphi.git",
+    "subDir?": null,
+    "rev": "e1e6ea7c3a3f46be82273dd143ae7f35e84e2f8e",
+    "name": "Murphi",
+    "inputRev?": "main"}},
+  {"git":
+   {"url": "https://github.com/leanprover/std4",
+    "subDir?": null,
+    "rev": "6932c4ea52914dc6b0488944e367459ddc4d01a6",
+    "name": "std",
+    "inputRev?": "main"}},
+  {"git":
+   {"url": "https://github.com/leanprover-community/mathlib4",
+    "subDir?": null,
+    "rev": "e01ef88d9b84762a996d0265d3f9e61f5744c51a",
+    "name": "Mathlib",
+    "inputRev?": "e01ef88"}}]}
