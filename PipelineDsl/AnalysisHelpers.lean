@@ -2382,7 +2382,7 @@ def CtrlerName.unordered_query_match
   let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] if_stmt.to_block
   let when_search_fail    := when_stmt [dest_ctrler_name, search_fail   ].to_qual_name [] else_stmt.to_block
 
-  let entry_var := ← dest_ctrler_var.to_qual_or_var_term
+  let entry_var := ← ([entry].append dest_ctrler_var).to_qual_or_var_term
   let search_var := ← searched_var.to_qual_or_var_term
   let entry_match := equal entry_var search_var
 
