@@ -715,7 +715,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
 
   let lat_squashing_ctrler := commit_node.ctrler_name
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
-    perform_load_node.ctrler_name perform_load_node.ctrler_name lat_squashing_ctrler
+    perform_load_node.ctrler_name commit_node.ctrler_name lat_squashing_ctrler
 
   -- (2) Add LoadReplay to Ctrlers
   let (ctrlers_with_load_replay, commit_start_replay_state_name) :=
