@@ -104,6 +104,7 @@ def CreateReplayIssueLoadState
   -- then replace replay_issue_stmts_blk with search_for_load_seq_num
   -- NOTE: Must think of way to reset the LAT upon mis-match
   -- Generate some handle block to listen to squash... from the commit node
+  -- NOTE: let lat_not_found_error := Statement.error "Couldn't find the lat entry!"
   let search_for_load_seq_num ← lat_name.unordered_query_match
     replay_issue_stmts_blk [].to_block
     [ lat_seq_num_var ] [instruction, seq_num]
@@ -127,6 +128,7 @@ def GenAwaitReplayLoadStmts (ctrlers : Ctrlers) (four_nodes : CommitIssueAwaitVa
     | .FIFO => throw "Error while adding await Replay response: FIFO not supported. Due to head & tail ptrs"
   pure additional_stmts
 
+open Pipeline in
 def CreateReplayAwaitLoadState
 (is_issue_ctrler_and_await_response_ctrler_same : Bool)
 (is_issue_ctrler_pred_on_commit : Bool)
@@ -142,7 +144,8 @@ def CreateReplayAwaitLoadState
   -- 2. read the old value that was marked
   -- look at the old value stmt, if it's from the reg file, then read from the reg file
   -- if it's from a state var, then this is hard to say... maybe we read from the start var
-  let old_load_value_stmt : Pipeline.Statement := ←
+  let old_load_value_decl : Statement := Statement.variable_declaration (TypedIdentifier.mk u32 old_load_value)
+  let old_load_value_stmt : Statement ←
     four_nodes.old_load_value_node.stmts_to_read_the_old_value old_load_value
 
   -- 3. compare, handle 2 cases
@@ -156,7 +159,7 @@ def CreateReplayAwaitLoadState
   -- (b) send squash msg to the commit ctrler
 
   -- 3.(a)
-  let write_correct_replay_value := ←
+  let write_correct_replay_value ←
     four_nodes.old_load_value_node.stmts_to_write_replay_value_to_result_write_location replay_value
 
   let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num inst_seq_num_expr
@@ -213,7 +216,7 @@ def CreateReplayAwaitLoadState
   -- then it's a queue, and we access a queue with a search API where we need to be in scope
   -- But that case is not handled yet..
   let check_mispeculation_and_replay_complete_stmts := Pipeline.Statement.block $
-    [old_load_value_stmt, if_old_not_equal_replay_expr, replay_complete_msg]
+    [old_load_value_decl, old_load_value_stmt, if_old_not_equal_replay_expr, replay_complete_msg]
 
   -- from 1.
   -- let when_load_response_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name [] check_mispeculation_and_replay_complete_stmts
@@ -310,20 +313,35 @@ def UpdateCtrlerFirstStateToAwaitReplayFromIssue
 def await_replay_start_state_name := "LoadReplay_await_replay_start"
 def start_replay_msg_name := "start_replay"
 
-def CDFG.Node.create_when_replay_start_msg_state (commit_node : CDFG.Node) : Pipeline.Statement :=
+open Pipeline in
+def CDFG.Node.create_when_replay_start_msg_state
+(commit_node : Node)
+(issue_node : Node)
+(ctrlers : Ctrlers)
+: Except String Pipeline.Statement := do
+  let issue_ctrler ← ctrlers.ctrler_from_name issue_node.ctrler_name
+  let inst_state_var ← issue_ctrler.instruction_var
+  let receive_instruction := var_asn_var [inst_state_var] instruction
+
   let transition_to_issue_replay := Pipeline.Statement.transition replay_issue_load_to_mem
+
+  let get_inst_and_trans_to_issue := [receive_instruction, transition_to_issue_replay]
+
   let commit_ctrler := commit_node.ctrler_name
-  let when_commit_start_msg := Pipeline.Statement.when [commit_ctrler, start_replay_msg_name].to_qual_name [] transition_to_issue_replay.to_block
-  when_commit_start_msg
+  let when_commit_start_msg := Statement.when
+    [commit_ctrler, start_replay_msg_name].to_qual_name [instruction]
+    get_inst_and_trans_to_issue.to_block
+  pure when_commit_start_msg
 
 def CreateReplayAwaitCommitStartMsgState
 (four_nodes : CommitIssueAwaitValueStmtNodes)
 (listen_handle_blk : Option Pipeline.Statement)
-: Except String (Pipeline.Description) :=
+(ctrlers : Ctrlers)
+: Except String (Pipeline.Description) := do
   -- 1. Create an await stmt to wait for the commit start msg
   -- 2. Transition to the right state
-  let when_commit_start_msg := four_nodes.commit_node.create_when_replay_start_msg_state
-  let await_when := Pipeline.Statement.await none [when_commit_start_msg]
+  let when_commit_start_msg := four_nodes.commit_node.create_when_replay_start_msg_state four_nodes.global_perform_load_node ctrlers
+  let await_when := await none [← when_commit_start_msg]
   match listen_handle_blk with
   | none => do pure $ Pipeline.Description.state await_replay_start_state_name await_when.to_block
   | some listen_handle_blk => do pure $ Pipeline.Description.state await_replay_start_state_name (← listen_handle_blk.replace_listen_handle_stmts [await_when]).to_block
@@ -351,6 +369,7 @@ def CreateReplayAwaitCommitStartMsgState
 --     throw "Error while handling issue ctrler type cases to add await start from commit: Got FIFO ctrler (can't handle due to head/tail ptrs)"
 
 -- def insert := "insert"
+open Pipeline in
 def UpdateIssueCtrlerFirstStateToAwaitReplayCommit
 (four_nodes : CommitIssueAwaitValueStmtNodes)
 (ctrlers : Ctrlers)
@@ -367,13 +386,22 @@ def UpdateIssueCtrlerFirstStateToAwaitReplayCommit
   let first_state ← issue_ctrler.state_from_name issue_ctrler_first_state
 
   -- 2.
-  let when_commit_start_msg := ←
+  let when_commit_start_msg : Statement := ←
     match ← issue_ctrler.type with
-    | .BasicCtrler => pure $ four_nodes.commit_node.create_when_replay_start_msg_state
-    | .Unordered =>
+    | .BasicCtrler => four_nodes.commit_node.create_when_replay_start_msg_state four_nodes.global_perform_load_node ctrlers
+    | .Unordered => do
       let replay_issue_name := replay_issue_load_to_mem
+
+      let inst_state_var ← issue_ctrler.instruction_var
+      let receive_instruction := var_asn_var [inst_state_var] instruction
+
       let trans_to_await_replay_start := Pipeline.Statement.transition replay_issue_name
-      pure $ Pipeline.Statement.when [four_nodes.commit_node.ctrler_name, insert].to_qual_name [] trans_to_await_replay_start.to_block
+
+      let get_inst_and_trans_to_issue := [receive_instruction, trans_to_await_replay_start]
+      pure $
+        Statement.when
+          [four_nodes.commit_node.ctrler_name, insert].to_qual_name [instruction]
+          get_inst_and_trans_to_issue.to_block
     | .FIFO => throw "Error while gen await commit start replay msg: Got FIFO ctrler (can't handle due to head/tail ptrs)"
   let first_state ← first_state.append_when_case_to_state's_await_stmt when_commit_start_msg
 
@@ -387,6 +415,7 @@ def CommitAwaitReplayCompleteStateName (commit_ctrler_name : CtrlerName) : State
 def UpdateCommitCtrlerToStartReplayLoad
 (four_nodes : CommitIssueAwaitValueStmtNodes)
 (ctrlers : Ctrlers)
+(is_issue_ctrler_pred_on_commit : Bool)
 -- 2 returns: the commit state that starts replay & the original commit code
 : Except String (Pipeline.Description × Pipeline.Description) := do
   -- Get the commit node.
@@ -426,13 +455,57 @@ def UpdateCommitCtrlerToStartReplayLoad
   -- issue: the msg requires the ctrler be on a specific state,
   -- but the ctrler can be on a different state while being used by other ctrlers
 
+  let issue_ctrler_type ← issue_ctrler.type
+  let issue_ctrler_first_state ← issue_ctrler.init_trans_dest
+
+  let need_dsl_msg_check? : Option StateName :=
+    if is_issue_ctrler_pred_on_commit then
+      none
+      -- don't need to do anything, expect the ctrler
+      -- to be on the right state and await the msg.
+      -- NOTE: If it isn't, the msg will error and we
+      -- can deal with this case in the future
+    else
+      match issue_ctrler_type with
+      | .BasicCtrler =>
+        some issue_ctrler_first_state
+        -- Then the ctrler needs to be on the
+        -- first state. Thus we check and stall
+      | .Unordered =>
+        none
+        -- Ctrler will be inserted into if an entry is available.
+      | .FIFO =>
+        none
+        -- Can't handle FIFO case yet. Since FIFOs have
+        -- a head/tail ptr, we can't insert an entry that will be soon removed
+        -- Or perhaps we could, but just cause other entries to be waiting on this one
+
+  let start_replay_dsl_code := [start_replay_msg, trans_to_commit_await_replay_complete]
+  let start_replay_if_ready :=
+    match need_dsl_msg_check? with
+    | .some state_name =>
+      -- check if BasicCtrler is on state name
+      let state_check := equal (qual_var_term [issue_ctrler_name, DSLKeyword.state]) (var_term state_name)
+      let trans_to_self := reset four_nodes.commit_node.current_state
+      conditional_stmt
+        $ if_else_statement
+          state_check
+            start_replay_dsl_code.to_block
+            trans_to_self.to_block
+    | .none =>
+      start_replay_dsl_code.to_block
+
   -- Create another if stmt: if (instruction.op == ld) {start_replay_msg, trans_to_commit_await_replay_complete}
   -- else {trans_to_original_commit_code_state}
-  let if_instruction_is_ld_expr := Pipeline.Expr.equal (Pipeline.Term.qualified_var [instruction, op].to_qual_name) (Pipeline.Term.var ld)
-  let original_commit_code_state_name := original_commit_code_prefix.append "_" |>.append four_nodes.commit_node.current_state
-  let trans_to_original_commit_code_state := Pipeline.Statement.transition original_commit_code_state_name
+  let trans_to_original_commit_code_state :=
+    let original_commit_code_state_name := original_commit_code_prefix.append "_" |>.append four_nodes.commit_node.current_state
+    Pipeline.Statement.transition original_commit_code_state_name
   let do_replay_if_inst_is_load_if_stmt := Pipeline.Statement.conditional_stmt $
-    Pipeline.Conditional.if_else_statement if_instruction_is_ld_expr [start_replay_msg, trans_to_commit_await_replay_complete].to_block trans_to_original_commit_code_state
+    let if_instruction_is_ld_expr := equal (qual_var_term [instruction, op]) (var_term ld)
+    Pipeline.Conditional.if_else_statement
+      if_instruction_is_ld_expr
+        /- if case -/ start_replay_if_ready.to_block
+        /- else    -/ trans_to_original_commit_code_state
 
   let (updated_start_replay_commit_po_state, original_commit_actions_state) ← commit_state.split_off_stmts_at_commit_and_inject_stmts [do_replay_if_inst_is_load_if_stmt]
 
@@ -469,6 +542,7 @@ def CreateCommitAwaitReplayCompleteState
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
 
+open Pipeline in
 def CDFG.Graph.AddLoadReplayToCtrlers
 (graph : Graph) (ctrlers : Ctrlers)
 (lat_name : CtrlerName) (lat_seq_num_var lat_address_var : VarName)
@@ -482,17 +556,21 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 
   let four_nodes := ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
 
+  let replay_value_decl : TypedIdentifier := (TypedIdentifier.mk u32 replay_value)
+  let ctrlers : Ctrlers ←
+    ctrlers.add_var_decl_to_ctrler four_nodes.global_perform_load_node.ctrler_name replay_value_decl
+
   -- Issue Ctrler / State info
-  let issue_ctrler_type ← (← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name ).type
+  let issue_ctrler ← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name 
+  let issue_ctrler_type ← issue_ctrler.type
   -- Particularly if the Issue Ctrler's state(s) are predicated on Commit
   let issue_ctrler_pred_on_commit_nodes : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
   let issue_ctrler_pred_on_commit_nodes_for_load := graph.filter_input_nodes_only_ld issue_ctrler_pred_on_commit_nodes
   dbg_trace s!"$$issue_ctrler_pred_on_commit_nodes_for_load: ({issue_ctrler_pred_on_commit_nodes_for_load})"
   let ( is_issue_ctrler_pred_on_commit, issue_ctrler_node_pred_on_commit?, issue_ctrler_node_pred_on_commit_listen_handle_stmt? )
     : Bool × Option Node × Option Pipeline.Statement := ← do
-    if H_non_zero : issue_ctrler_pred_on_commit_nodes_for_load.length > 0 then do
-      have hyp : 0 < issue_ctrler_pred_on_commit_nodes_for_load.length := by simp[H_non_zero]
-      let issue_ctrler_node_pred_on_commit := issue_ctrler_pred_on_commit_nodes_for_load[0]'hyp
+    if H_non_zero : 0 < issue_ctrler_pred_on_commit_nodes_for_load.length then do
+      let issue_ctrler_node_pred_on_commit := issue_ctrler_pred_on_commit_nodes_for_load[0]'(by simp[H_non_zero])
       let listen_handle_of_node? : Option Pipeline.Statement ← issue_ctrler_node_pred_on_commit.listen_handle_stmt? ctrlers
       pure (true, some issue_ctrler_node_pred_on_commit, listen_handle_of_node?)
     else do
@@ -510,7 +588,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   let await_replay_start_state : Pipeline.Description := ←
     if is_issue_ctrler_pred_on_commit then do -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       dbg_trace s!"$$1is_issue_ctrler_pred_on_commit: ({is_issue_ctrler_pred_on_commit})"
-      CreateReplayAwaitCommitStartMsgState four_nodes issue_ctrler_node_pred_on_commit_listen_handle_stmt?
+      CreateReplayAwaitCommitStartMsgState four_nodes issue_ctrler_node_pred_on_commit_listen_handle_stmt? ctrlers
     else do
       match issue_ctrler_type with
       | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
@@ -561,7 +639,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
     -- Update Commit state;
     if global_perform_load_node.ctrler_name != commit_node.ctrler_name then
       -- NOTE: ficticious function, TODO: implement
-      let update_state ← UpdateCommitCtrlerToStartReplayLoad four_nodes ctrlers
+      let update_state ← UpdateCommitCtrlerToStartReplayLoad four_nodes ctrlers is_issue_ctrler_pred_on_commit
       pure update_state
     else -- Else just transition to the new issue replay state
       throw "Error while adding Load-Replay to Ctrlers: Commit & Issue Load Ctrlers are the same. Not handling this just yet"
