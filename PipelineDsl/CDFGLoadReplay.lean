@@ -546,7 +546,7 @@ open Pipeline in
 def CDFG.Graph.AddLoadReplayToCtrlers
 (graph : Graph) (ctrlers : Ctrlers)
 (lat_name : CtrlerName) (lat_seq_num_var lat_address_var : VarName)
-: Except String (Ctrlers × CtrlerState)
+: Except String (Ctrlers × CtrlerState × CtrlerName)
 := do
   -- Get the relevant 4 states & ctrlers
   let commit_node ← graph.commit_state_ctrler
@@ -698,7 +698,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
         throw "Error while adding created await replay response states to ctrlers: Shouldn't reach here, based on the if condition, this should have been set to Option.some"
 
   let commit_start_replay_state_name := ← update_commit_start_replay_state.state_name
-  return (ctrlers_with_await_replay_response_state, ⟨commit_node.ctrler_name, commit_start_replay_state_name⟩)
+  return (ctrlers_with_await_replay_response_state, ⟨commit_node.ctrler_name, commit_start_replay_state_name⟩, ← original_commit_actions_state.state_name)
 
 def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOrdering)
 : Except String (List controller_info) := do
@@ -718,7 +718,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
     perform_load_node.ctrler_name commit_node.ctrler_name lat_squashing_ctrler
 
   -- (2) Add LoadReplay to Ctrlers
-  let (ctrlers_with_load_replay, commit_start_replay_state_name) :=
+  let (ctrlers_with_load_replay, commit_start_replay_state_name, original_commit_state) :=
     ← graph.AddLoadReplayToCtrlers ctrlers lat_name lat_seq_num_var lat_address_var
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
 
@@ -737,8 +737,10 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   let commit_node := ← graph.commit_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting perform load node"
 
+  dbg_trace s!"Adding Remove from lat when commit in Load Replay"
   let ctrlers''' ← AddRemoveFromLATWhenCommit
-    ctrlers'' lat_name commit_node.ctrler_name commit_node.current_state
+    ctrlers'' lat_name commit_node.ctrler_name original_commit_state List.inject_stmts_at_body
+  dbg_trace s!"Finished adding remove from lat for load replay. Ctrlers: ({ctrlers'''})"
 
   -- (5) Enforce any additional orderings on the replay load
   match mcm_ordering? with
