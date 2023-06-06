@@ -20,7 +20,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           ref: CI
         
@@ -38,7 +38,7 @@ jobs:
           mkdir nosq && cd nosq
           ../build/bin/aqlc -t 4 ../.github/test-files/nosq-lsq-no-replay.file
           cd ..
-          mkdir single && cd nosq
+          mkdir single && cd single
           ../build/bin/aqlc -t 4 ../.github/test-files/single-lsq.file
           cd ..
 
