@@ -4,9 +4,7 @@ name: CI
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "CI" ]
+  # Triggers the workflow on pull request events but only for the "main" branch
   pull_request:
     branches: [ "main" ]
     
@@ -20,9 +18,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
-        with:
-          ref: CI
+      - uses: actions/checkout@v2
         
 
       - name: Install Elan
@@ -36,10 +32,10 @@ jobs:
       - name: Compile Files
         run: |
           mkdir nosq && cd nosq
-          ../build/bin/aqlc -t 4 ../.github/test-files/nosq-lsq-no-replay.file
+          ../build/bin/aqlc -t 5 ../.github/test-files/nosq-lsq-no-replay.file
           cd ..
           mkdir single && cd single
-          ../build/bin/aqlc -t 4 ../.github/test-files/single-lsq.file
+          ../build/bin/aqlc -t 5 ../.github/test-files/single-lsq.file
           cd ..
 
       - name: Difference Check nosq-lsq-no-replay
