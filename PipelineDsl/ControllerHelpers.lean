@@ -460,6 +460,7 @@ def Ctrlers.AddRemoveFromLATWhenCommit
 (lat_name : CtrlerName)
 (commit_ctrler_name : CtrlerName)
 (commit_state_name : StateName)
+(function_inject_stmts_at_point : List Statement → InstType → List Statement → Except String (List Statement))
 : Except String Ctrlers :=
   -- Insert a stmt to remove_key(seq_num) from the LAT
   let remove_key_stmt : Statement := stray_expr $ some_term $
@@ -469,7 +470,7 @@ def Ctrlers.AddRemoveFromLATWhenCommit
   
   let ctrlers_remove_key_from_lat :=
     ctrlers.inject_ctrler_state
-      commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_commit
+      commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt function_inject_stmts_at_point
   
   ctrlers_remove_key_from_lat
 
