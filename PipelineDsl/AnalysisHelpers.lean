@@ -1831,19 +1831,6 @@ def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β
 --   -- Should also check we only found 1 match.
 --   default
 
--- Newer, better, version of get_ctrler_from_ctrlers_list
-def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
-: Except String Ctrler := do
-  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
-  match ctrler_match_list with
-  | [ctrler] => pure ctrler
-  | [] =>
-    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
-    throw msg
-  | _::_ =>
-    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
-    throw msg
-
 -- abbrev IdentList := List Identifier
 
 def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipeline.Statement :=

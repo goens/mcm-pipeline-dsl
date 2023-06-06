@@ -489,3 +489,109 @@ def Ctrler.instruction_var
   | [inst] => pure inst.var_name
   | _::_ => throw s!"Error: Expected to find one inst type state var in Ctrler?: State Vars: ({state_vars})"
 
+-- Newer, better, version of get_ctrler_from_ctrlers_list
+def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
+: Except String Ctrler := do
+  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
+  match ctrler_match_list with
+  | [ctrler] => pure ctrler
+  | [] =>
+    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+  | _::_ =>
+    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+
+open Pipeline in
+def Ctrler.add_stmt_to_ctrler_descript
+(ctrler : Ctrler)
+(stmt : Statement)
+: Except String Ctrler := do
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler => pure {
+      name := ctrler.name
+      controller_descript := ← ctrler.controller_descript.add_stmt_to_ctrler stmt
+      entry_descript := none
+      init_trans := none
+      state_vars := none
+      transition_list := none
+      ctrler_init_trans := ctrler.ctrler_init_trans
+      ctrler_state_vars := ctrler.ctrler_state_vars
+      ctrler_trans_list := ctrler.ctrler_trans_list
+    }
+  | .Unordered
+  | .FIFO => do
+    let updated_entry ←
+      match ctrler.entry_descript with
+      | .some descript => do
+        descript.add_stmt_to_entry stmt
+      | .none => throw s!"Error: Queue ({ctrler_type}) has no entry_descript! Ctrler Name: ({ctrler.name})"
+
+    pure {
+      name := ctrler.name
+      controller_descript := ctrler.controller_descript
+      entry_descript := updated_entry
+      init_trans := ctrler.init_trans
+      state_vars := ctrler.state_vars
+      transition_list := ctrler.transition_list
+      ctrler_init_trans := none
+      ctrler_state_vars := none
+      ctrler_trans_list := none
+    }
+
+open Pipeline in
+def Ctrler.assign_state_vars
+(ctrler : Ctrler)
+(state_vars : List TypedIdentifier)
+: Except String Ctrler := do
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler => pure {
+      name := ctrler.name
+      controller_descript := ctrler.controller_descript
+      entry_descript := none
+      init_trans := none
+      state_vars := none
+      transition_list := none
+      ctrler_init_trans := ctrler.ctrler_init_trans
+      ctrler_state_vars := state_vars
+      ctrler_trans_list := ctrler.ctrler_trans_list
+    }
+  | .Unordered
+  | .FIFO => pure {
+    name := ctrler.name
+    controller_descript := ctrler.controller_descript
+    entry_descript := ctrler.entry_descript
+    init_trans := ctrler.init_trans
+    state_vars := state_vars
+    transition_list := ctrler.transition_list
+    ctrler_init_trans := none
+    ctrler_state_vars := none
+    ctrler_trans_list := none
+  }
+
+
+open Pipeline in
+def Ctrler.add_var_decl_to_ctrler
+(ctrler : Ctrler)
+(t_ident : TypedIdentifier)
+: Except String Ctrler := do
+  let state_vars ← ctrler.get_state_vars
+
+  let ctrler' ← ctrler.assign_state_vars (state_vars ++ [t_ident])
+  ctrler'.add_stmt_to_ctrler_descript (variable_declaration t_ident)
+
+open Pipeline in
+def Ctrlers.add_var_decl_to_ctrler
+(ctrlers : Ctrlers)
+(ctrler_name : CtrlerName)
+(var_decl : TypedIdentifier)
+: Except String Ctrlers :=
+  ctrlers.mapM (
+    let ctrler : Ctrler := ·;
+    if ctrler.name == ctrler_name then
+      ctrler.add_var_decl_to_ctrler var_decl
+    else
+      pure ctrler)
+

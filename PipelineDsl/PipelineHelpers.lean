@@ -40,7 +40,16 @@ abbrev listen := Statement.listen_handle
 abbrev value_decl := Statement.value_declaration
 
 abbrev if_statement := Conditional.if_statement
-  
+
+open Pipeline in
+def Pipeline.Statement.append_to_block
+(stmt_blk stmt : Statement)
+: Except String Statement :=
+  match stmt_blk with
+  | .block stmts =>
+    pure $ Statement.block (stmts ++ [stmt])
+  | _ => throw s!"Error: Expected stmt to be a block? Stmt_blk: ({stmt_blk})"
+
 def Pipeline.Statement.to_block : Statement → Statement
 | stmt => match stmt with
   | .block _ => stmt
@@ -436,4 +445,26 @@ def Pipeline.TypedIdentifier.var_name
 : Identifier :=
   let (/-type-/_, ident) := t_ident.type_ident
   ident
+
+def Pipeline.Description.add_stmt_to_ctrler
+(ctrler_description : Description)
+(stmt : Statement)
+: Except String Description := do
+  match ctrler_description with
+  | .controller ident stmt_blk => do
+    let appended ← stmt_blk.append_to_block stmt
+    pure $ Description.controller ident appended
+  | _ =>
+    throw s!"Error: Description wasn't controller type?"
+
+def Pipeline.Description.add_stmt_to_entry
+(ctrler_description : Description)
+(stmt : Statement)
+: Except String Description := do
+  match ctrler_description with
+  | .entry ident stmt_blk => do
+    let appended ← stmt_blk.append_to_block stmt
+    pure $ Description.entry ident appended
+  | _ =>
+    throw s!"Error: Description wasn't entry type?"
 
