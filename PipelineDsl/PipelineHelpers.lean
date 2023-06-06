@@ -41,6 +41,8 @@ abbrev value_decl := Statement.value_declaration
 
 abbrev if_statement := Conditional.if_statement
 
+abbrev labelled_stmt := Pipeline.Statement.labelled_statement
+
 open Pipeline in
 def Pipeline.Statement.append_to_block
 (stmt_blk stmt : Statement)

@@ -1963,7 +1963,7 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       | .commit =>
         -- return the two stmt & t
         -- pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label by using 'stmts'
-        pure ( [Pipeline.Statement.labelled_statement label (stmts_to_inject.to_block)] , [stmt] ++ t)
+        pure ( [(stmts_to_inject.to_block)] , [labelled_stmt label stmt] ++ t)
       | _ =>
         pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
     | .block stmts' =>
