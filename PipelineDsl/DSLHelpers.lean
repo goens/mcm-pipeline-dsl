@@ -297,6 +297,32 @@ partial def List.inject_stmts_at_perform
       pure ([h] ++ tail_re_build_stmts)
   | [] => pure ([])
 
+open Pipeline in
+partial def List.inject_stmts_at_body
+(stmts : List Pipeline.Statement)
+(inst_type : InstType)
+(stmts_to_inject : List Pipeline.Statement)
+-- returns: (the stmts we kinda re-build with, the commit stmts)
+: Except String (List Pipeline.Statement /- × List Pipeline.Statement-/) := do
+  -- try tail recursion
+  match stmts with
+  | h :: t =>
+    let (tail_re_build_stmts) ← t.inject_stmts_at_body inst_type stmts_to_inject
+
+    let h_re_built := ←
+      match h with
+      | .listen_handle stmt handle_blks => do
+        pure $ Statement.listen_handle
+          ( ← List.inject_stmts_at_body [stmt] inst_type stmts_to_inject ).to_block
+          handle_blks
+      | .block blk_stmts =>
+        pure (Statement.block $ stmts_to_inject ++ blk_stmts)
+      | _ => throw s!"Error: When injecting stmts at stmt body, stmt isn't a listen_handle or block to add stmts into? Stmts: ({stmts}) Head: ({h})"
+
+    pure $ [h_re_built] ++ tail_re_build_stmts
+
+  | [] => pure ([])
+
 -- TODO NOTE: later, try to make this more generic
 open Pipeline in
 partial def List.inject_stmts_at_commit
