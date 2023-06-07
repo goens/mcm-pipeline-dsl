@@ -135,6 +135,7 @@ def CreateReplayAwaitLoadState
 (four_nodes : CommitIssueAwaitValueStmtNodes)
 (issue_ctrler_node_pred_on_commit? : Option CDFG.Node)
 (ctrlers : Ctrlers)
+(lat_name : CtrlerName)
 : Except String (Pipeline.Description × Pipeline.Description) := do
   -- ===== required stmts: =====
   -- 1. await the load response
@@ -162,17 +163,18 @@ def CreateReplayAwaitLoadState
   let write_correct_replay_value ←
     four_nodes.old_load_value_node.stmts_to_write_replay_value_to_result_write_location replay_value
 
-  let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num inst_seq_num_expr
+  let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num $ ← inst_seq_num_expr
   -- 3.(b)
   let commit_ctrler_squash := CreateDSLMsgCall four_nodes.commit_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
+  let squash_lat_msg := CreateDSLMsgCall lat_name squash [violating_seq_num.to_dsl_var_expr]
   -- AZ NOTE: Need some kind of fix here, make the load controller squash the load without too much human intervention
   let load_ctrler_squash := CreateDSLMsgCall four_nodes.global_complete_load_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
 
   -- the if cond: old_val != replay_val
-  let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value 
+  let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value
   -- the stmts
   let if_old_not_equal_replay_stmts :=
-    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, commit_ctrler_squash, load_ctrler_squash]
+    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, squash_lat_msg, commit_ctrler_squash, load_ctrler_squash]
 
   -- the if stmt to handle the mispeculated case
   let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
@@ -215,6 +217,7 @@ def CreateReplayAwaitLoadState
   -- NOTE: We add 2. here, but if the ctrler with the old value isn't a "reg_file.read(dest_reg)"
   -- then it's a queue, and we access a queue with a search API where we need to be in scope
   -- But that case is not handled yet..
+
   let check_mispeculation_and_replay_complete_stmts := Pipeline.Statement.block $
     [old_load_value_decl, old_load_value_stmt, if_old_not_equal_replay_expr, replay_complete_msg]
 
@@ -626,9 +629,10 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   /- =================== New Await Replay State ===================== -/
   -- ** Awaiting the Replay Memory Response
 
-  let (new_await_replay_state, new_compare_and_squash_state) ← CreateReplayAwaitLoadState is_issue_ctrler_and_await_response_ctrler_same
-    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩  
-    issue_ctrler_node_pred_on_commit? ctrlers
+  let (new_await_replay_state, new_compare_and_squash_state) ←
+    CreateReplayAwaitLoadState is_issue_ctrler_and_await_response_ctrler_same
+    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
+    issue_ctrler_node_pred_on_commit? ctrlers lat_name
 
   dbg_trace s!"$$sanity5"
   /- === Add Msg passing to coordinate the Load Replay process === -/
@@ -711,9 +715,9 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   let perform_load_node ← graph.load_global_perform_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting perform load node"
   let commit_node ← graph.commit_state_ctrler
-    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+    |>.throw_exception_nesting_msg s!"Error getting commit node"
 
-  let lat_squashing_ctrler := commit_node.ctrler_name
+  let lat_squashing_ctrler := perform_load_node.ctrler_name
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
     perform_load_node.ctrler_name commit_node.ctrler_name lat_squashing_ctrler
 
@@ -739,7 +743,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
 
   dbg_trace s!"Adding Remove from lat when commit in Load Replay"
   let ctrlers''' ← AddRemoveFromLATWhenCommit
-    ctrlers'' lat_name commit_node.ctrler_name original_commit_state List.inject_stmts_at_body
+    ctrlers'' lat_name commit_node.ctrler_name original_commit_state List.inject_stmts_at_body [instruction, seq_num]
   dbg_trace s!"Finished adding remove from lat for load replay. Ctrlers: ({ctrlers'''})"
 
   -- (5) Enforce any additional orderings on the replay load
