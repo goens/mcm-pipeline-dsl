@@ -97,9 +97,13 @@ def qual_var_term (var_name : List Identifier) : Pipeline.Term :=
 def var_asn_var (var1 : List String) (var2 : String) : Statement :=
   variable_assignment var1.to_qual_name <| var_expr var2
 
-def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
+open Pipeline in
+def List.to_dsl_var_expr : List Identifier → Except String Expr
 | idents =>
-  Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
+  match idents with
+  | [one] => pure $ var_expr one
+  | _::_ => pure $ qual_var_expr idents
+  | [] => throw s!"Error: passed empty list of Identifiers to convert to DSL Expr."
 
 -- function that checks if an expr is in a list of exprs
 -- and finds an expr with the matching index in another list

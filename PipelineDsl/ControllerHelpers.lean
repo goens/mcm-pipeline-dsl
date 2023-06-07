@@ -461,11 +461,12 @@ def Ctrlers.AddRemoveFromLATWhenCommit
 (commit_ctrler_name : CtrlerName)
 (commit_state_name : StateName)
 (function_inject_stmts_at_point : List Statement → InstType → List Statement → Except String (List Statement))
-: Except String Ctrlers :=
+(key_to_remove : List Identifier)
+: Except String Ctrlers := do
   -- Insert a stmt to remove_key(seq_num) from the LAT
   let remove_key_stmt : Statement := stray_expr $ some_term $
-    function_call [lat_name, remove_key].to_qual_name [var_expr seq_num]
-  let inst_is_type := VarCompare [instruction, op] equal [load.toString]
+    function_call [lat_name, remove_key].to_qual_name [← key_to_remove.to_dsl_var_expr]
+  let inst_is_type := VarCompare [instruction, op] equal [load.toMurphiString]
   let if_inst_is_type := conditional_stmt <| if_statement inst_is_type remove_key_stmt
   
   let ctrlers_remove_key_from_lat :=

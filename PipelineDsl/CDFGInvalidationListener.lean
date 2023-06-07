@@ -201,6 +201,6 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   
   -- (4) Add a stmt to remove_key from the invalidation listener to commit load
   let ctrlers'''' ← AddRemoveFromLATWhenCommit
-    ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit
+    ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [seq_num]
 
   pure ctrlers''''
