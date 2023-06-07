@@ -5204,14 +5204,14 @@ lst_stmts_decls
                 trans_obj := stmt_trans_info.trans_obj,
                 -- Swap curr ctrler designator & specific murphi desig
                 -- since we just call in the opposite order
-                specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx,
+                specific_murphi_dest_expr := remove_dest_key_murϕ_expr,
                 lst_decls := stmt_trans_info.lst_decls,
                 is_rhs := stmt_trans_info.is_rhs,
                 -- By setting these fields, I assume we'll specifically mean to use this with 
                 -- controllers with multiple elements, and thus we need to use 'tail_search'
                 -- which indexes the dest with 'curr_idx'
                 use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
-                curr_ctrler_designator_idx := stmt_trans_info.specific_murphi_dest_expr -- murphi_dest_idx_expr
+                curr_ctrler_designator_idx := remove_dest_key_murϕ_expr, -- stmt_trans_info.specific_murphi_dest_expr
                 lhs_var_is_just_default := false
                 translate_entry_or_ctrler := entry_or_ctrler_translation
               }
@@ -5729,6 +5729,7 @@ lst_stmts_decls
             }
             stmts_decls
           else if (api_func_name == "squash") then
+            dbg_trace s!"DBG: translating squash api:({term})"
             -- Just get the handle code
             -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
             let expected_func := "squash"
