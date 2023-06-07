@@ -7439,7 +7439,11 @@ lst_stmts_decls
     -- Well.. i kinda have the other func for this..
     -- but i still need the decl list for manually returning the 
     -- template func decls, so i can avoid doing type inference...
-    let lsts : lst_stmts_decls := { stmts := [], decls := []}
+
+    let (type_ident, var_ident) := typed_ident.type_ident
+    let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
+
+    let lsts : lst_stmts_decls := { stmts := [], decls := [Murϕ.Decl.var [var_ident] murphi_type_expr]}
     lsts
   | Statement.value_declaration typed_ident expr =>
     -- dbg_trace "$$$$$$$ CHECK FOR NULL $$$$$$$"
@@ -7461,10 +7465,9 @@ lst_stmts_decls
     -- also produce a Decl for this
 -- inductive Designator
 -- | mk : ID → List (ID ⊕ Expr) → Designator
-    let assned_var's_name :=
+    let ( type_ident, assned_var's_name ) :=
     match typed_ident with
-    | TypedIdentifier.mk tiden ident =>
-      ident
+    | TypedIdentifier.mk tident ident => (tident, ident)
 
     let designator :=
     Designator.mk assned_var's_name []
@@ -7514,15 +7517,16 @@ lst_stmts_decls
         | TypedIdentifier.mk tiden ident => tiden
       )
 
-      let murphi_type_expr := dsl_type_to_murphi_type_string dsl_type
-      let murphi_null := murphi_type_to_null murphi_type_expr
+      let murphi_type_expr_string := dsl_type_to_murphi_type_string dsl_type
+      let murphi_null := murphi_type_to_null murphi_type_expr_string
 
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_null
 
+      let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
       let lsts : lst_stmts_decls := {
         stmts := [murphi_assignment_stmt],
-        decls := []
+        decls := [Murϕ.Decl.var [assned_var's_name] murphi_type_expr]
       }
       dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts
@@ -7531,9 +7535,11 @@ lst_stmts_decls
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_expr
 
+      let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
+
       let lsts : lst_stmts_decls := {
         stmts := [murphi_assignment_stmt],
-        decls := []
+        decls := [Murϕ.Decl.var [assned_var's_name] murphi_type_expr]
       }
       dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts
