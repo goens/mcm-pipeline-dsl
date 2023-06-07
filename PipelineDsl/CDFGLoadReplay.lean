@@ -174,7 +174,7 @@ def CreateReplayAwaitLoadState
   let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value
   -- the stmts
   let if_old_not_equal_replay_stmts :=
-    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, squash_lat_msg, commit_ctrler_squash, load_ctrler_squash]
+    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, squash_lat_msg /-, commit_ctrler_squash, load_ctrler_squash-/ ]
 
   -- the if stmt to handle the mispeculated case
   let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
