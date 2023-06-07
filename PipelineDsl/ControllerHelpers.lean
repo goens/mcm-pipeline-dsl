@@ -189,7 +189,7 @@ def CreateTableQueue -- CAM like table
   let when_remove_stmt := Statement.when
     [remove_from, remove_key].to_qual_name
     remove_args
-    (remove_actions ++ [complete await_insert_remove_state_name]).to_block
+    (remove_actions ++ [reset await_insert_remove_state_name]).to_block
   let await_when_remove_stmt := await none [when_insert_stmt, when_remove_stmt]
 
   -- a handle block to handle squashing
