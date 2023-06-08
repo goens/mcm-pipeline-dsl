@@ -43,6 +43,14 @@ abbrev if_statement := Conditional.if_statement
 
 abbrev labelled_stmt := Pipeline.Statement.labelled_statement
 
+def Pipeline.Statement.get_await_when_blocks
+(stmt : Statement)
+: Except String (List Statement) :=
+  match stmt with
+  | .await _ list_stmt =>
+    pure list_stmt
+  | _ => throw s!"Error: Expected input stmt to be an Await, instead got: ({stmt})"
+
 open Pipeline in
 def Pipeline.Statement.append_to_block
 (stmt_blk stmt : Statement)
@@ -103,7 +111,7 @@ def List.to_dsl_var_expr : List Identifier → Except String Expr
   match idents with
   | [one] => pure $ var_expr one
   | _::_ => pure $ qual_var_expr idents
-  | [] => throw s!"Error: passed empty list of Identifiers to convert to DSL Expr."
+  | [] => throw s!"Error: passed empty list of Idenifiers to convert to DSL Expr."
 
 -- function that checks if an expr is in a list of exprs
 -- and finds an expr with the matching index in another list
@@ -137,6 +145,85 @@ def Pipeline.Statement.get_when_stmt_src_args
     let msg : String := "Error: function expected a when stmt\n"++
       s!"Instead got this stmt: ({when_stmt})"
     throw msg
+
+def Pipeline.Statement.is_ident_in_when_args
+(when_stmt : Statement)
+(arg_ident : Identifier)
+: Except String Bool
+:= do
+  match when_stmt with
+  | .when _ args _ => return args.contains arg_ident
+  | _ =>
+    let msg : String := "Error: function expected a when stmt\n"++
+    s!"Instead got this stmt: ({when_stmt})"
+    throw msg
+
+def Pipeline.QualifiedName.idents
+(qual_name : QualifiedName)
+: List Identifier :=
+  match qual_name with
+  | .mk idents => idents
+
+def Pipeline.Statement.is_send_load_api
+(statement : Statement)
+: Bool :=
+  match statement with
+  | .stray_expr expr =>
+    match expr with
+    | .some_term term =>
+      match term with
+      | .function_call qual_name /- args -/ _ =>
+        qual_name.idents == ["memory_interface", "send_load_request"]
+      | _ => false
+    | _ => false
+  | _ => false
+
+open Pipeline in
+def List.remove_post_send_load_stmts
+(stmts : List Statement)
+: /- Except String -/ (List Statement) :=
+  match stmts with
+  | h :: t =>
+    if h.is_send_load_api then
+      [h]
+    else
+      [h] ++ (t.remove_post_send_load_stmts)
+  | [] => []
+
+def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
+| .mk type' identifier => (type', identifier)
+
+def Pipeline.Statement.is_stmt_var_assign_to_var
+(stmt : Statement)
+(var_name : Identifier)
+(only_consider_var_assign : Bool)
+: Bool :=
+  match stmt with
+  | .variable_assignment qual_name /- expr -/ _ =>
+    let qual_idents := qual_name.idents
+    qual_idents == [var_name]
+  | .value_declaration typed_ident /- expr -/ _ =>
+    if only_consider_var_assign then
+      false
+    else
+      let (_, value_var_name) := typed_ident.type_ident
+      value_var_name == var_name
+  | _ => false
+
+open Pipeline in
+def List.first_var_assign_to_var
+(stmts : List Statement)
+(var_name : Identifier)
+(only_consider_var_assign : Bool)
+: Option Statement :=
+  match stmts with
+  | h :: t =>
+    let h_is_the_var_assign : Bool := h.is_stmt_var_assign_to_var var_name only_consider_var_assign
+    if h_is_the_var_assign then
+      some h
+    else
+      t.first_var_assign_to_var var_name only_consider_var_assign
+  | [] => none
 
 def Identifier.to_term (ident : Identifier) : Term :=
   var_term ident
@@ -378,9 +465,6 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
     let stmt'' := ← stmt'.map_rhs_vars_src_to_dest src_vars dest_vars
     pure $ Statement.labelled_statement label stmt''
 end
-
-def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
-| .mk type' identifier => (type', identifier)
 
 def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
 | typed_ident =>

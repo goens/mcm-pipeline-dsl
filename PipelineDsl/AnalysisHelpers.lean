@@ -852,9 +852,6 @@ def get_ctrler_from_ctrlers_list (ctrler_name : CtrlerName) (ctrlers : List cont
     let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
     throw msg
 
-def Pipeline.QualifiedName.idents : Pipeline.QualifiedName → List Identifier
-| .mk idents => idents
-
 def Pipeline.QualifiedName.is_ident_ordering : Pipeline.QualifiedName → Except String Bool
 | qual_name =>
   match qual_name.idents with
