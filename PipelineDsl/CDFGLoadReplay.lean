@@ -734,26 +734,39 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   -- (3) Add insert_key(seq_num, address) into LAT
   let (load_req_address, load_req_seq_num) ← perform_load_node.load_req_address_seq_num
 
-  let ctrlers''  ← AddInsertToLATWhenPerform
-    ctrlers' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
+  -- let state_where_addr_gen'd_or_received := graph.node_where_load_addr_obtained perform_load_node
+  let addr_var_name ← load_req_address.var's_identifier
+  let perform_load_ctrler ← ctrlers.ctrler_from_name perform_load_node.ctrler_name
+  let is_addr_a_state_var ← perform_load_ctrler.is_a_state_var_of_ctrler addr_var_name
 
-  -- (4) Add remove_key(seq_num) from LAT
-  let commit_node := ← graph.commit_state_ctrler
-    |>.throw_exception_nesting_msg s!"Error getting perform load node"
+  let (is_found_addr_var, ctrlers'')  ← LoadAddress.CDFG.Graph.update_ctrlers_at_node_where_load_addr_obtained_search -- AddInsertToLATWhenPerform
+    graph
+    perform_load_node
+    addr_var_name is_addr_a_state_var
+    ctrlers'
+    []
+    lat_name load_req_address load_req_seq_num
 
-  dbg_trace s!"Adding Remove from lat when commit in Load Replay"
-  let ctrlers''' ← AddRemoveFromLATWhenCommit
-    ctrlers'' lat_name commit_node.ctrler_name original_commit_state List.inject_stmts_at_body [instruction, seq_num]
-  dbg_trace s!"Finished adding remove from lat for load replay. Ctrlers: ({ctrlers'''})"
+  match is_found_addr_var with
+  | true =>
+    -- (4) Add remove_key(seq_num) from LAT
+    let commit_node := ← graph.commit_state_ctrler
+      |>.throw_exception_nesting_msg s!"Error getting perform load node"
 
-  -- (5) Enforce any additional orderings on the replay load
-  match mcm_ordering? with
-  | some mcm_ordering =>
-    CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
-      |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
-  | none =>
-    pure ctrlers'''
-  
+    dbg_trace s!"Adding Remove from lat when commit in Load Replay"
+    let ctrlers''' ← AddRemoveFromLATWhenCommit
+      ctrlers'' lat_name commit_node.ctrler_name original_commit_state List.inject_stmts_at_body [instruction, seq_num]
+    dbg_trace s!"Finished adding remove from lat for load replay. Ctrlers: ({ctrlers'''})"
+
+    -- (5) Enforce any additional orderings on the replay load
+    match mcm_ordering? with
+    | some mcm_ordering =>
+      CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
+        |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
+    | none =>
+      pure ctrlers'''
+  | false =>
+    throw s!"Error: couldn't find the address variable in the perform load ctrler?"
   -- ** Get info about ctrlers for load replay
   -- 1. Get the "Commit" Ctrler
   -- 2. Search for where load API is called
