@@ -293,12 +293,14 @@ def Pipeline.Description.inject_state_stmts
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(var_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Description := do
   match (← state.state_name) == state_name with
-  | true => do UpdateState state inst_type stmts_to_inject InjectStmtsAt
-  | false => do pure state
+  | true => do UpdateState state inst_type stmts_to_inject var_to_insert_after? arg_in_when_stmt? InjectStmtsAt
+  | false => pure state
 
 def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
 | stmt => do
@@ -406,13 +408,15 @@ def Ctrler.inject_ctrler_state
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Ctrler := do
   match ctrler.name == ctrler_name with
   | true => do
     let states := ← ctrler.states
-    let updated_states := ← states.mapM (·.inject_state_stmts state_name inst_type stmts_to_inject UpdateState InjectStmtsAt)
+    let updated_states := ← states.mapM (·.inject_state_stmts state_name inst_type stmts_to_inject stmt_to_insert_after? arg_in_when_stmt? UpdateState InjectStmtsAt)
     ctrler.inject_states updated_states
   | false => do
     pure ctrler
@@ -425,11 +429,13 @@ def Ctrlers.inject_ctrler_state
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Ctrlers := do
   ctrlers.mapM (let ctrler : Ctrler := ·;
-    ctrler.inject_ctrler_state ctrler_name state_name inst_type stmts_to_inject UpdateState InjectStmtsAt)
+    ctrler.inject_ctrler_state ctrler_name state_name inst_type stmts_to_inject stmt_to_insert_after? arg_in_when_stmt? UpdateState InjectStmtsAt)
 
 open Pipeline in
 def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
@@ -439,6 +445,9 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 (perform_load_state_name : StateName)
 (load_req_address : Expr)
 (load_req_seq_num : Expr)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(InjectStmtsFn : InjectStmtsFunction)
 : Except String Ctrlers := do
 
   -- Insert a stmt to insert_key(seq_num, address) into the LAT  
@@ -450,7 +459,15 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 
   let ctrlers_insert_key_into_lat :=
     ctrlers.inject_ctrler_state
-      perform_load_ctrler_name perform_load_state_name load [insert_key_stmt] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_perform
+      perform_load_ctrler_name perform_load_state_name
+      load
+      [insert_key_stmt]
+      stmt_to_insert_after?
+      arg_in_when_stmt?
+      Pipeline.Description.inject_stmts_at_stmt
+      -- List.inject_stmts_at_perform
+      -- List.inject_stmts_after_stmt_at_ctrler_state
+      InjectStmtsFn
   
   ctrlers_insert_key_into_lat
 
@@ -460,7 +477,7 @@ def Ctrlers.AddRemoveFromLATWhenCommit
 (lat_name : CtrlerName)
 (commit_ctrler_name : CtrlerName)
 (commit_state_name : StateName)
-(function_inject_stmts_at_point : List Statement → InstType → List Statement → Except String (List Statement))
+(function_inject_stmts_at_point : List Statement → InstType → List Statement → Option Statement → Option Identifier → Except String (Bool × List Statement))
 (key_to_remove : List Identifier)
 : Except String Ctrlers := do
   -- Insert a stmt to remove_key(seq_num) from the LAT
@@ -471,7 +488,7 @@ def Ctrlers.AddRemoveFromLATWhenCommit
   
   let ctrlers_remove_key_from_lat :=
     ctrlers.inject_ctrler_state
-      commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt function_inject_stmts_at_point
+      commit_ctrler_name commit_state_name load [if_inst_is_type] none none Pipeline.Description.inject_stmts_at_stmt function_inject_stmts_at_point
   
   ctrlers_remove_key_from_lat
 
@@ -479,6 +496,20 @@ def Ctrlers.AddRemoveFromLATWhenCommit
 --  Get A Ctrler's State Var that is of the "inst" type (i.e. the instruction).
 --  NOTE: Create an option version if it's needed.
 ---/
+
+open Pipeline in
+def List.is_var_in_state_vars
+(typed_idents : List TypedIdentifier)
+(var_name : VarName)
+: Bool :=
+  typed_idents.any (let (/- type_name -/ _, ident) := ·.type_ident; ident == var_name)
+
+def Ctrler.is_a_state_var_of_ctrler
+(ctrler : Ctrler)
+(var_name : Identifier)
+: Except String Bool := do
+  let state_vars ← ctrler.get_state_vars
+  pure $ state_vars.is_var_in_state_vars var_name
 
 open Pipeline in
 def Ctrler.instruction_var
