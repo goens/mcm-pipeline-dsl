@@ -51,7 +51,41 @@ def Pipeline.Statement.get_await_when_blocks
     pure list_stmt
   | _ => throw s!"Error: Expected input stmt to be an Await, instead got: ({stmt})"
 
-open Pipeline in
+def List.first!
+(list : List a)
+: Except String a :=
+  match list with
+  | [one] => pure one
+  | h :: _ => pure h
+  | [] => throw s!"Error: Expected a non-empty list!"
+
+def Pipeline.QualifiedName.idents
+(qual_name : QualifiedName)
+: List Identifier :=
+match qual_name with
+| .mk idents => idents
+
+def Pipeline.Expr.var's_identifier
+(expr : Expr)
+: Except String Identifier :=
+  match expr with
+  | .some_term term =>
+    match term with
+    | .var ident => pure ident
+    | .qualified_var qual_name =>
+      qual_name.idents.first!
+    | _ => throw s!"Error: Expected term to be a var or qualified var?"
+  | _ => throw s!"Error: Expected expr to be some_term, and that term to be a var or qualified var?"
+
+def Pipeline.Statement.append_stmts_to_block
+(stmt_blk : Statement)
+(stmt : List Statement)
+: Except String Statement :=
+  match stmt_blk with
+  | .block stmts =>
+  pure $ Statement.block (stmts ++ stmt)
+  | _ => throw s!"Error: Expected stmt to be a block? Stmt_blk: ({stmt_blk})"
+
 def Pipeline.Statement.append_to_block
 (stmt_blk stmt : Statement)
 : Except String Statement :=
@@ -157,12 +191,6 @@ def Pipeline.Statement.is_ident_in_when_args
     let msg : String := "Error: function expected a when stmt\n"++
     s!"Instead got this stmt: ({when_stmt})"
     throw msg
-
-def Pipeline.QualifiedName.idents
-(qual_name : QualifiedName)
-: List Identifier :=
-  match qual_name with
-  | .mk idents => idents
 
 def Pipeline.Statement.is_send_load_api
 (statement : Statement)
