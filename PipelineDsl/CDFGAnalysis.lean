@@ -2994,98 +2994,116 @@ namespace LoadAddress
 -- : Except String Node :=
 --   default
 
-open Pipeline in
-def CDFG.Graph.node_where_load_addr_obtained_search
-(graph : Graph)
-(current_node : Node)
-(addr_name : VarName)
-(is_addr_a_state_var : Bool)
--- Use ctrlers if we're going to return the updated list of ctrlers.
-(ctrlers : Ctrlers)
-(stmts_to_inject : List Statement)
-(visited : List Node)
-: Except String (Bool × Ctrlers) := do
-  -- Check if this node is the node that produces the address variable
-  -- (A) If the addr is a state var, then check if this is where it is assigned in it's stmts
-  --   > then what we do is look at the stmts, and see if there's any var assign stmts to the var_name
-  -- (B) If the addr is not a state var, then it's either
-  -- (1) a local variable
-  --   > then search for the first variable_assignment or value_declaration before the send_load_request api
-  -- (2) input from a message
-  --   > then search if there are await-when pairs with the var_name in the when identifier args
-  -- (3) from an await-when API search
-  --   > then search if there is an await-when API stmt that the send_load_request transition is predicated by
+  open Pipeline in
+  partial def CDFG.Graph.update_ctrlers_at_node_where_load_addr_obtained_search
+  (graph : Graph)
+  (current_node : Node)
+  (addr_name : VarName)
+  (is_addr_a_state_var : Bool)
+  -- Use ctrlers if we're going to return the updated list of ctrlers.
+  (ctrlers : Ctrlers)
+  -- (stmts_to_inject : List Statement) -- don't need, the add insert to lat should gen this
+  (visited : List Node)
+  -- LAT stuff
+  (lat_name : CtrlerName)
+  (load_req_address : Expr)
+  (load_req_seq_num : Expr)
+  : Except String (Bool × Ctrlers) := do
+    -- Check if this node is the node that produces the address variable
+    -- (A) If the addr is a state var, then check if this is where it is assigned in it's stmts
+    --   > then what we do is look at the stmts, and see if there's any var assign stmts to the var_name
+    -- (B) If the addr is not a state var, then it's either
+    -- (1) a local variable
+    --   > then search for the first variable_assignment or value_declaration before the send_load_request api
+    -- (2) input from a message
+    --   > then search if there are await-when pairs with the var_name in the when identifier args
+    -- (3) from an await-when API search
+    --   > then search if there is an await-when API stmt that the send_load_request transition is predicated by
 
-  -- if no transitions non-reset are perform load, then
-  -- only consider non-reset transitions
-  let some_transitions_are_perform_load : Bool ← current_node.non_reset_transitions.anyM (·.is_has_perform_of_inst_type load)
+    -- if no transitions non-reset are perform load, then
+    -- only consider non-reset transitions
+    let some_transitions_are_perform_load : Bool ← current_node.non_reset_transitions.anyM (·.is_has_perform_of_inst_type load)
 
-  let transitions_considered ←
-    match some_transitions_are_perform_load with
-    | true => current_node.non_reset_transitions.filterM (·.is_has_perform_of_inst_type load)
-    | false => pure current_node.non_reset_transitions
+    let transitions_considered ←
+      match some_transitions_are_perform_load with
+      | true => current_node.non_reset_transitions.filterM (·.is_has_perform_of_inst_type load)
+      | false => pure current_node.non_reset_transitions
 
-  let addr_from_await_when : Bool := ←
-    match is_addr_a_state_var with
+    let addr_from_await_when : Bool := ←
+      match is_addr_a_state_var with
+      | false =>
+        -- check the send_load_request transitions
+        transitions_considered.anyM (·.is_has_perform_of_inst_type load)
+      | true => pure false
+
+    match addr_from_await_when with
+    | true =>
+      -- Add the stmt to the state in the ctrlers..
+      -- TODO
+      -- Go to the ctrler/state, search stmts up to the stmt that is the await/when that has the identifier matching the addr_name var name
+      -- then add the stmts after it.
+      let updated_ctrlers ←
+        ctrlers.AddInsertToLATWhenPerform
+        lat_name
+        current_node.ctrler_name
+        current_node.current_state
+        load_req_address
+        load_req_seq_num
+        none
+        (some addr_name)
+        List.inject_stmts_in_when_matching_arg_at_ctrler_state
+
+      pure (true, updated_ctrlers)
     | false =>
-      -- check the send_load_request transitions
-      transitions_considered.anyM (·.is_has_perform_of_inst_type load)
-    | true => pure false
+      -- Do the search
+      -- transitions.find_variable_assignment or find value_declaration based on is_addr_a_state_var
+      let addr_var_stmts? : List (Option Statement) := transitions_considered.map (·.is_has_var_assigned addr_name is_addr_a_state_var some_transitions_are_perform_load)
+      let addr_var_stmts := addr_var_stmts?.filterMap id |>.eraseDups
+      let addr_var_stmt? :=
+        match addr_var_stmts with
+        | h::_ =>
+          dbg_trace s!"NOTE: in Load-Replay? Just taking the first stmt that assigns to var: ({addr_name}). Stmts: ({addr_var_stmts})"
+          some h
+        | [] => none
 
-  match addr_from_await_when with
-  | true =>
-    -- Add the stmt to the state in the ctrlers..
-    -- TODO
-    -- Go to the ctrler/state, search stmts up to the stmt that is the await/when that has the identifier matching the addr_name var name
-    -- then add the stmts after it.
-    sorry
-    default
-  | false =>
-    -- Do the search
-    -- TODO
-    -- transitions.find_variable_assignment or find value_declaration based on is_addr_a_state_var
-    let addr_var_stmts? : List (Option Statement) := transitions_considered.map (·.is_has_var_assigned addr_name is_addr_a_state_var some_transitions_are_perform_load)
-    let addr_var_stmts := addr_var_stmts?.filterMap id |>.eraseDups
-    let addr_var_stmt? :=
-      match addr_var_stmts with
-      | h::_ =>
-        dbg_trace s!"NOTE: in Load-Replay? Just taking the first stmt that assigns to var: ({addr_name}). Stmts: ({addr_var_stmts})"
-        some h
-      | [] => none
+      match addr_var_stmt? with
+      | some addr_var_stmt =>
+        -- TODO: Write the inject_stmts_after_stmt_at_ctrler_state function
+        let updated_ctrlers ←
+          ctrlers.AddInsertToLATWhenPerform
+            lat_name
+            current_node.ctrler_name
+            current_node.current_state
+            load_req_address
+            load_req_seq_num
+            (some addr_var_stmt)
+            none
+            List.inject_stmts_after_stmt_at_ctrler_state
 
-    match addr_var_stmt? with
-    | some addr_var_stmt =>
-      -- TODO: Write the inject_stmts_after_stmt_at_ctrler_state function
-      pure (true, ← ctrlers.inject_stmts_after_stmt_at_ctrler_state addr_var_stmt)
-      sorry
-      default
-    | none =>
-      -- get nodes transitioning to this one
-      let nodes_trans_to_this := graph.nodes_transitioning_to_node current_node |>.eraseDups
-      -- get the not-visited nodes, traverse them 1 by 1, stop if this function returns "found it"
-      let not_visited_nodes := nodes_trans_to_this.filter (! visited.contains ·)
-      let check_unvisited : List (Bool × Ctrlers) := ← not_visited_nodes.mapM (LoadAddress.CDFG.Graph.node_where_load_addr_obtained_search graph · addr_name is_addr_a_state_var ctrlers stmts_to_inject (visited ++ [current_node]) )
-      let addr_re_write? := check_unvisited.find? (let (bool, _) := ·; bool)
-      match addr_re_write? with
-      | some addr_re_write => pure addr_re_write
-      | none => throw s!"Error: wasn't able to add statements just after the phys_addr generating stmt."
+        pure (true, updated_ctrlers)
+      | none =>
+        -- get nodes transitioning to this one
+        let nodes_trans_to_this := graph.nodes_transitioning_to_node current_node |>.eraseDups
+        -- get the not-visited nodes, traverse them 1 by 1, stop if this function returns "found it"
+        let not_visited_nodes := nodes_trans_to_this.filter (! visited.contains ·)
+        let check_unvisited : List (Bool × Ctrlers) :=
+          ← not_visited_nodes.mapM (LoadAddress.CDFG.Graph.update_ctrlers_at_node_where_load_addr_obtained_search graph · addr_name is_addr_a_state_var ctrlers (visited ++ [current_node]) lat_name load_req_address load_req_seq_num)
+        let addr_re_write? := check_unvisited.find? (let (bool, _) := ·; bool)
+        match addr_re_write? with
+        | some addr_re_write => pure addr_re_write
+        | none => throw s!"Error: wasn't able to add statements just after the phys_addr generating stmt."
 
-
-    -- default
-  -- TODO: Check if addr_from_await_when is
-  -- true => then add the stmt at that node..
-  -- false => then do the below
-  -- start, for each transition,
-  -- if case (B),
-  -- Check if there is an await-when in the predicate, and if there is a identifier == addr_name in the arguments
-  -- if yes, then this is the state to add the stmt to, and it can be added anywhere in the when-scope
-  -- Else, and for case (A)
-  -- look at stmts, truncate after send_load_request stmt
-  -- reverse list of stmts
-  -- search for first stmt that meets the criteria
-
-  -- default
-  -- sorry
+    -- TODO: Check if addr_from_await_when is
+    -- true => then add the stmt at that node..
+    -- false => then do the below
+    -- start, for each transition,
+    -- if case (B),
+    -- Check if there is an await-when in the predicate, and if there is a identifier == addr_name in the arguments
+    -- if yes, then this is the state to add the stmt to, and it can be added anywhere in the when-scope
+    -- Else, and for case (A)
+    -- look at stmts, truncate after send_load_request stmt
+    -- reverse list of stmts
+    -- search for first stmt that meets the criteria
 
 end LoadAddress
 
