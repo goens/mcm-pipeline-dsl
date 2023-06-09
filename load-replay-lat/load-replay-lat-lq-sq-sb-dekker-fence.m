@@ -1188,67 +1188,10 @@ ruleset j : cores_t; i : LQ_idx_t do
 ((Sta.core_[ j ].LQ_.entries[ i ].state = build_packet_send_mem_request) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
-  var insert_key_check_found : boolean;
-  var found_double_key_check : boolean;
-  var load_address_table_loop_break : boolean;
-  var load_address_table_entry_idx : load_address_table_idx_t;
-  var load_address_table_found_entry : boolean;
-  var load_address_table_difference : load_address_table_idx_t;
-  var load_address_table_offset : load_address_table_idx_t;
-  var load_address_table_curr_idx : load_address_table_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  insert_key_check_found := false;
-  found_double_key_check := false;
-  for load_address_table_key_check_idx : load_address_table_idx_t do
-    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
-      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].state := load_address_table_await_insert_remove;
-        if (insert_key_check_found = false) then
-          insert_key_check_found := true;
-        else
-          found_double_key_check := true;
-        end;
-      end;
-    end;
-  endfor;
-  if (found_double_key_check = true) then
-    error "Found two entries with the same key? Was this intentional?";
-  elsif (insert_key_check_found = false) then
-    load_address_table_loop_break := false;
-    if (next_state.core_[ j ].load_address_table_.num_entries = load_address_table_NUM_ENTRIES_CONST) then
-      load_address_table_loop_break := true;
-    end;
-    load_address_table_entry_idx := 0;
-    load_address_table_found_entry := false;
-    load_address_table_difference := (load_address_table_NUM_ENTRIES_CONST - 1);
-    load_address_table_offset := 0;
-    while ((load_address_table_offset <= load_address_table_difference) & ((load_address_table_loop_break = false) & ((load_address_table_found_entry = false) & (load_address_table_difference >= 0)))) do
-      load_address_table_curr_idx := ((load_address_table_entry_idx + load_address_table_offset) % load_address_table_NUM_ENTRIES_CONST);
-      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid = false) then
-        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state = load_address_table_await_insert_remove) then
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
-          load_address_table_found_entry := true;
-        end;
-      end;
-      if (load_address_table_offset != load_address_table_difference) then
-        load_address_table_offset := (load_address_table_offset + 1);
-      else
-        load_address_table_loop_break := true;
-      end;
-    end;
-    next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries + 1);
-    if (load_address_table_found_entry = false) then
-      error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
-    end;
-  end;
   next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
   next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
   next_state.core_[ j ].mem_interface_.out_msg.valid := true;
@@ -1377,11 +1320,68 @@ ruleset j : cores_t; i : LQ_idx_t do
 (Sta.core_[ j ].LQ_.entries[ i ].state = await_translation)
 ==>
  
+  var insert_key_check_found : boolean;
+  var found_double_key_check : boolean;
+  var load_address_table_loop_break : boolean;
+  var load_address_table_entry_idx : load_address_table_idx_t;
+  var load_address_table_found_entry : boolean;
+  var load_address_table_difference : load_address_table_idx_t;
+  var load_address_table_offset : load_address_table_idx_t;
+  var load_address_table_curr_idx : load_address_table_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
   next_state.core_[ j ].LQ_.entries[ i ].phys_addr := next_state.core_[ j ].LQ_.entries[ i ].virt_addr;
+  insert_key_check_found := false;
+  found_double_key_check := false;
+  for load_address_table_key_check_idx : load_address_table_idx_t do
+    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
+      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
+        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].state := load_address_table_await_insert_remove;
+        if (insert_key_check_found = false) then
+          insert_key_check_found := true;
+        else
+          found_double_key_check := true;
+        end;
+      end;
+    end;
+  endfor;
+  if (found_double_key_check = true) then
+    error "Found two entries with the same key? Was this intentional?";
+  elsif (insert_key_check_found = false) then
+    load_address_table_loop_break := false;
+    if (next_state.core_[ j ].load_address_table_.num_entries = load_address_table_NUM_ENTRIES_CONST) then
+      load_address_table_loop_break := true;
+    end;
+    load_address_table_entry_idx := 0;
+    load_address_table_found_entry := false;
+    load_address_table_difference := (load_address_table_NUM_ENTRIES_CONST - 1);
+    load_address_table_offset := 0;
+    while ((load_address_table_offset <= load_address_table_difference) & ((load_address_table_loop_break = false) & ((load_address_table_found_entry = false) & (load_address_table_difference >= 0)))) do
+      load_address_table_curr_idx := ((load_address_table_entry_idx + load_address_table_offset) % load_address_table_NUM_ENTRIES_CONST);
+      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid = false) then
+        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state = load_address_table_await_insert_remove) then
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
+          load_address_table_found_entry := true;
+        end;
+      end;
+      if (load_address_table_offset != load_address_table_difference) then
+        load_address_table_offset := (load_address_table_offset + 1);
+      else
+        load_address_table_loop_break := true;
+      end;
+    end;
+    next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries + 1);
+    if (load_address_table_found_entry = false) then
+      error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
+    end;
+  end;
   next_state.core_[ j ].LQ_.entries[ i ].state := await_fwd_check;
   Sta := next_state;
 
@@ -1425,12 +1425,12 @@ ruleset j : cores_t; i : LQ_idx_t do
 begin
   next_state := Sta;
   found_entry := false;
-  put "replay issue load to mem\n";
+  -- put "replay issue load to mem\n";
   for load_address_table_iter : load_address_table_idx_t do
-    put next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid;
+    -- put next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid;
     if next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].valid then
-      put next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
-      put next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+      -- put next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num;
+      -- put next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
       if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
         if (found_entry = false) then
           found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].load_address_table_.entries[ load_address_table_iter ].lat_seq_num);
