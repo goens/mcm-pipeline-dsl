@@ -196,11 +196,28 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   -- pass to the AddInsertToLATWhenPerform function
   let (load_req_address, load_req_seq_num) ← perform_load_node.load_req_address_seq_num
 
-  let ctrlers'''  ← AddInsertToLATWhenPerform
-    ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
-  
-  -- (4) Add a stmt to remove_key from the invalidation listener to commit load
-  let ctrlers'''' ← AddRemoveFromLATWhenCommit
-    ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [seq_num]
+  let addr_var_name ← load_req_address.var's_identifier
+  let perform_load_ctrler ← ctrlers.ctrler_from_name perform_load_node.ctrler_name
+  let is_addr_a_state_var ← perform_load_ctrler.is_a_state_var_of_ctrler addr_var_name
 
-  pure ctrlers''''
+  let (is_found_addr_var, ctrlers''')  ← LoadAddress.CDFG.Graph.update_ctrlers_at_node_where_load_addr_obtained_search -- AddInsertToLATWhenPerform
+    graph
+    perform_load_node
+    addr_var_name is_addr_a_state_var
+    ctrlers'
+    []
+    lat_name load_req_address load_req_seq_num
+
+  match is_found_addr_var with
+  | true =>
+
+    -- let ctrlers'''  ← AddInsertToLATWhenPerform
+    --   ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
+
+    -- (4) Add a stmt to remove_key from the invalidation listener to commit load
+    let ctrlers'''' ← AddRemoveFromLATWhenCommit
+      ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [seq_num]
+
+    pure ctrlers''''
+  | false =>
+    throw s!"Couldn't find the point where the address is created/assigned?"
