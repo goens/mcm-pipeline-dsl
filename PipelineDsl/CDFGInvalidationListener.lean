@@ -204,7 +204,7 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
     graph
     perform_load_node
     addr_var_name is_addr_a_state_var
-    ctrlers'
+    ctrlers''
     []
     lat_name load_req_address load_req_seq_num
 
