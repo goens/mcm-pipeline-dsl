@@ -140,6 +140,7 @@ def CreateTableQueue -- CAM like table
 
 (commit_ctrler : CtrlerName)
 (squash_sender : CtrlerName)
+(commit_squasher : CtrlerName)
 : Except String Ctrler := do
   -- ====== controller description ======
   -- Stmts needed:
@@ -206,10 +207,14 @@ def CreateTableQueue -- CAM like table
   let reset_await := reset await_insert_remove_state_name
   -- if stmt
   let if_squash := conditional_stmt $ if_statement squash_cond [remove_entry, squash_commit_entry, reset_await].to_block
+  let user_commit_squash := conditional_stmt $ if_statement squash_cond [remove_entry, /- squash_commit_entry, -/ reset_await].to_block
 
   -- handle squash
-  let handle_squash := handle [squash_sender, squash].to_qual_name [violating_seq_num] [if_squash].to_block
-  let listen_handle_squash := listen await_when_remove_stmt.to_block [handle_squash]
+  let handle_squashes : List HandleBlock := [
+    (handle [squash_sender, squash].to_qual_name [violating_seq_num] [if_squash].to_block),
+    (handle [commit_squasher, squash].to_qual_name [violating_seq_num] [user_commit_squash].to_block)
+  ]
+  let listen_handle_squash := listen await_when_remove_stmt.to_block handle_squashes
 
   -- Create the state
   let await_insert_remove_state := state await_insert_remove_state_name listen_handle_squash.to_block
@@ -258,6 +263,7 @@ def CreateLoadAddressTableCtrler
 (perform_load_node_ctrler_name : CtrlerName)
 (commit_node_ctrler_name : CtrlerName)
 (squash_sender : CtrlerName)
+(commit_squasher : CtrlerName)
 : Except String (Ctrler × CtrlerName × VarName × VarName) := do
   let lat_address_var := "_".intercalate ["lat", address]
   let lat_seq_num_var := "_".intercalate ["lat", seq_num]
@@ -284,7 +290,7 @@ def CreateLoadAddressTableCtrler
     insert_args insert_actions insert_from
     remove_args remove_actions remove_from
     commit_node_ctrler_name
-    squash_sender
+    squash_sender commit_squasher
   
   pure (lat, lat_name, lat_seq_num_var, lat_address_var)
 
@@ -456,12 +462,17 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
   let insert_key_stmt : Statement := stray_expr $ some_term $
     -- function_call [lat_name, insert_key].to_qual_name [qual_var_expr [instruction, seq_num], var_expr load_req_address]
     function_call [lat_name, insert_key].to_qual_name [load_req_seq_num, load_req_address]
+  let inst_is_load := equal (qual_var_term [instruction, op]) (var_term load.toMurphiString)
+  let if_load_then_insert_key :=
+    Statement.conditional_stmt $
+      Conditional.if_statement inst_is_load
+        insert_key_stmt
 
   let ctrlers_insert_key_into_lat :=
     ctrlers.inject_ctrler_state
       perform_load_ctrler_name perform_load_state_name
       load
-      [insert_key_stmt]
+      [if_load_then_insert_key]
       stmt_to_insert_after?
       arg_in_when_stmt?
       Pipeline.Description.inject_stmts_at_stmt

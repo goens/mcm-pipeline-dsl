@@ -179,10 +179,15 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   -- 4. Add a stmt to remove_key from the invalidation listener to commit load
 
   let inval_listener_name := "invalidation_listener"
+  -- let lat_squashing_ctrlers := [
+  --   inval_listener_name, -- the inval listener squashes the LAT where necessary
+  --   commit_node.ctrler_name -- Commit ctrler squashes LAT in case of
+  --     -- {branch mispeculation, st -> ld fwding, etc.}
+  -- ]
 
   -- (1) Create the LAT
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
-    perform_load_node.ctrler_name commit_node.ctrler_name inval_listener_name
+    perform_load_node.ctrler_name commit_node.ctrler_name inval_listener_name commit_node.ctrler_name
 
   let ctrlers' := ctrlers ++ [lat]
 

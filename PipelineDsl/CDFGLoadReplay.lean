@@ -717,9 +717,15 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   let commit_node ← graph.commit_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting commit node"
 
-  let lat_squashing_ctrler := perform_load_node.ctrler_name
+  -- let lat_squashing_ctrler := [
+  --   perform_load_node.ctrler_name, -- Expect squash msg from Load-Replay's old vs new replay load value
+  --   commit_node.ctrler_name -- Expect squash msg from Commit ctrler in case user sends squash, potentially
+  --     -- either from St forwarding or perhaps a branch mispeculation.
+  --     -- And Commit is the "squash ctrler" since it keeps reference of all insts, and sends squashes
+  --     -- accordingly.
+  -- ]
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
-    perform_load_node.ctrler_name commit_node.ctrler_name lat_squashing_ctrler
+    perform_load_node.ctrler_name commit_node.ctrler_name perform_load_node.ctrler_name commit_node.ctrler_name
 
   -- (2) Add LoadReplay to Ctrlers
   let (ctrlers_with_load_replay, commit_start_replay_state_name, original_commit_state) :=
