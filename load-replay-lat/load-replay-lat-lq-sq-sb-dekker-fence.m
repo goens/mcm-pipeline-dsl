@@ -1486,6 +1486,7 @@ ruleset j : cores_t; i : LQ_idx_t do
   var SQ_offset : SQ_count_t;
   var SQ_squash_curr_idx : SQ_idx_t;
   var SQ_squash_remove_count : SQ_count_t;
+  var squash_inclusive_if_from_sq : boolean;
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
@@ -1753,8 +1754,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -1989,8 +1994,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -2225,8 +2234,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -2461,8 +2474,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -2697,8 +2714,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -2933,8 +2954,12 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                          violating_seq_num := violating_seq_num;
-                          if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                          if squash_from_sq then
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                          else
+                            squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                          end;
+                          if squash_inclusive_if_from_sq then
                             next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                             next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -3022,6 +3047,7 @@ ruleset j : cores_t; i : SQ_idx_t do
   var SQ_offset : SQ_count_t;
   var SQ_squash_curr_idx : SQ_idx_t;
   var SQ_squash_remove_count : SQ_count_t;
+  var squash_inclusive_if_from_sq : boolean;
   var ROB_while_break : boolean;
   var ROB_found_entry : boolean;
   var ROB_entry_idx : ROB_idx_t;
@@ -3283,8 +3309,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -3519,8 +3549,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -3755,8 +3789,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -3991,8 +4029,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -4227,8 +4269,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
@@ -4463,8 +4509,12 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
-                    violating_seq_num := violating_seq_num;
-                    if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num) then
+                    if squash_from_sq then
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
+                    else
+                      squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num > violating_seq_num);
+                    end;
+                    if squash_inclusive_if_from_sq then
                       next_state.core_[ j ].IQ_.num_entries := (next_state.core_[ j ].IQ_.num_entries - 1);
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid := false;
                       next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state := iq_await_creation;
