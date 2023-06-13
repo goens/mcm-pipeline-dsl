@@ -1333,53 +1333,55 @@ ruleset j : cores_t; i : LQ_idx_t do
 begin
   next_state := Sta;
   next_state.core_[ j ].LQ_.entries[ i ].phys_addr := next_state.core_[ j ].LQ_.entries[ i ].virt_addr;
-  insert_key_check_found := false;
-  found_double_key_check := false;
-  for load_address_table_key_check_idx : load_address_table_idx_t do
-    if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
-      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-        next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].state := load_address_table_await_insert_remove;
-        if (insert_key_check_found = false) then
-          insert_key_check_found := true;
-        else
-          found_double_key_check := true;
+  if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ld) then
+    insert_key_check_found := false;
+    found_double_key_check := false;
+    for load_address_table_key_check_idx : load_address_table_idx_t do
+      if next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].valid then
+        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num = next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) then
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+          next_state.core_[ j ].load_address_table_.entries[ load_address_table_key_check_idx ].state := load_address_table_await_insert_remove;
+          if (insert_key_check_found = false) then
+            insert_key_check_found := true;
+          else
+            found_double_key_check := true;
+          end;
         end;
       end;
-    end;
-  endfor;
-  if (found_double_key_check = true) then
-    error "Found two entries with the same key? Was this intentional?";
-  elsif (insert_key_check_found = false) then
-    load_address_table_loop_break := false;
-    if (next_state.core_[ j ].load_address_table_.num_entries = load_address_table_NUM_ENTRIES_CONST) then
-      load_address_table_loop_break := true;
-    end;
-    load_address_table_entry_idx := 0;
-    load_address_table_found_entry := false;
-    load_address_table_difference := (load_address_table_NUM_ENTRIES_CONST - 1);
-    load_address_table_offset := 0;
-    while ((load_address_table_offset <= load_address_table_difference) & ((load_address_table_loop_break = false) & ((load_address_table_found_entry = false) & (load_address_table_difference >= 0)))) do
-      load_address_table_curr_idx := ((load_address_table_entry_idx + load_address_table_offset) % load_address_table_NUM_ENTRIES_CONST);
-      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid = false) then
-        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state = load_address_table_await_insert_remove) then
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
-          next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
-          load_address_table_found_entry := true;
-        end;
-      end;
-      if (load_address_table_offset != load_address_table_difference) then
-        load_address_table_offset := (load_address_table_offset + 1);
-      else
+    endfor;
+    if (found_double_key_check = true) then
+      error "Found two entries with the same key? Was this intentional?";
+    elsif (insert_key_check_found = false) then
+      load_address_table_loop_break := false;
+      if (next_state.core_[ j ].load_address_table_.num_entries = load_address_table_NUM_ENTRIES_CONST) then
         load_address_table_loop_break := true;
       end;
-    end;
-    next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries + 1);
-    if (load_address_table_found_entry = false) then
-      error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
+      load_address_table_entry_idx := 0;
+      load_address_table_found_entry := false;
+      load_address_table_difference := (load_address_table_NUM_ENTRIES_CONST - 1);
+      load_address_table_offset := 0;
+      while ((load_address_table_offset <= load_address_table_difference) & ((load_address_table_loop_break = false) & ((load_address_table_found_entry = false) & (load_address_table_difference >= 0)))) do
+        load_address_table_curr_idx := ((load_address_table_entry_idx + load_address_table_offset) % load_address_table_NUM_ENTRIES_CONST);
+        if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid = false) then
+          if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state = load_address_table_await_insert_remove) then
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].lat_address := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].state := load_address_table_await_insert_remove;
+            next_state.core_[ j ].load_address_table_.entries[ load_address_table_curr_idx ].valid := true;
+            load_address_table_found_entry := true;
+          end;
+        end;
+        if (load_address_table_offset != load_address_table_difference) then
+          load_address_table_offset := (load_address_table_offset + 1);
+        else
+          load_address_table_loop_break := true;
+        end;
+      end;
+      next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries + 1);
+      if (load_address_table_found_entry = false) then
+        error "Couldn't find an empty entry to insert (insert_key) from (£ctrler_name) to (£dest_ctrler_name) into";
+      end;
     end;
   end;
   next_state.core_[ j ].LQ_.entries[ i ].state := await_fwd_check;
@@ -3040,6 +3042,7 @@ ruleset j : cores_t; i : SQ_idx_t do
   var LQ_offset : LQ_count_t;
   var LQ_squash_curr_idx : LQ_idx_t;
   var LQ_squash_remove_count : LQ_count_t;
+  var remove_key_dest_already_found : boolean;
   var SQ_while_break : boolean;
   var SQ_found_entry : boolean;
   var SQ_entry_idx : SQ_idx_t;
@@ -3262,6 +3265,34 @@ begin
                 -- put "Did we squash any LQ entries?\n";
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
@@ -3502,6 +3533,34 @@ begin
                 end;
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
@@ -3742,6 +3801,34 @@ begin
                 end;
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
@@ -3982,6 +4069,34 @@ begin
                 end;
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
@@ -4222,6 +4337,34 @@ begin
                 end;
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
@@ -4462,6 +4605,34 @@ begin
                 end;
                 next_state.core_[ j ].LQ_.tail := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - LQ_squash_remove_count)) % LQ_NUM_ENTRIES_CONST);
                 next_state.core_[ j ].LQ_.num_entries := (next_state.core_[ j ].LQ_.num_entries - LQ_squash_remove_count);
+                for load_address_table_squash_idx : load_address_table_idx_t do
+                  if next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].valid then
+                    if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state = load_address_table_await_insert_remove) then
+                      violating_seq_num := violating_seq_num;
+                      if (next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num >= violating_seq_num) then
+                        remove_key_dest_already_found := false;
+                        for remove_load_address_table_idx : load_address_table_idx_t do
+                          if next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid then
+                            if (next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].lat_seq_num = next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].lat_seq_num) then
+                              if remove_key_dest_already_found then
+                                error "Error: Found multiple entries with same key in remove_key API func";
+                              elsif !(remove_key_dest_already_found) then
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].valid := false;
+                                next_state.core_[ j ].load_address_table_.num_entries := (next_state.core_[ j ].load_address_table_.num_entries - 1);
+                                next_state.core_[ j ].load_address_table_.entries[ remove_load_address_table_idx ].state := load_address_table_await_insert_remove;
+                              else
+                                error "Unreachable.. Just to make Murphi metaprogramming parser parse the stmts...";
+                              end;
+                            end;
+                          end;
+                        endfor;
+                        next_state.core_[ j ].load_address_table_.entries[ load_address_table_squash_idx ].state := load_address_table_await_insert_remove;
+                      end;
+                    else
+                      error "Controller is not on an expected state for a msg: (squash) from: (ROB) to: (load_address_table)";
+                    end;
+                  end;
+                endfor;
               else
                 if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = st) then
                   SQ_while_break := false;
