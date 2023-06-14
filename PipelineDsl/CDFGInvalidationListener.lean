@@ -57,7 +57,7 @@ def CDFG.Graph.CreateInvalidationListener
   -- let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr table_seq_num_name]
   -- let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
 
-  let post_send_ld_req' := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
+  let (post_send_ld_req', _) := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
   let post_send_ld_req := post_send_ld_req'.filter (· != global_perform_load_node)
   let post_send_with_inst : List (List CtrlerStates × InstType) :=
     [( post_send_ld_req.to_ctrler_states, load )]
