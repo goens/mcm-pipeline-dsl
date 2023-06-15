@@ -122,6 +122,20 @@ def Pipeline.Statement.stmt_block : Pipeline.Statement → Except String (List P
 | .block stmts => pure stmts
 | _ => throw "Statement is not a block"
 
+def Pipeline.Description.body_stmts : Pipeline.Description → Except String (List Statement)
+| .state ident stmt =>
+  match stmt with
+  | .block stmts =>
+    match stmts with
+    | h :: _ =>
+      match h with
+      | .listen_handle stmt /- handle_blks -/ _ =>
+        stmt.stmt_block
+      | _ => pure stmts
+    | [] => throw s!"Error: Description.stmt_body Stmts Block in State is empty? State: ({ident})"
+  | _ => throw s!"Error: Description.stmt_body State stmt isn't a block? Stmt: ({stmt})"
+| _ => throw "Error: Description is not a state"
+
 def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
   Pipeline.QualifiedName.mk idents
 
