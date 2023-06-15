@@ -32,7 +32,7 @@ jobs:
       - name: Compile Files
         run: |
           mkdir nosq && cd nosq
-          ../build/bin/aqlc -t 5 ../.testing/input/nosq-lsq-no-replay.file
+          ../build/bin/aqlc -t 5 ../testing/input/nosq-lsq-no-replay.file
           cd ..
           mkdir single && cd single
           ../build/bin/aqlc -t 5 ../testing/input/single-lsq.file
@@ -46,7 +46,7 @@ jobs:
           fi
       - name: Difference Check single-lsq
         run: |
-          if ! diff -q testing/expectedso/single-lsq-output.m single/generated-amd1.m &>/dev/null; then
+          if ! diff -q testing/expected/single-lsq-output.m single/generated-amd1.m &>/dev/null; then
           >&2 echo "single-lsq file failed"
           exit 1
           fi
