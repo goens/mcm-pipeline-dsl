@@ -528,6 +528,7 @@ def dekker_fence : LitmusTest := {
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
 amd1,
+amd2,
 -- n2, -- permitted test, not yet implemented "permitted"
 n4,
 n5,
