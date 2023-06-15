@@ -98,6 +98,13 @@ abbrev Ctrler := controller_info
 
 -- == Translation Helpers ==
 
+def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info
+| ctrlers, ctrler_name => do
+  match ctrlers.filter (·.name == ctrler_name) with
+  | [ctrler] => pure ctrler
+  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+
 def Ctrler.entry_or_ctrler_translation
 (dest_ctrler : Ctrler)
 : Except String entry_or_ctrler := do
@@ -123,6 +130,29 @@ def Ctrler.states (ctrler : Ctrler) : Except String (List Description)
       throw s!"ERROR, (malformed basic-ctrler) doesn't have init transition info? ({ctrler})"
   else do
     throw s!"ERROR, ctrler doesn't have states? ({ctrler})"
+
+open Pipeline in
+def List.state_matching_name
+(states : List Description)
+(state_name : StateName)
+: Except String Description := do
+  let states_list := ←
+    states.filterM (do
+      let a_state_name ← ·.state_name
+      pure (a_state_name == state_name)
+    )
+  match states_list with
+  | [state] => pure state
+  | _::_ => throw s!"Error: multiple states matching a name ({state_name})? States: ({states_list})"
+  | [] => throw s!"Error: no states matching name ({state_name}) found?"
+
+open Pipeline in
+def Ctrler.state_of_name
+(ctrler : Ctrler)
+(state_name : StateName)
+: Except String Description := do
+  let states ← ctrler.states
+  states.state_matching_name state_name
 
 open Pipeline in
 def CreateTableQueue -- CAM like table
