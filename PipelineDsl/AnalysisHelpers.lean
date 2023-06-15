@@ -40,7 +40,7 @@ def get_val_decl_stmt_var
       default
     | _ => dbg_trace "Error: unexpected Expr"
       default
-  | _ => dbg_trace "Error: unexpected Stmt"
+  | _ => dbg_trace s!"Error: Expected value_declaration Stmt in get_var_decl_stmt_var. instead got ({stmt})"
     -- dbg_trace "BEGIN Stmt:\n"
     -- dbg_trace stmt
     -- dbg_trace "END Stmt:\n"
@@ -1209,13 +1209,6 @@ def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Exp
   | h :: t =>
     -- use recursion
     pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
-
-def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info 
-| ctrlers, ctrler_name => do
-  match ctrlers.filter (·.name == ctrler_name) with
-  | [ctrler] => pure ctrler
-  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
-  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
 
 def convert_state_names_to_dsl_or_tree_state_check
 ( state_names : List StateName ) (ctrler_type : CtrlerType) (ctrler_name : CtrlerName)
@@ -2532,6 +2525,7 @@ def stall_state_querying_states
 (ctrler_states_to_query : List (List CtrlerStates × InstType))
 /- (stall_on_inst_type : InstType) -/
 (inst_to_stall_type : InstType)
+(orig_body_stmts : List Pipeline.Statement)
 (original_state's_handleblks : Option ( List HandleBlock ))
 (ctrlers : Ctrlers)
 : Except String Description
@@ -2546,18 +2540,18 @@ def stall_state_querying_states
 
   let stall_if_on_state_stmt : Pipeline.Statement :=
     conditional_stmt $
-      if_else_statement 
+      if_else_statement
         (var_expr query_result_var)
-        (reset new_stall_state_name)
-        (transition original_state_name)
+        (reset new_stall_state_name) -- should be same as the original
+        (orig_body_stmts.to_block)
 
   -- make query if this inst is of the type to stall on
   let if_inst_is_of_to_stall_type : Pipeline.Statement :=
     conditional_stmt $
-      if_else_statement 
+      if_else_statement
         (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
         stall_if_on_state_stmt
-        (transition original_state_name)
+        (orig_body_stmts.to_block)
   
   let stall_state_stmt : Pipeline.Statement :=
     if original_state's_handleblks.isSome then
@@ -2572,14 +2566,24 @@ def stall_state_querying_states
     new_stall_state_name
     (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
 
-def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List (List CtrlerStates × InstType))
-(ctrlers : Ctrlers) /- (inst_type_to_stall_on : InstType) -/ (inst_to_stall_type : InstType) (new_stall_state_name : StateName)
+open Pipeline in
+def Ctrlers.StallNode
+(stall_state : StateName)
+(stall_ctrler : CtrlerName)
+(ctrler_states_to_query : List (List CtrlerStates × InstType))
+(ctrlers : Ctrlers)
+/- (inst_type_to_stall_on : InstType) -/
+(inst_to_stall_type : InstType)
+(new_stall_state_name : StateName)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
   -- let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
 
   /- 5. Generate the new stall state -/
-  let stall_ctrler ← ctrlers.ctrler_matching_name stall_ctrler
+  let stall_ctrler : Ctrler ← ctrlers.ctrler_matching_name stall_ctrler
+  let state_to_stall ← stall_ctrler.state_of_name stall_state
+  let stall_state_body : List Pipeline.Statement ← state_to_stall.body_stmts
+
   /- Consider if original state has a listen-handle -/
   let handle_blks : Option (List HandleBlock) ←
     get_ctrler_state_handle_blocks stall_ctrler stall_state
@@ -2592,7 +2596,12 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
 -- (original_state's_handleblks : Option ( List HandleBlock ))
 -- (ctrlers : Ctrlers)
   let new_stall_state : Description ← stall_state_querying_states
-    new_stall_state_name stall_state ctrler_states_to_query /- inst_type_to_stall_on -/ inst_to_stall_type handle_blks ctrlers
+    new_stall_state_name stall_state
+    ctrler_states_to_query
+    /- inst_type_to_stall_on -/
+    inst_to_stall_type
+    stall_state_body handle_blks
+    ctrlers
 
   dbg_trace s!"=== New Stall State: ===\n({new_stall_state})\n=== End New Stall State ==="
   pure new_stall_state
