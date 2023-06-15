@@ -708,8 +708,9 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
 : Except String (List controller_info) := do
   let graph_nodes ← DSLtoCDFG ctrlers
   let graph : CDFG.Graph := {nodes := graph_nodes}
-  dbg_trace "$$LoadReplay ctrlers: {ctrlers}"
-  dbg_trace "$$LoadReplay graph: {graph}"
+  dbg_trace s!"$$LoadReplay Start"
+  -- dbg_trace "$$LoadReplay ctrlers: {ctrlers}"
+  -- dbg_trace "$$LoadReplay graph: {graph}"
 
   -- (1) Create the LAT
   let perform_load_node ← graph.load_global_perform_state_ctrler
