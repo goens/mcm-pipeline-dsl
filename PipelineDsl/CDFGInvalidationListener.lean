@@ -57,10 +57,11 @@ def CDFG.Graph.CreateInvalidationListener
   -- let squash_search_all_msg := function_call [commit_ctrler_name, squash].to_qual_name [var_expr table_seq_num_name]
   -- let search_squash_stmt := stray_expr $ some_term squash_search_all_msg
 
-  let (post_send_ld_req', _) := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
-  let post_send_ld_req := post_send_ld_req'.filter (· != global_perform_load_node)
-  let post_send_with_inst : List (List CtrlerStates × InstType) :=
-    [( post_send_ld_req.to_ctrler_states, load )]
+  -- let (post_send_ld_req', _) := ← graph.reachable_nodes_from_node_up_to_option_node global_perform_load_node none load [] none
+  -- let post_send_ld_req := post_send_ld_req'.filter (· != global_perform_load_node)
+  -- let post_send_with_inst : List (List CtrlerStates × InstType) :=
+  --   [( post_send_ld_req.to_ctrler_states, load )]
+
   -- Create queries for all loads in speculatively executed state
 
   -- TODO NOTE: Need to update the LAT generator, to only have 1 state, and to implement the API insert_key()
@@ -165,6 +166,7 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
 (ctrlers : Ctrlers)
 : Except String Ctrlers := do
   -- === Setup: Get graph info, perform_load & commit Nodes ===
+  dbg_trace s!"Add Inval Listener: Get Graphs"
   let graph : Graph := { nodes := ← DSLtoCDFG ctrlers
     |>.throw_exception_nesting_msg s!"Error converting DSL to Graph" }
   let perform_load_node := ← graph.load_global_perform_state_ctrler
@@ -185,17 +187,20 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
   --     -- {branch mispeculation, st -> ld fwding, etc.}
   -- ]
 
+  dbg_trace s!"Add Inval Listener: Creating LAT"
   -- (1) Create the LAT
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
     perform_load_node.ctrler_name commit_node.ctrler_name inval_listener_name commit_node.ctrler_name
 
   let ctrlers' := ctrlers ++ [lat]
 
+  dbg_trace s!"Add Inval Listener: Creating Invalidation Listener"
   -- (2) Create the invalidation listener
   let ctrlers''   ← AddInvalidationListener
     ctrlers' lat_name lat_seq_num_var lat_address_var graph commit_node perform_load_node
     inval_listener_name
 
+  dbg_trace s!"Add Inval Listener: Adding insert_key() to LAT API call."
   -- (3) Add a stmt to insert_key into the invalidation listener to perform load
   -- Get the global_perform_load API's args: (the seq_num expr, and address expr) (should be in fixed positions..)
   -- pass to the AddInsertToLATWhenPerform function
@@ -219,10 +224,12 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
     -- let ctrlers'''  ← AddInsertToLATWhenPerform
     --   ctrlers'' lat_name perform_load_node.ctrler_name perform_load_node.current_state load_req_address load_req_seq_num
 
+    dbg_trace s!"Add Inval Listener: Adding remove_key() to LAT API call."
     -- (4) Add a stmt to remove_key from the invalidation listener to commit load
     let ctrlers'''' ← AddRemoveFromLATWhenCommit
       ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [seq_num]
 
+    dbg_trace s!"Add Inval Listener: Finished Adding Inval Listener."
     pure ctrlers''''
   | false =>
     throw s!"Couldn't find the point where the address is created/assigned?"
