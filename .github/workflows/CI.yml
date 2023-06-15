@@ -32,21 +32,21 @@ jobs:
       - name: Compile Files
         run: |
           mkdir nosq && cd nosq
-          ../build/bin/aqlc -t 5 ../.github/test-files/nosq-lsq-no-replay.file
+          ../build/bin/aqlc -t 5 ../.testing/input/nosq-lsq-no-replay.file
           cd ..
           mkdir single && cd single
-          ../build/bin/aqlc -t 5 ../.github/test-files/single-lsq.file
+          ../build/bin/aqlc -t 5 ../testing/input/single-lsq.file
           cd ..
 
       - name: Difference Check nosq-lsq-no-replay
         run: |
-          if ! diff -q .github/output/nosq-lsq-output.m nosq/generated-amd1.m &>/dev/null; then
+          if ! diff -q testing/expected/nosq-lsq-output.m nosq/generated-amd1.m &>/dev/null; then
           >&2 echo "nosq-lsq-no-replay-test file failed"
           exit 1
           fi
       - name: Difference Check single-lsq
         run: |
-          if ! diff -q .github/output/single-lsq-output.m single/generated-amd1.m &>/dev/null; then
+          if ! diff -q testing/expectedso/single-lsq-output.m single/generated-amd1.m &>/dev/null; then
           >&2 echo "single-lsq file failed"
           exit 1
           fi
