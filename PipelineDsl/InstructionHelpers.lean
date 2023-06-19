@@ -67,8 +67,8 @@ def Addresses.toString : Addresses → String
 instance : ToString Addresses where toString := Addresses.toString
 
 structure BinaryOrdering where
-accesses₁ : List MemoryAccess
-accesses₂ : List MemoryAccess
+accesses₁ : List InstType
+accesses₂ : List InstType
 address : Addresses
 deriving Inhabited, BEq
 
@@ -103,7 +103,7 @@ def MCMOrdering.toString : MCMOrdering → String
 
 instance : ToString MCMOrdering where toString := MCMOrdering.toString
 
-def binary_ordering (first_inst : List MemoryAccess) (second_inst : List MemoryAccess) (address : Addresses) : MCMOrdering :=
+def binary_ordering (first_inst : List InstType) (second_inst : List InstType) (address : Addresses) : MCMOrdering :=
   MCMOrdering.binary_ordering ⟨first_inst, second_inst, address⟩
 
 def ternary_ordering (first_inst : List MemoryAccess) (second_inst : MemoryOrdering) (third_inst : List MemoryAccess) (address : Addresses) : MCMOrdering :=
