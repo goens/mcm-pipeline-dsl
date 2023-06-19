@@ -126,12 +126,12 @@ def CDFG.Graph.BinaryInOrderTransform
     query_ctrler_state.mapM (do
       let (query_ctrler_state, inst_type) := ·;
       let updated_states := ← new_stall_state_names.foldlM (
-        λ query_states new_names => do 
+        λ query_states new_names => do
           let (stall_point, new_name, /- stalled_inst_type -/ _) := new_names;
 
           let updated_query_states := ← stall_point.append_if_in_list query_states new_name
             |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
-      
+
           pure (updated_query_states)
       ) query_ctrler_state
 
@@ -139,7 +139,7 @@ def CDFG.Graph.BinaryInOrderTransform
     )
 
   dbg_trace s!"<< States to query (with new stall states?): ({query_ctrler_state})"
-  
+
   let dsl_stall_nodes : List ( Pipeline.Description × StateName × CtrlerState × InstType) := ← new_stall_state_names.mapM (do
     let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
     let dsl_stall := ← ctrlers.StallNode
@@ -324,7 +324,7 @@ def CDFG.InOrderTransform (ctrlers : Ctrlers) (mcm_ordering : MCMOrdering) (prov
   match mcm_ordering with
   | .binary_ordering ⟨/- BinaryOrdering -/ accesses₁, accesses₂, /- address -/ _ ⟩ => do
     dbg_trace s!"<< In-Order-Transform binary ordering: ({mcm_ordering})"
-    graph.BinaryInOrderTransform ctrlers ( accesses₁.to_inst_type_list ) ( accesses₂.to_inst_type_list ) provided_stall_point?
+    graph.BinaryInOrderTransform ctrlers ( accesses₁ ) ( accesses₂ ) provided_stall_point?
   | .ternary_ordering ⟨ /- TernaryOrdering -/ access₁, ordering₂, access₃, /- address -/ _⟩ => do
     dbg_trace s!"<< In-Order-Transform ternary ordering: ({mcm_ordering})"
     graph.TernaryInOrderTransform ctrlers ( access₁.to_inst_type_list ) ( InstType.memory_ordering ordering₂ ) ( access₃.to_inst_type_list ) provided_stall_point?
