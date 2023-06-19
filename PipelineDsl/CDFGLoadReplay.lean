@@ -534,6 +534,7 @@ def CreateCommitAwaitReplayCompleteState
   let await_replay_stmt := Pipeline.Statement.await none [when_replay_resp]
 
   let await_replay_stmt_wrapped_in_listen_handle ← four_nodes.commit_node.wrap_stmt_with_node's_listen_handle_if_exists await_replay_stmt.to_block ctrlers
+  dbg_trace s!"<<< await_replay_stmt_wrapped_in_listen_handle: ({await_replay_stmt_wrapped_in_listen_handle})"
   -- Create this await replay response state
   --   Need the state name & above await stmt
   let await_replay_state_name := commit_ctrler_name ++ "_" ++ commit_await_replay_complete
