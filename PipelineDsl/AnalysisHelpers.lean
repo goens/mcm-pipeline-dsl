@@ -2025,7 +2025,9 @@ def List.has_listen_handle? (stmts : List Pipeline.Statement) : Option Pipeline.
 
 def Pipeline.Description.listen_handle_stmt? (state : Pipeline.Description) : Except String (Option Pipeline.Statement) := do
   let state_stmt_blk ← state.stmt
+  dbg_trace s!"<<< (listen-handle?) Get stmt block: ({state_stmt_blk})"
   let stmts ← state_stmt_blk.stmt_block
+  dbg_trace s!"<<< (listen-handle?) Get stmts: ({stmts})"
   pure stmts.has_listen_handle?
 
 def Pipeline.Description.wrap_stmt_with_node's_listen_handle_if_exists (state : Pipeline.Description) (stmt : Pipeline.Statement) : Except String Pipeline.Statement := do
@@ -2546,25 +2548,29 @@ def stall_state_querying_states
         (orig_body_stmts.to_block)
 
   -- make query if this inst is of the type to stall on
-  let if_inst_is_of_to_stall_type : Pipeline.Statement :=
+  let stall_if_inst_is_of_to_stall_type : Pipeline.Statement :=
     conditional_stmt $
       if_else_statement
         (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
         stall_if_on_state_stmt
         (orig_body_stmts.to_block)
-  
-  let stall_state_stmt : Pipeline.Statement :=
-    if original_state's_handleblks.isSome then
-      Statement.listen_handle (Statement.block [if_inst_is_of_to_stall_type]) original_state's_handleblks.get!
-    else
-      if_inst_is_of_to_stall_type
 
-  -- the decls are queries
+  -- the decls are query results
   let decls_queries : List (BoolDecl × SearchStatement) := query_stmts.map (let decl_query:= ·; (decl_query.1, decl_query.2.1))
+
+  let new_state_body_stmts :=
+    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_if_inst_is_of_to_stall_type])
+  let new_body_in_listen_handle :=
+    match original_state's_handleblks with
+    | some handle_blks =>
+      Statement.listen_handle (Statement.block new_state_body_stmts) handle_blks
+      |>.to_block
+    | none =>
+      new_state_body_stmts.to_block
 
   pure <| state
     new_stall_state_name
-    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
+    new_body_in_listen_handle
 
 open Pipeline in
 def Ctrlers.StallNode
