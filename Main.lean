@@ -138,12 +138,13 @@ def transformTesting : AST → Array Nat → IO Unit
       -- []
 
       dbg_trace s!"++ Adding st -> st ordering."
-      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
+      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
       let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
           []
+      println! s!"!st,st Ctrlers: ({ctrlers}) st,st"
 
       dbg_trace s!"++ Adding ld,st -> mfence -> ld,st ordering."
       let ld_st_fence_ld_st := ( MCMOrdering.ternary_ordering
@@ -175,16 +176,21 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
       --     []
 
+      println! s!"!ld,st mfence Ctrlers: ({ctrlers}) ld,st mfence"
+
       -- let load_replay_ld_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
+      let mfence_to_replay := MCMOrdering.binary_ordering (BinaryOrdering.mk [mfence] [mfence] Addresses.any)
       dbg_trace s!"++ Adding LoadReplay ld -> ld"
-      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers none with
+      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( mfence_to_replay) with
         | .ok ctrler_list => ctrler_list
         | .error msg => 
           dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
           []
 
-      println! s!"What ctrlers look like after TFSM:"
-      println! s!"Ctrlers: {ctrlers}"
+      println! s!"!Load Replay Ctrlers: ({ctrlers}) Load Replay"
+
+      -- println! s!"What ctrlers look like after TFSM:"
+      -- println! s!"Ctrlers: {ctrlers}"
       println! s!"------ end in-order transformation ------\n"
 
       let all_joined_ctrlers : List (List dsl_trans_info) :=
