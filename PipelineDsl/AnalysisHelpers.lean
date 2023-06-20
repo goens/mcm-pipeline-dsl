@@ -1955,7 +1955,7 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
         -- pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label by using 'stmts'
         pure ( [labelled_stmt label stmts_to_inject.to_block] , [stmt] ++ t)
       | _ =>
-        pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
+        pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .block stmts' =>
       let (re_build_stmts, commit_stmts) ← stmts'.split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
       pure ([re_build_stmts.to_block] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts) -- NOTE: don't touch commit_stmts
@@ -1980,12 +1980,23 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       | .if_else_statement expr stmt stmt' =>
         let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
         let (re_build_stmts', commit_stmts') ← [stmt'].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+        let ret_commit_stmts :=
+          match commit_stmts, commit_stmts' with
+          | _::_, _::_ =>
+            if commit_stmts == commit_stmts' then
+              commit_stmts
+            else
+              commit_stmts ++ commit_stmts'
+          | _::_, [] => commit_stmts
+          | [], _::_ => commit_stmts'
+          | [], [] => tail_commit_stmts
         pure (
           [
             Pipeline.Statement.conditional_stmt
             $ Pipeline.Conditional.if_else_statement expr re_build_stmts.to_block re_build_stmts'.to_block
-          ] ++ tail_re_build_stmts,
-          commit_stmts ++ commit_stmts' ++ tail_commit_stmts
+          ] ++ tail_re_build_stmts
+          ,
+          ret_commit_stmts
           )
     -- Non recursive cases, collect stmt, simply recurse on t
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
@@ -2045,7 +2056,9 @@ def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
   -- open up state, look through stmts
   match state with
   | .state state_name stmt => do
-    let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement) := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+    let (updated_stmt_with_injected, stmts_after_commit)
+      : (List Pipeline.Statement × List Pipeline.Statement) :=
+        ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
     let updated_state := Pipeline.Description.state state_name updated_stmt_with_injected.to_block
 
     let original_state_name := original_commit_code_prefix.append "_" |>.append state_name
@@ -2544,7 +2557,7 @@ def stall_state_querying_states
     conditional_stmt $
       if_else_statement
         (var_expr query_result_var)
-        (reset new_stall_state_name) -- should be same as the original
+        (reset new_stall_state_name).to_block -- should be same as the original
         (orig_body_stmts.to_block)
 
   -- make query if this inst is of the type to stall on
@@ -2552,7 +2565,7 @@ def stall_state_querying_states
     conditional_stmt $
       if_else_statement
         (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
-        stall_if_on_state_stmt
+        stall_if_on_state_stmt.to_block
         (orig_body_stmts.to_block)
 
   -- the decls are query results
