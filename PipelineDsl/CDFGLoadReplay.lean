@@ -552,6 +552,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 (lat_name : CtrlerName) (lat_seq_num_var lat_address_var : VarName)
 : Except String (Ctrlers × CtrlerState × CtrlerName)
 := do
+  dbg_trace s!"%%LR Get 4 Nodes to add Replay to Ctrlers"
   -- Get the relevant 4 states & ctrlers
   let commit_node ← graph.commit_state_ctrler
   let global_perform_load_node ← graph.load_global_perform_state_ctrler
@@ -560,15 +561,19 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 
   let four_nodes := ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
 
+  dbg_trace s!"%%LR Add Replay value var declaration"
   let replay_value_decl : TypedIdentifier := (TypedIdentifier.mk u32 replay_value)
   let ctrlers : Ctrlers ←
     ctrlers.add_var_decl_to_ctrler four_nodes.global_perform_load_node.ctrler_name replay_value_decl
 
+  dbg_trace s!"%%LR Get Load Issue Ctrler"
   -- Issue Ctrler / State info
   let issue_ctrler ← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name 
   let issue_ctrler_type ← issue_ctrler.type
   -- Particularly if the Issue Ctrler's state(s) are predicated on Commit
+  dbg_trace s!"%%LR Check if Issue Ctrler is pred by post commit nodes"
   let issue_ctrler_pred_on_commit_nodes : List Node := (← graph.ctrler_completion_pred_on_commit_states global_perform_load_node.ctrler_name commit_node).eraseDups
+  dbg_trace s!"%%LR Filter Issue Ctrler nodes pred by post commit nodes for Load Nodes"
   let issue_ctrler_pred_on_commit_nodes_for_load := graph.filter_input_nodes_only_ld issue_ctrler_pred_on_commit_nodes
   dbg_trace s!"$$issue_ctrler_pred_on_commit_nodes_for_load: ({issue_ctrler_pred_on_commit_nodes_for_load})"
   let ( is_issue_ctrler_pred_on_commit, issue_ctrler_node_pred_on_commit?, issue_ctrler_node_pred_on_commit_listen_handle_stmt? )
@@ -714,8 +719,10 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   -- dbg_trace "$$LoadReplay graph: {graph}"
 
   -- (1) Create the LAT
+  dbg_trace s!"$$LR Find perform load node"
   let perform_load_node ← graph.load_global_perform_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting perform load node"
+  dbg_trace s!"$$LR Find commit node"
   let commit_node ← graph.commit_state_ctrler
     |>.throw_exception_nesting_msg s!"Error getting commit node"
 
@@ -726,10 +733,12 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   --     -- And Commit is the "squash ctrler" since it keeps reference of all insts, and sends squashes
   --     -- accordingly.
   -- ]
+  dbg_trace s!"$$LR Create LAT"
   let (lat, lat_name, lat_seq_num_var, lat_address_var) ← CreateLoadAddressTableCtrler
     perform_load_node.ctrler_name commit_node.ctrler_name perform_load_node.ctrler_name commit_node.ctrler_name
 
   -- (2) Add LoadReplay to Ctrlers
+  dbg_trace s!"$$LR Add LoadReplay"
   let (ctrlers_with_load_replay, commit_start_replay_state_name, original_commit_state) :=
     ← graph.AddLoadReplayToCtrlers ctrlers lat_name lat_seq_num_var lat_address_var
     |>.throw_exception_nesting_msg "Error while adding Load-Replay to Ctrlers!"
@@ -737,6 +746,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
   dbg_trace s!"LoadReplay: Option MCM Ordering: ( {mcm_ordering?} )"
   dbg_trace s!"LoadReplay: Commit Start Replay State Name: ( {commit_start_replay_state_name} )"
 
+  dbg_trace s!"$$LR Add LAT"
   let ctrlers' := ctrlers_with_load_replay ++ [lat]
   
   -- (3) Add insert_key(seq_num, address) into LAT
