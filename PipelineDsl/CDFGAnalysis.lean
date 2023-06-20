@@ -384,7 +384,7 @@ def CDFG.Transition.msg'd_nodes (transition : Transition)  (src_ctrler_name : Ct
     -- dbg_trace s!">> msg'd_nodes/transitions of find dest state: ({msg'd_nodes}), Transition: ({transition.src_dest_states}), from Message: ({msg})"
     pure msg'd_nodes
     )
-  ) 
+  )
   pure msg'd_node_names
 
 -- find msg'd nodes
@@ -395,6 +395,7 @@ def CDFG.Transition.msg'd_nodes (transition : Transition)  (src_ctrler_name : Ct
 def CDFG.Transitions.msg'd_nodes_of_type_reaching_complete (transitions : Transitions) (src_ctrler_name : CtrlerName) (graph : Graph) (inst_type : InstType) : Except String (List NodeTransition) := do
   -- AZ NOTE: Was using these for debugging
   -- dbg_trace s!"COMPUTING: start finding nodes msg'd from ctrler: ({src_ctrler_name}) that reach complete"
+  dbg_trace s!"%%LR? Length transitions: ({transitions.length})"
   let nodes_list : List NodeTransition := List.join $ ← transitions.mapM (·.msg'd_nodes src_ctrler_name graph inst_type)
   let nodes_list' := nodes_list.eraseDups
   -- dbg_trace s!"COMPUTING: msg'd_nodes_reaching_complete: ({nodes_list.map (let nt := ·; nt.1.current_state ++ nt.2.if_expr_src_dest)})"
@@ -403,7 +404,7 @@ def CDFG.Transitions.msg'd_nodes_of_type_reaching_complete (transitions : Transi
   -- dbg_trace s!"COMPUTING: filtered, only completion path nodes: ({filtered.map (·.current_state)})"
   -- pure nodes_list.join
   -- pure filtered
-  pure nodes_list'
+  pure nodes_list
 
 def CDFG.Node.not_visited_transitions (node : Node) (visited_taken : List NodeTransition) : List Transition :=
   node.not_visitied_transitions visited_taken
@@ -851,6 +852,7 @@ def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String No
 #check List.foldl
 -- TODO: Stub
 partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
+(depth := 0)
 (graph : Graph) (node : Node) (avoid_node? : Option Node) (inst_type : InstType) (visited_taken : List NodeTransition)
 (msg'd_trans : Option (Transitions))
 : Except String ((List Node) × List NodeTransition) := do
@@ -872,16 +874,18 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     return ([node], visited_taken)
   else do
     -- dbg_trace s!"**11 Who called this?"
-    dbg_trace s!"REACHABLE COMPUTATION: current node, inst_type ({inst_type}): ({node.current_state}). Type of inst: ({inst_type}). Current Ctrler: ({node.ctrler_name})"
+    dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: current node, inst_type ({inst_type}): ({node.current_state}). Type of inst: ({inst_type}). Current Ctrler: ({node.ctrler_name})"
     let trans_for_this_inst_type :=
       -- node.not_visited_transitions_taken_by_inst_type visited_taken inst_type
       node.not_visited_transitions_all_completions_taken_by_inst_type visited_taken inst_type -- Consider transitions as well for messages
 
+    dbg_trace s!"Depth ({depth}) test1"
     let transitions_to_consider : Transitions :=
       match msg'd_trans with
       | none => trans_for_this_inst_type
       | some transitions => transitions.trans_not_pred_against_inst_type inst_type |>.not_visited_transitions visited_taken
 
+    dbg_trace s!"Depth ({depth}) test2"
     let transitions_to_traverse : Transitions :=
       transitions_to_consider.basic_transitions
 
@@ -890,32 +894,46 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     let visited_msg'd_node : List NodeTransition := match msg'd_trans with
     | some trans's => trans's.map ( (node, ·) )
     | none => []
-    let trans'd_to_visited_taken_and_dests : List (List NodeTransition × Node) :=
-      ← transitions_to_traverse.mapM (do
-        -- visited_taken
-        let trans := ·;
-        let new_visited_taken := visited_taken ++ [(node,trans)] ++ visited_msg'd_node
-        let dest_node ← graph.node_from_name! trans.dest_state
-        pure (new_visited_taken, dest_node)
-      )
-    let all_trans'd_to_visited_taken : List NodeTransition :=
-      List.eraseDups $
-      trans'd_to_visited_taken_and_dests.foldl
-        (fun list_a tuple => list_a ++ tuple.1) []
-    let dests : List Node := List.eraseDups $ trans'd_to_visited_taken_and_dests.foldl
-      (fun list_a tuple => list_a.concat tuple.2) []
 
+    let trans_visited_taken : List NodeTransition :=
+      transitions_to_traverse.map ((node, ·))
+
+    let trans_dest_names : List StateName :=
+      /- List.eraseDups $-/ transitions_to_traverse.map (·.dest_state)
+    dbg_trace s!"Depth ({depth}) test3"
+    let trans_dests : List Node :=
+      ← trans_dest_names.mapM
+        (graph.node_from_name! ·)
+    dbg_trace s!"Depth ({depth}) test3.1"
+
+    dbg_trace s!"Depth ({depth}) trans_visited_taken Length: ({trans_visited_taken.length})"
+    -- let trans_visited_taken' :=
+    --   trans_visited_taken.foldl
+    --     (fun list_a node_trans =>
+    --       if ! list_a.contains node_trans then list_a.concat node_trans else list_a)
+    --     []
+    -- dbg_trace s!"Depth ({depth}) trans_visited_taken' Length: ({trans_visited_taken'.length})"
+    let all_trans'd_to_visited_taken' : List NodeTransition :=
+      (trans_visited_taken) ++ visited_taken -- ++ visited_msg'd_node
+
+    dbg_trace s!"Depth ({depth}) test3.2"
+    let all_trans'd_to_visited_taken : List NodeTransition :=
+      all_trans'd_to_visited_taken'
+    dbg_trace s!"Depth ({depth}) test3.3"
+    let dests : List Node :=
+      List.eraseDups $
+        trans_dests
+    dbg_trace s!"Depth ({depth}) test3.4"
+
+    dbg_trace s!"Depth ({depth}) test4"
     let trans'd_to : List (List Node × List NodeTransition) := ← dests.mapM (
-        graph.reachable_nodes_from_node_up_to_option_node
+        graph.reachable_nodes_from_node_up_to_option_node (depth + 1)
           · avoid_node? inst_type all_trans'd_to_visited_taken (none)
       )
+    dbg_trace s!"Depth ({depth}) test5"
 
-    let transition_reachable_nodes := List.eraseDups $ List.join $ trans'd_to.map (·.1)
-    let trans'd_to_visited_taken   := List.eraseDups $ List.join $ trans'd_to.map (·.2)
-
-    -- let visited_nodes :=
-    
-    -- let all_trans_visited_taken := visited_taken ++ transitions_to_traverse.map ( (node, ·))
+    let transition_reachable_nodes := /- List.eraseDups $ -/ List.join $ trans'd_to.map (·.1)
+    let trans'd_to_visited_taken   := /- List.eraseDups $ -/ List.join $ trans'd_to.map (·.2)
 
     let transitions_to_check_msgs : Transitions :=
       transitions_to_consider.filter (·.trans_type != .Reset)
@@ -923,37 +941,40 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     let trans_compls_for_this_inst_type : Transitions :=
       transitions_to_check_msgs
       -- node.not_visited_transitions_all_completions_taken_by_inst_type visited_taken inst_type -- Consider transitions as well for messages
-    dbg_trace s!"REACHABLE COMPUTATION: trans & compl transitions, inst_type ({inst_type}): ({trans_compls_for_this_inst_type.map (·.if_expr_src_dest)})"
+    dbg_trace s!"Depth ({depth}) test5.1"
+    dbg_trace s!"Depth ({depth}) Length trans_compls_for_this_inst_type: ({trans_compls_for_this_inst_type.length})"
     let msg'd_nodes_unfiltered : List NodeTransition :=
       ← trans_compls_for_this_inst_type.msg'd_nodes_of_type_reaching_complete node.ctrler_name graph inst_type
         |>.throw_exception_nesting_msg s!"Current Inst Type: ({inst_type})"
 
+    dbg_trace s!"Depth ({depth}) test6"
     let msg'd_nodes := msg'd_nodes_unfiltered.filter (! trans'd_to_visited_taken.contains ·)
 
-    dbg_trace s!"REACHABLE COMPUTATION: msg'd nodes, inst_type ({inst_type}): (current node: ({node.current_state})) msg'd_nodes: ({msg'd_nodes.map (·.toString)})"
+    -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: visited_taken node/trans: ({visited_taken})"
+    -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans'd visited_taken node/trans: ({trans'd_to_visited_taken})"
 
-    dbg_trace s!"REACHABLE COMPUTATION: visited_taken node/trans: ({trans'd_to_visited_taken})"
-
-    let msg'd_trans_visited_taken : List NodeTransition := List.eraseDups $
-      trans'd_to_visited_taken ++
-      msg'd_nodes.map (
-        let nt := ·;
-        (nt.1, nt.2)
-      )
+    let msg'd_trans_visited_taken : List NodeTransition := -- List.eraseDups $
+      trans'd_to_visited_taken ++ msg'd_nodes ++ visited_taken
     let msg'd_nodes_after_trans : List Node := List.eraseDups $
       ← msg'd_nodes.mapM (graph.node_from_name! ·.2.dest_state )
     -- AZ NOTE: won't carry the visited_taken between ctrlers, leaves the option of re-using ctrlers ope for later
     let msg'd_and_visited : List (List Node × List NodeTransition) :=
       ← msg'd_nodes_after_trans.mapM (do
-        graph.reachable_nodes_from_node_up_to_option_node
+        graph.reachable_nodes_from_node_up_to_option_node (depth + 1)
           · avoid_node? inst_type msg'd_trans_visited_taken (none) )
-    let reachable_nodes_from_msgs : List Node := List.eraseDups $ List.join $ msg'd_and_visited.map (·.1)
-    let msg'd_visited : List NodeTransition := List.eraseDups $ List.join $ msg'd_and_visited.map (·.2)
+    let reachable_nodes_from_msgs : List Node := /- List.eraseDups $ -/ List.join $ msg'd_and_visited.map (·.1)
+    let msg'd_visited : List NodeTransition := /- List.eraseDups $ -/ List.join $ msg'd_and_visited.map (·.2)
+    dbg_trace s!"Depth ({depth}) test7"
+
+    dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans & compl transitions, inst_type ({inst_type}): ({trans_compls_for_this_inst_type.map (·.if_expr_src_dest)})"
+    dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: msg'd nodes, inst_type ({inst_type}): (current node: ({node.current_state})) msg'd_nodes: ({msg'd_nodes.map (·.toString)})"
+
+    -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: msg'd visited_taken node/trans: ({msg'd_visited})"
 
     return (
-      List.eraseDups $ [node] ++ transition_reachable_nodes ++ reachable_nodes_from_msgs
+      /-List.eraseDups $-/ [node] ++ transition_reachable_nodes ++ reachable_nodes_from_msgs
       ,
-      List.eraseDups $ msg'd_visited ++ msg'd_trans_visited_taken)
+      /-List.eraseDups $-/ msg'd_visited ++ msg'd_trans_visited_taken)
 
     -- NOTE: If we want to prove termination, show that the graph is a DAG, and that we only visit each node once, so we will eventually terminate
     -- Or show that the transition type doesn't have any cycles
@@ -978,7 +999,8 @@ def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : Ins
       let commit_node := ← graph.commit_transition_state_ctrler |>.throw_exception_nesting_msg s!"Multiple Nodes: Error when searching for post commit nodes in graph : ({graph.nodes.map (·.qualified_state_name)})"
       -- dbg_trace s!">> Multiple Nodes: commit_node: ({commit_node.qualified_state_name}) Now find post-commit nodes"
       -- let post_commit_nodes := 
-      let (post_commit_nodes, /- visited nodes -/_) := ← graph.reachable_nodes_from_node_up_to_option_node commit_node none inst_type [] none
+      let (post_commit_nodes', /- visited nodes -/_) := ← graph.reachable_nodes_from_node_up_to_option_node 0 commit_node none inst_type [] none
+      let post_commit_nodes := post_commit_nodes'.eraseDups
       -- dbg_trace s!">> Multiple Nodes: post_commit_nodes: ({post_commit_nodes.qualified_state_names})"
       let speculative_receive_states := receive_states_that_reach_completion.filter ( ! post_commit_nodes.contains · )
       -- dbg_trace s!">> Multiple Nodes: speculative receive states: ({speculative_receive_states.qualified_state_names})"
@@ -1339,9 +1361,10 @@ def PostReceivePathsUniqueConstraints : List CtrlerPathConstraint → List Ctrle
 def CDFG.Node.non_reset_transitions (node : Node) : (Transitions) :=
   node.transitions.filter (·.trans_type != .Reset)
 
+-- AZ TODO NOTE: make this recursively find predecessor states, and return those..
 def CDFG.Graph.nodes_transitioning_to_node (graph : Graph) (node : Node)
 : (List Node) :=
-  graph.nodes.filter (·.non_reset_transitions.any (·.is_transition_to_state_name node.current_state))
+  graph.nodes.filter (·.basic_transitions.any (·.is_transition_to_state_name node.current_state))
 
 def CDFG.Node.transitions_to_node (node : Node) (dest_node : Node) : Transitions :=
   node.non_reset_transitions.filter (·.is_transition_to_state_name dest_node.current_state)
@@ -2521,6 +2544,7 @@ def CDFG.Node.is_pred_by_instruction_not_load (node : Node) (dest_node_name : St
   exists_pred_on_not_load
 
 def CDFG.Graph.filter_is_node_for_ld (graph : Graph) (node : Node) : Bool :=
+  dbg_trace s!"%%LR? is node for load?"
   let nodes_transitioning_to_node := graph.nodes_transitioning_to_node node
   let is_any_node_trans_to_this_node_not_for_load : Bool := nodes_transitioning_to_node.any (·.is_pred_by_instruction_not_load node.current_state)
 
@@ -2580,7 +2604,8 @@ def CDFG.Graph.inst_source_node (graph : Graph) : Except String Node :=
 
 -- TODO: Stub
 def CDFG.Graph.states_an_inst_of_type_can_be_in (graph : Graph) (inst_source_node : Node) (must_stall_at_node? : Option Node) (inst_type : InstType) : Except String Graph := do
-  let (nodes, _) ← graph.reachable_nodes_from_node_up_to_option_node inst_source_node must_stall_at_node? inst_type [] none
+  let (nodes', _) ← graph.reachable_nodes_from_node_up_to_option_node 0 inst_source_node must_stall_at_node? inst_type [] none
+  let nodes := nodes'.eraseDups
   pure { nodes := nodes }
 
 def CDFG.Node.is_match_ctrler_and_state_names (node : Node) (ctrler_name : CtrlerName) (state_name : StateName) : Bool :=
@@ -2842,9 +2867,6 @@ def CtrlerNameNodes.starts_at_same_or_later_than_given_ctrler
 
   pure (is_nodes_that_msg_both_nodes, is_this_ctrler_msg'd_by_other_ctrler?)
 
-def CDFG.Node.basic_transitions (node : Node) : List Transition :=
-  node.transitions.filter (·.trans_type == .Transition)
-
 def CDFG.Node.is_transitions_to_node (node : Node) (dest_node_to_check : Node) : Bool :=
   node.basic_transitions.any (·.dest_state == dest_node_to_check.current_state)
 
@@ -3008,13 +3030,15 @@ def CDFG.Graph.find_pre_receive_stall_states
 
   -- dbg_trace s!">> start INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
     -- AZ NOTE: Current Issue: reachable nodes function doesn't end
-  let (inst_graph, _) := ← graph.reachable_nodes_from_node_up_to_option_node inst_source_node none first_'to_stall_on'_inst_type [] none
+  let (inst_graph', _) := ← graph.reachable_nodes_from_node_up_to_option_node 0 inst_source_node none first_'to_stall_on'_inst_type [] none
+  let inst_graph := inst_graph'.eraseDups
   -- dbg_trace s!">> inst_type: ({first_'to_stall_on'_inst_type}) inst_graph: ({inst_graph.qualified_state_names})"
   -- dbg_trace s!">> end INST GRAPH for inst type: ({first_'to_stall_on'_inst_type})"
 
   let receive_response_node : Node ← graph.global_complete_node_of_inst_type first_'to_stall_on'_inst_type |>.throw_exception_nesting_msg s!"Error finding 'complete node' of inst_type: ({first_'to_stall_on'_inst_type}), in graph: ({graph.node_names})"
   -- dbg_trace s!">> receive_response_node: ({receive_response_node.qualified_state_name})"
-  let (post_receive_inst_graph_with_receive_node, _) := ← graph.reachable_nodes_from_node_up_to_option_node receive_response_node none first_'to_stall_on'_inst_type [] none
+  let (post_receive_inst_graph_with_receive_node', _) := ← graph.reachable_nodes_from_node_up_to_option_node 0 receive_response_node none first_'to_stall_on'_inst_type [] none
+  let post_receive_inst_graph_with_receive_node := post_receive_inst_graph_with_receive_node'.eraseDups
   -- dbg_trace s!">> post_receive_inst_graph_with_receive_node: ({post_receive_inst_graph_with_receive_node.qualified_state_names})"
   let post_receive_inst_graph := post_receive_inst_graph_with_receive_node.filter (·.current_state != receive_response_node.current_state)
   -- dbg_trace s!">> inst_type: ({first_'to_stall_on'_inst_type}) post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"
