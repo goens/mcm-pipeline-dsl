@@ -130,21 +130,21 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
       --     []
 
-      -- let ld_ld := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ load' ] [ load' ] Addresses.any) )
+      -- let ld_ld := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ load ] [ load ] Addresses.any) )
       -- let ctrlers := match CDFG.InOrderTransform ctrlers ld_ld none with
       -- | .ok ctrler_list => ctrler_list
       -- | .error msg => 
       -- dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
       -- []
 
-      dbg_trace s!"++ Adding st -> st ordering."
-      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
-      let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
-        | .ok ctrler_list => ctrler_list
-        | .error msg => 
-          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-          []
-      println! s!"!st,st Ctrlers: ({ctrlers}) st,st"
+      -- dbg_trace s!"++ Adding st -> st ordering."
+      -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
+      -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+      --     []
+      -- println! s!"!st,st Ctrlers: ({ctrlers}) st,st"
 
       dbg_trace s!"++ Adding ld,st -> mfence -> ld,st ordering."
       let ld_st_fence_ld_st := ( MCMOrdering.ternary_ordering
@@ -155,12 +155,12 @@ def transformTesting : AST → Array Nat → IO Unit
           dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
           []
 
-      -- dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
-      -- let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg => 
-      --     dbg_trace s!"Error adding invalidation listener: ({msg})"
-      --     []
+      dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
+      let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error adding invalidation listener: ({msg})"
+          []
 
       -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store' ] [ store' ] Addresses.any) )
       -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
@@ -176,18 +176,18 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
       --     []
 
-      println! s!"!ld,st mfence Ctrlers: ({ctrlers}) ld,st mfence"
+      -- println! s!"!ld,st mfence Ctrlers: ({ctrlers}) ld,st mfence"
 
       -- let load_replay_ld_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
-      let mfence_to_replay := MCMOrdering.binary_ordering (BinaryOrdering.mk [mfence] [mfence] Addresses.any)
-      dbg_trace s!"++ Adding LoadReplay ld -> ld"
-      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( mfence_to_replay) with
-        | .ok ctrler_list => ctrler_list
-        | .error msg => 
-          dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
-          []
+      -- let mfence_to_replay := MCMOrdering.binary_ordering (BinaryOrdering.mk [mfence] [mfence] Addresses.any)
+      -- dbg_trace s!"++ Adding LoadReplay ld -> ld"
+      -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( mfence_to_replay) with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+      --     []
 
-      println! s!"!Load Replay Ctrlers: ({ctrlers}) Load Replay"
+      -- println! s!"!Load Replay Ctrlers: ({ctrlers}) Load Replay"
 
       -- println! s!"What ctrlers look like after TFSM:"
       -- println! s!"Ctrlers: {ctrlers}"
