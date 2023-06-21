@@ -4055,6 +4055,11 @@ lst_stmts_decls
               next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
               next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
               next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+              next_state .core_[j] .mem_interface_ .out_msg .store_state := await_handling;
+              for core_idx : cores_t do
+                next_state .core_[j] .mem_interface_ .out_msg .store_inval_sent[core_idx] := false;
+                next_state .core_[j] .mem_interface_ .out_msg .store_inval_ackd[core_idx] := false;
+              endfor;
               next_state .core_[ j ] .mem_interface_ .out_busy := true;
             ]
             dbg_trace s!"memory_interface->send_store_request() API: ({assn_out_msg})"
