@@ -293,8 +293,25 @@ def CDFG.Transition.predicated_by_msg?
 def CDFG.Node.node_transition_or_complete_pred_on_msg_from_ctrler : Node → Message → CtrlerName → Graph → Option InstType → Except String (List NodeTransition)
 | node, msg, ctrler_name, graph, inst_type? => do
   -- check if any of the node's predicates are on the message's name
-  let transitions_reaching_complete := ← node.not_reset_transitions.filterM (·.is_transition_reaches_complete graph inst_type? |>.throw_exception_nesting_msg s!"Error when checking if node's ({node.current_state}) transitions or completions are pred on msg: ({← msg.name}) to ({← msg.dest_ctrler})")
-  -- dbg_trace s!"2curr ctrler/node: ({node.ctrler_name}, {node.current_state}), inst-type: ({inst_type?}), transitions_reaching_complete: ({transitions_reaching_complete.map (·.if_expr_src_dest)})"
+  -- let transitions_reaching_complete := ← node.not_reset_transitions.filterM (·.is_transition_reaches_complete graph inst_type? |>.throw_exception_nesting_msg s!"Error when checking if node's ({node.current_state}) transitions or completions are pred on msg: ({← msg.name}) to ({← msg.dest_ctrler})")
+
+  let non_reset_trans := node.not_reset_transitions
+
+  let complete_trans_to_ret := non_reset_trans.filter (·.trans_type == .Completion)
+  let basic_trans := non_reset_trans.filter (·.trans_type == .Transition)
+
+  let unique_dest_node_names : List StateName :=
+    List.eraseDups $ basic_trans.map (·.dest_state)
+  let unique_dest_nodes : List Node := ←
+    unique_dest_node_names.mapM (graph.node_from_name! ·)
+  let dest_nodes_reaching_complete : List Node :=
+    ← unique_dest_nodes.filterM (·.is_node_reaches_complete graph inst_type? [])
+  let dest_reaching_complete_names := dest_nodes_reaching_complete.map (·.current_state)
+
+  let basic_trans_to_ret :=
+    basic_trans.filter (dest_reaching_complete_names.contains ·.dest_state)
+
+  let transitions_reaching_complete := complete_trans_to_ret ++ basic_trans_to_ret
 
   let node_transition_pred_on_msg? := ← transitions_reaching_complete.mapM (do ·.predicated_by_msg? msg ctrler_name node)
   let node_trans_pred_on_msg := node_transition_pred_on_msg?.filterMap id
@@ -943,9 +960,23 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
       -- node.not_visited_transitions_all_completions_taken_by_inst_type visited_taken inst_type -- Consider transitions as well for messages
     dbg_trace s!"Depth ({depth}) test5.1"
     dbg_trace s!"Depth ({depth}) Length trans_compls_for_this_inst_type: ({trans_compls_for_this_inst_type.length})"
-    let msg'd_nodes_unfiltered : List NodeTransition :=
-      ← trans_compls_for_this_inst_type.msg'd_nodes_of_type_reaching_complete node.ctrler_name graph inst_type
-        |>.throw_exception_nesting_msg s!"Current Inst Type: ({inst_type})"
+
+    -- let msg'd_nodes_unfiltered : List NodeTransition :=
+    --   ← trans_compls_for_this_inst_type.msg'd_nodes_of_type_reaching_complete node.ctrler_name graph inst_type
+    --     |>.throw_exception_nesting_msg s!"Current Inst Type: ({inst_type})"
+
+    let unique_transition_msgs :=
+      List.eraseDups $ List.join $ trans_compls_for_this_inst_type.map (·.messages)
+
+    dbg_trace s!"Depth ({depth} Length unique_transition_msgs: ({unique_transition_msgs}))"
+
+    let msg'd_nodes_unfiltered := List.join $
+      ← unique_transition_msgs.mapM
+        (
+          (·.findDestStateOfTypeReachingComplete graph.nodes node.ctrler_name inst_type
+          |>.throw_exception_nesting_msg s!"Error finding transition's msg'd_nodes: Transition: ()"
+          )
+        )
 
     dbg_trace s!"Depth ({depth}) test6"
     let msg'd_nodes := msg'd_nodes_unfiltered.filter (! trans'd_to_visited_taken.contains ·)
