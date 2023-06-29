@@ -75,6 +75,19 @@ def AppendTransitionStmt (transition : IncompleteTransition) (stmt : Pipeline.St
   constraint_info := transition.constraint_info
   commit := transition.commit
 }
+
+def AppendTransitionStmts (transition : IncompleteTransition) (stmts : List Pipeline.Statement)
+: IncompleteTransition
+:= {
+predicate := transition.predicate
+orig_state := transition.orig_state
+messages := transition.messages
+effects := transition.effects
+stmts := transition.stmts ++ stmts
+queue_info := transition.queue_info
+constraint_info := transition.constraint_info
+commit := transition.commit
+}
 def AppendTransitionEffect (transition : IncompleteTransition) (effect : Pipeline.Statement)
 : IncompleteTransition
 := {
@@ -266,101 +279,137 @@ partial def StmtsToTransitions
             transitions_lists dest_identifier TransitionType.Completion)
           updated_transitions_list
         | .conditional_stmt conditional =>
-          match conditional with
-          | .if_statement condition_expr cond_stmt =>
-            -- add condition to a new transition?
-            -- if it has a transition, add it to a list of completed transitions
-            -- if it has no transition, I somehow need to continue with
-            --   this new transition and original
-            --   Should be doable with a map, just update both of the transitions
-            let (transitions_list_with_added_cond, stmt_list) :=
-              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions condition_expr cond_stmt
-            let list_trans := StmtsToTransitions ctrler transitions_list_with_added_cond stmt_list
-              -- check if any trans has it's dest_name added..
-            let updated_transitions_lists : TransitionsLists := {
-              -- Append any new incomplete transition paths
-              incomplete_transitions := transitions_lists.incomplete_transitions ++
-                list_trans.incomplete_transitions,
-              -- Append new completed transitions
-              complete_transitions := transitions_lists.complete_transitions ++ list_trans.complete_transitions
-            }
-            updated_transitions_lists
-          | .if_else_statement cond_expr if_true_stmts else_stmts =>
-            -- Repeat cond but here.
-            let (if_true_transitions_list_with_added_cond, if_true_stmt_list) :=
-              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions cond_expr if_true_stmts
-            let if_true_list_trans := StmtsToTransitions ctrler if_true_transitions_list_with_added_cond if_true_stmt_list
+          let is_has_trans := stmt.is_contains_transition
+          match is_has_trans with
+          | true =>
+            match conditional with
+            | .if_statement condition_expr cond_stmt =>
+              -- add condition to a new transition?
+              -- if it has a transition, add it to a list of completed transitions
+              -- if it has no transition, I somehow need to continue with
+              --   this new transition and original
+              --   Should be doable with a map, just update both of the transitions
+              let (transitions_list_with_added_cond, stmt_list) :=
+                PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions condition_expr cond_stmt
+              let list_trans := StmtsToTransitions ctrler transitions_list_with_added_cond stmt_list
+                -- check if any trans has it's dest_name added..
+              let updated_transitions_lists : TransitionsLists := {
+                -- Append any new incomplete transition paths
+                incomplete_transitions := transitions_lists.incomplete_transitions ++
+                  list_trans.incomplete_transitions,
+                -- Append new completed transitions
+                complete_transitions := transitions_lists.complete_transitions ++ list_trans.complete_transitions
+              }
+              updated_transitions_lists
+            | .if_else_statement cond_expr if_true_stmts else_stmts =>
+              -- Repeat cond but here.
+              let (if_true_transitions_list_with_added_cond, if_true_stmt_list) :=
+                PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions cond_expr if_true_stmts
+              let if_true_list_trans := StmtsToTransitions ctrler if_true_transitions_list_with_added_cond if_true_stmt_list
 
-            -- similar case, duplicated for the else case
-            let negated_else_cond : Pipeline.Expr := Pipeline.Expr.some_term (
-              Pipeline.Term.logical_negation (Pipeline.Term.expr cond_expr))
-            let (if_false_transitions_list_with_added_cond, if_false_stmt_list) :=
-              PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions negated_else_cond else_stmts
-            let if_false_list_trans := StmtsToTransitions ctrler if_false_transitions_list_with_added_cond if_false_stmt_list
+              -- similar case, duplicated for the else case
+              let negated_else_cond : Pipeline.Expr := Pipeline.Expr.some_term (
+                Pipeline.Term.logical_negation (Pipeline.Term.expr cond_expr))
+              let (if_false_transitions_list_with_added_cond, if_false_stmt_list) :=
+                PrepareIfExprCondAndStmts transitions_lists.incomplete_transitions negated_else_cond else_stmts
+              let if_false_list_trans := StmtsToTransitions ctrler if_false_transitions_list_with_added_cond if_false_stmt_list
 
-            let added_branches_transitions_lists : TransitionsLists := {
-              -- Append, it's either new ones with if stmt code, or empty if there was a transition
-              incomplete_transitions := if_true_list_trans.incomplete_transitions ++
-                if_false_list_trans.incomplete_transitions,
-              -- Just update, since it's either the same, or has new ones from the if stmt
-              complete_transitions := transitions_lists.complete_transitions ++
-                if_true_list_trans.complete_transitions ++ if_false_list_trans.complete_transitions
-            }
-            added_branches_transitions_lists
+              let added_branches_transitions_lists : TransitionsLists := {
+                -- Append, it's either new ones with if stmt code, or empty if there was a transition
+                incomplete_transitions := if_true_list_trans.incomplete_transitions ++
+                  if_false_list_trans.incomplete_transitions,
+                -- Just update, since it's either the same, or has new ones from the if stmt
+                complete_transitions := transitions_lists.complete_transitions ++
+                  if_true_list_trans.complete_transitions ++ if_false_list_trans.complete_transitions
+              }
+              added_branches_transitions_lists
+          | false =>
+            let child_stmts := [stmt] ++ stmt.get_all_child_stmts
+
+            let transitions_with_stmt : IncompleteTransitions :=
+              transitions_lists.incomplete_transitions.map
+                (AppendTransitionStmts · child_stmts)
+            let lists : TransitionsLists :=
+            { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+            lists
         | .block lst_stmt =>
           -- recurse to get incomplete stmts & complete stmts
           let transitions : TransitionsLists := StmtsToTransitions ctrler transitions_lists.incomplete_transitions lst_stmt
           transitions
         | .await none when_stmts =>
-          -- this just receives a message
-          -- record the when messages here as guards
-          -- Map the list of when stmts to transitions
-          let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
-            -- should be when stmt
-            match when_stmt with
-            | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
-              let (trans_with_await_when, stmt_list) :=
-                PrepareAwaitWhenCondAndStmts
-                transitions_lists.incomplete_transitions
-                (Pipeline.Statement.await (none) [when_stmt]) when's_stmt
-              let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
-              trans_lists
-            -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
-            | _ =>
-              dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
-              default -- Need to figure out how to throw here
-            )
-          let updated_transitions_lists : TransitionsLists :=
-            List.foldl (λ accum_transitions_lists when_trans_lists => 
-              { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
-                complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
-            ) (EmptyTransitionsLists) all_when_trans_lists
-          updated_transitions_lists
+          let is_has_trans := stmt.is_contains_transition
+          match is_has_trans with
+          | true =>
+            -- this just receives a message
+            -- record the when messages here as guards
+            -- Map the list of when stmts to transitions
+            let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
+              -- should be when stmt
+              match when_stmt with
+              | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
+                let (trans_with_await_when, stmt_list) :=
+                  PrepareAwaitWhenCondAndStmts
+                  transitions_lists.incomplete_transitions
+                  (Pipeline.Statement.await (none) [when_stmt]) when's_stmt
+                let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
+                trans_lists
+              -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
+              | _ =>
+                dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+                default -- Need to figure out how to throw here
+              )
+            let updated_transitions_lists : TransitionsLists :=
+              List.foldl (λ accum_transitions_lists when_trans_lists => 
+                { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
+                  complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
+              ) (EmptyTransitionsLists) all_when_trans_lists
+            updated_transitions_lists
+          | false =>
+            let child_stmts := [ stmt ] ++ stmt.get_all_child_stmts
+
+            let transitions_with_stmt : IncompleteTransitions :=
+              transitions_lists.incomplete_transitions.map
+                (AppendTransitionStmts · child_stmts)
+            let lists : TransitionsLists :=
+              { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+            lists
         | .when _ _ _ =>
           dbg_trace "Shouldn't see a when by itself. Figure out how to throw in dsl to cdfg translation"
           default
         | .await (some api_term) when_stmts =>
-          let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
-            -- should be when stmt
-            match when_stmt with
-            | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
-              let (trans_with_await_when, stmt_list) :=
-                PrepareAwaitAPIWhenCondAndStmts
-                transitions_lists.incomplete_transitions
-                (Pipeline.Statement.await (api_term) [when_stmt]) when's_stmt
-              let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
-              trans_lists
-            -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
-            | _ =>
-              dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
-              default -- Need to figure out how to throw here
-            )
-          let updated_transitions_lists : TransitionsLists :=
-            List.foldl (λ accum_transitions_lists when_trans_lists => 
-              { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
-                complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
-            ) (EmptyTransitionsLists) all_when_trans_lists
-          updated_transitions_lists
+          let is_has_trans := stmt.is_contains_transition
+          match is_has_trans with
+          | true =>
+            let all_when_trans_lists : List TransitionsLists := when_stmts.map (λ when_stmt =>
+              -- should be when stmt
+              match when_stmt with
+              | .when /- ctrler_msg_name -/ _ /- args -/ _ when's_stmt =>
+                let (trans_with_await_when, stmt_list) :=
+                  PrepareAwaitAPIWhenCondAndStmts
+                  transitions_lists.incomplete_transitions
+                  (Pipeline.Statement.await (api_term) [when_stmt]) when's_stmt
+                let trans_lists : TransitionsLists := StmtsToTransitions ctrler trans_with_await_when stmt_list
+                trans_lists
+              -- | _ => throw s!"Expecting when stmt? ({when_stmt})"
+              | _ =>
+                dbg_trace "Expecting when stmt? Figure out how to throw in dsl to cdfg translation"
+                default -- Need to figure out how to throw here
+              )
+            let updated_transitions_lists : TransitionsLists :=
+              List.foldl (λ accum_transitions_lists when_trans_lists => 
+                { incomplete_transitions := accum_transitions_lists.incomplete_transitions ++ when_trans_lists.incomplete_transitions,
+                  complete_transitions := accum_transitions_lists.complete_transitions ++ when_trans_lists.complete_transitions }
+              ) (EmptyTransitionsLists) all_when_trans_lists
+            updated_transitions_lists
+          | false =>
+            let child_stmts := [ stmt ] ++ stmt.get_all_child_stmts
+
+            let transitions_with_stmt : IncompleteTransitions :=
+              transitions_lists.incomplete_transitions.map
+              (AppendTransitionStmts · child_stmts)
+            let lists : TransitionsLists :=
+              { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+            lists
         | .stray_expr expr =>
           -- stray expr is func call or message
           -- TODO Handle accordingly!
