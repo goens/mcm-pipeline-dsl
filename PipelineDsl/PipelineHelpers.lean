@@ -635,4 +635,38 @@ partial def Pipeline.Statement.is_contains_transition
   | .stall _
     => false
 
+partial def Pipeline.Statement.get_all_child_stmts
+(stmt : Statement)
+: List Statement :=
+  match stmt with
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .labelled_statement _ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => [stmt]
+  | .block stmts =>
+    List.join $ stmts.map (·.get_all_child_stmts)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.get_all_child_stmts ++ stmt2.get_all_child_stmts
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.get_all_child_stmts
+  | .listen_handle stmt1 handle_blks =>
+    let handle_stmts :=
+      List.join $ handle_blks.map (
+        match · with
+        | .mk _ _ stmt => stmt.get_all_child_stmts
+      )
+    stmt1.get_all_child_stmts ++ handle_stmts
+  | .await _ stmts =>
+    List.join $ stmts.map (·.get_all_child_stmts)
+  | .when _ _ stmt =>
+    stmt.get_all_child_stmts
 
