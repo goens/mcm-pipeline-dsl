@@ -600,3 +600,39 @@ def Pipeline.Description.add_stmt_to_entry
   | _ =>
     throw s!"Error: Description wasn't entry type?"
 
+partial def Pipeline.Statement.is_contains_transition
+(stmt : Statement)
+: Bool :=
+  match stmt with
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+    => true
+  | .block stmts =>
+    stmts.any (·.is_contains_transition)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.is_contains_transition || stmt2.is_contains_transition
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.is_contains_transition
+  | .listen_handle stmt1 handle_blks =>
+    let handle_stmts := handle_blks.any (
+      match · with
+      | .mk _ _ stmt => stmt.is_contains_transition
+      )
+    stmt1.is_contains_transition || handle_stmts
+  | .await _ stmts =>
+    stmts.any (·.is_contains_transition)
+  | .when _ _ stmt =>
+    stmt.is_contains_transition
+  | .labelled_statement _ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => false
+
+
