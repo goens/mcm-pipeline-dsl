@@ -1040,7 +1040,11 @@ def CDFG.Graph.global_complete_node_of_inst_type (graph : Graph) (inst_type : In
       graph.global_receive_node_of_inst_type inst_type
   | .memory_ordering ordering => do
     match ordering with
-    | .mfence => do
+    | .mfence
+    | .dmb_sy
+    | .dmb_ld
+    | .dmb_st
+      => do
       graph.commit_transition_state_ctrler
 
 def common_nodes (nodes1 : List Node) (nodes2 : List Node) : List Node := nodes1.filter (nodes2.contains ·)
@@ -2188,7 +2192,11 @@ def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : Ins
       graph.global_perform_node_of_memory_access inst_type
   | .memory_ordering ordering => do
     match ordering with
-    | .mfence => do
+    | .mfence
+    | .dmb_sy
+    | .dmb_ld
+    | .dmb_st
+      => do
       -- Replace, filter for node with commit label
       -- Use this function
       -- CDFG.Graph.commit_transition_state_ctrler

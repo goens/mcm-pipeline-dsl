@@ -14,10 +14,16 @@ instance : ToString MemoryAccess where toString := MemoryAccess.toString
 
 inductive MemoryOrdering
 | mfence : MemoryOrdering
+| dmb_sy : MemoryOrdering
+| dmb_ld : MemoryOrdering
+| dmb_st : MemoryOrdering
 deriving Inhabited, BEq
 
 def MemoryOrdering.toString : MemoryOrdering → String
 | .mfence => "mfence"
+| .dmb_sy => "dmb_sy"
+| .dmb_ld => "dmb_ld"
+| .dmb_st => "dmb_st"
 
 instance : ToString MemoryOrdering where toString := MemoryOrdering.toString
 
@@ -30,12 +36,18 @@ deriving Inhabited, BEq
 def load : InstType := InstType.memory_access MemoryAccess.load
 def store : InstType := InstType.memory_access MemoryAccess.store
 def mfence : InstType := InstType.memory_ordering MemoryOrdering.mfence
+def dmb_sy : InstType := InstType.memory_ordering MemoryOrdering.dmb_sy
+def dmb_ld : InstType := InstType.memory_ordering MemoryOrdering.dmb_ld
+def dmb_st : InstType := InstType.memory_ordering MemoryOrdering.dmb_st
 
 -- NOTE: Should make another type just to list the Litmus Test ordering.
 -- Use these for now.
 def load' : MemoryAccess := MemoryAccess.load
 def store' : MemoryAccess := MemoryAccess.store
 def mfence' : MemoryOrdering := MemoryOrdering.mfence
+def dmb_sy' : MemoryOrdering := MemoryOrdering.dmb_sy
+def dmb_ld' : MemoryOrdering := MemoryOrdering.dmb_ld
+def dmb_st' : MemoryOrdering := MemoryOrdering.dmb_st
 
 def InstType.toString : InstType → String
 | .memory_access access =>
@@ -48,10 +60,13 @@ def InstType.toMurphiString : InstType → String
 | .memory_access access =>
   match access with
   | .load => "ld"
-  | .store => "st"  
+  | .store => "st"
 | .memory_ordering ordering =>
   match ordering with
   | .mfence => "mfence"
+  | .dmb_sy => "dmb_sy"
+  | .dmb_ld => "dmb_ld"
+  | .dmb_st => "dmb_st"
 
 inductive Addresses where
 | same : Addresses -- ex. ld[x] -> ld[x]

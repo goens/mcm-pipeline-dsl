@@ -198,6 +198,9 @@ def InstType.completion_msg_name : InstType → Except String MsgName
 | .memory_ordering ordering => do
   match ordering with
   | .mfence => do throw "Error: mFence has no awaited completion message"
+  | .dmb_sy => do throw "Error: dmb_sy has no awaited completion message"
+  | .dmb_ld => do throw "Error: dmb_ld has no awaited completion message"
+  | .dmb_st => do throw "Error: dmb_st has no awaited completion message"
 
 def InstType.perform_msg_name : InstType → Except String MsgName
 | .memory_access access => do
@@ -207,6 +210,9 @@ def InstType.perform_msg_name : InstType → Except String MsgName
 | .memory_ordering ordering => do
   match ordering with
   | .mfence => do throw "Error: mFence has no perform message"
+  | .dmb_sy => do throw "Error: dmb_sy has no perform message"
+  | .dmb_ld => do throw "Error: dmb_ld has no perform message"
+  | .dmb_st => do throw "Error: dmb_st has no perform message"
 
 def Pipeline.Term.is_type_perform_msg
 (term : Term)
