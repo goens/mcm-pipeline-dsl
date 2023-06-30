@@ -210,6 +210,8 @@ def CDFG.Graph.TernaryInOrderTransform
       |>.throw_exception_nesting_msg s!"Error finding stall_on_inst states to query in TernaryInOrderTransform"
     pure (ctrler_states, inst_type')
     )
+  dbg_trace s!"<< stall on states to query: ({query_stall_on_ctrler_state})"
+
   -- ordering -> to_stall
   dbg_trace s!"<< Find ordering states to query"
   let query_ordering_ctrler_state : List CtrlerStates × InstType :=
@@ -219,6 +221,7 @@ def CDFG.Graph.TernaryInOrderTransform
       ,
       memory_ordering_type
     )
+  dbg_trace s!"<< ordering inst states to query: ({query_ordering_ctrler_state})"
 
   let stall_on_types_name := "_".intercalate <| inst_to_stall_on_types.map (·.toString)
   let to_stall_types_name := "_".intercalate <| inst_to_stall_types.map (·.toString)
