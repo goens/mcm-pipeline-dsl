@@ -251,7 +251,7 @@ def amd1_dmb_sy : LitmusTest := {
 
 
 def amd1_dmb_ld_st : LitmusTest := {
-  test_name := "amd1-dmb-sy",
+  test_name := "amd1-dmb-ld-st",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
