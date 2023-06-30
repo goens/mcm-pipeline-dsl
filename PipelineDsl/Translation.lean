@@ -1439,7 +1439,7 @@ def get_dest_transition_names
   let lst_of_trans_dest_idents :=
     get_stmts_with_transitions trans_stmt
   let joined_names :=
-    String.intercalate " || " lst_of_trans_dest_idents
+    String.intercalate " || " lst_of_trans_dest_idents.eraseDups
   joined_names
 
 partial def check_if_transition_stmt_blk_has_an_await
