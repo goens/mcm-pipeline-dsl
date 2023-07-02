@@ -1067,7 +1067,10 @@ def CDFG.Graph.global_complete_node_of_inst_type (graph : Graph) (inst_type : In
   | .memory_access access => do
     match access with
     | .load
-    | .store => do
+    | .ldar
+    | .store
+    | .stlr
+      => do
       graph.global_receive_node_of_inst_type inst_type
   | .memory_ordering ordering => do
     match ordering with
@@ -2219,7 +2222,10 @@ def CDFG.Graph.global_perform_node_of_inst_type (graph : Graph) (inst_type : Ins
   | .memory_access access => do
     match access with
     | .load
-    | .store => do
+    | .ldar
+    | .store
+    | .stlr
+      => do
       graph.global_perform_node_of_memory_access inst_type
   | .memory_ordering ordering => do
     match ordering with

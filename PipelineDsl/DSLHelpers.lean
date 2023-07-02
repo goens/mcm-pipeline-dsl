@@ -191,28 +191,32 @@ def Except.throw_exception_nesting_msg (e : Except String α) (msg : String) : E
   | .error err_msg => throw s!"{msg} --\n-- Msg: ({err_msg})"
 
 def InstType.completion_msg_name : InstType → Except String MsgName
-| .memory_access access => do
+| .memory_access access =>
   match access with
-  | .load => do pure load_completed
-  | .store => do pure store_completed
-| .memory_ordering ordering => do
+  | .load => pure load_completed
+  | .ldar => pure load_completed
+  | .store => pure store_completed
+  | .stlr => pure store_completed
+| .memory_ordering ordering =>
   match ordering with
-  | .mfence => do throw "Error: mFence has no awaited completion message"
-  | .dmb_sy => do throw "Error: dmb_sy has no awaited completion message"
-  | .dmb_ld => do throw "Error: dmb_ld has no awaited completion message"
-  | .dmb_st => do throw "Error: dmb_st has no awaited completion message"
+  | .mfence => throw "Error: mFence has no awaited completion message"
+  | .dmb_sy => throw "Error: dmb_sy has no awaited completion message"
+  | .dmb_ld => throw "Error: dmb_ld has no awaited completion message"
+  | .dmb_st => throw "Error: dmb_st has no awaited completion message"
 
 def InstType.perform_msg_name : InstType → Except String MsgName
-| .memory_access access => do
+| .memory_access access =>
   match access with
-  | .load => do pure load_perform
-  | .store => do pure store_perform
-| .memory_ordering ordering => do
+  | .load => pure load_perform
+  | .ldar => pure load_perform
+  | .store => pure store_perform
+  | .stlr => pure store_perform
+| .memory_ordering ordering =>
   match ordering with
-  | .mfence => do throw "Error: mFence has no perform message"
-  | .dmb_sy => do throw "Error: dmb_sy has no perform message"
-  | .dmb_ld => do throw "Error: dmb_ld has no perform message"
-  | .dmb_st => do throw "Error: dmb_st has no perform message"
+  | .mfence => throw "Error: mFence has no perform message"
+  | .dmb_sy => throw "Error: dmb_sy has no perform message"
+  | .dmb_ld => throw "Error: dmb_ld has no perform message"
+  | .dmb_st => throw "Error: dmb_st has no perform message"
 
 def Pipeline.Term.is_type_perform_msg
 (term : Term)
