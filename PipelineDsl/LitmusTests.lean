@@ -276,6 +276,69 @@ def amd1_dmb_ld_st : LitmusTest := {
   ]
 }
 
+def amd1_one_ldar_stlr : LitmusTest := {
+  test_name := "amd1-one-ldar-stlr",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
+}
+
+def amd1_all_ldar_stlr : LitmusTest := {
+  test_name := "amd1-all-ldar-stlr",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
+}
+
+def amd1_relaxed_ldar_stlr : LitmusTest := {
+  test_name := "amd1-relaxed-ldar-stlr",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
+}
+
 -- ====== 
 def amd2 : LitmusTest := {
   test_name := "amd2",
@@ -608,6 +671,9 @@ iwp23b1, -- should pass, is for single core correctness
 amd1,
 amd1_dmb_sy,
 amd1_dmb_ld_st,
+amd1_one_ldar_stlr,
+amd1_all_ldar_stlr,
+amd1_relaxed_ldar_stlr,
 amd2,
 -- n2, -- permitted test, not yet implemented "permitted"
 n4,
