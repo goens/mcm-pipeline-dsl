@@ -157,7 +157,7 @@ type ---- Type declarations ----
   -- IQ_MAX_INSTS : inst_idx_t;
 
   -- insts are either load or stores
-  INST_TYPE : enum {ld, st, inval, mfence, dmb_sy, dmb_ld, dmb_st};
+  INST_TYPE : enum {ld, st, inval, mfence, dmb_sy, dmb_ld, dmb_st, ldar, stlr};
   ADDR_TYPE : enum {addr_reg, addr_imm};
   VAL_TYPE : enum {val_reg, val_imm};
 
