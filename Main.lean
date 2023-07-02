@@ -146,6 +146,33 @@ def transformTesting : AST → Array Nat → IO Unit
       --     dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
       --     []
 
+      -- === Load Acquire / Store Release Testing ===
+      dbg_trace s!"++ Adding ldar -> load, store, ldar ordering."
+      let ldar_ordering := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ ldar ] [ ldar ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers ldar_ordering none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg => 
+          dbg_trace s!"Error applying ldar -> ldar in CDFG InOrderTfsm: ({msg})"
+          []
+
+      let ldar_load_ordering := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ ldar ] [ load ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers ldar_load_ordering none with
+      | .ok ctrler_list => ctrler_list
+      | .error msg => 
+      dbg_trace s!"Error applying ldar -> load in CDFG InOrderTfsm: ({msg})"
+      []
+
+      dbg_trace s!"++ Adding stlr, store, load -> stlr ordering."
+      let stlr_ordering := ( MCMOrdering.binary_ordering
+        (BinaryOrdering.mk [ store, stlr ] [ stlr ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers stlr_ordering none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg =>
+          dbg_trace s!"Error applying stlr, load, store -> stlr in CDFG InOrderTfsm: ({msg})"
+          []
+
+
+      -- === DMB fence ordering testing ===
       dbg_trace s!"++ Adding ld -> DMB_LD -> ld ordering."
       let ld_dmb_ld_ld := ( MCMOrdering.ternary_ordering
         (TernaryOrdering.mk [ load' ] dmb_ld' [ load' ] Addresses.any) )
@@ -182,6 +209,7 @@ def transformTesting : AST → Array Nat → IO Unit
         | .error msg => 
           dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
           []
+
       -- dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
       -- let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
       --   | .ok ctrler_list => ctrler_list
