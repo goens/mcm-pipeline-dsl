@@ -492,7 +492,9 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
   let insert_key_stmt : Statement := stray_expr $ some_term $
     -- function_call [lat_name, insert_key].to_qual_name [qual_var_expr [instruction, seq_num], var_expr load_req_address]
     function_call [lat_name, insert_key].to_qual_name [load_req_seq_num, load_req_address]
-  let inst_is_load := equal (qual_var_term [instruction, op]) (var_term load.toMurphiString)
+  let inst_is_load :=
+    -- equal (qual_var_term [instruction, op]) (var_term load.toMurphiString)
+    IsInstructionAnyLoad
   let if_load_then_insert_key :=
     Statement.conditional_stmt $
       Conditional.if_statement inst_is_load
@@ -524,7 +526,9 @@ def Ctrlers.AddRemoveFromLATWhenCommit
   -- Insert a stmt to remove_key(seq_num) from the LAT
   let remove_key_stmt : Statement := stray_expr $ some_term $
     function_call [lat_name, remove_key].to_qual_name [← key_to_remove.to_dsl_var_expr]
-  let inst_is_type := VarCompare [instruction, op] equal [load.toMurphiString]
+  let inst_is_type :=
+    -- VarCompare [instruction, op] equal [load.toMurphiString]
+    IsInstructionAnyLoad
   let if_inst_is_type := conditional_stmt <| if_statement inst_is_type remove_key_stmt
   
   let ctrlers_remove_key_from_lat :=

@@ -218,6 +218,14 @@ def InstType.perform_msg_name : InstType → Except String MsgName
   | .dmb_ld => throw "Error: dmb_ld has no perform message"
   | .dmb_st => throw "Error: dmb_st has no perform message"
 
+open Pipeline in
+open Expr in
+open Term in
+def IsInstructionAnyLoad : Expr :=
+binor
+ (expr $ Expr.equal (qual_var_term [instruction, op]) (var_term load.toMurphiString) )
+ (expr $ Expr.equal (qual_var_term [instruction, op]) (var_term ldar.toMurphiString) )
+
 def Pipeline.Term.is_type_perform_msg
 (term : Term)
 (inst_type : InstType)

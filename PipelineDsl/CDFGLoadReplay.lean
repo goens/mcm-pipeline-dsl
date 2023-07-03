@@ -504,7 +504,9 @@ def UpdateCommitCtrlerToStartReplayLoad
     let original_commit_code_state_name := original_commit_code_prefix.append "_" |>.append four_nodes.commit_node.current_state
     Pipeline.Statement.transition original_commit_code_state_name
   let do_replay_if_inst_is_load_if_stmt := Pipeline.Statement.conditional_stmt $
-    let if_instruction_is_ld_expr := equal (qual_var_term [instruction, op]) (var_term ld)
+    let if_instruction_is_ld_expr : Pipeline.Expr :=
+      IsInstructionAnyLoad
+      -- equal (qual_var_term [instruction, op]) (var_term ld)
     Pipeline.Conditional.if_else_statement
       if_instruction_is_ld_expr
         /- if case -/ start_replay_if_ready.to_block

@@ -890,9 +890,17 @@ partial def Pipeline.Expr.is_contains_instruction_not_eq_ld : Pipeline.Expr → 
   | .equal term1 term2 =>
     match term1, term2 with
     | .qualified_var qual_var, .var ident =>
-      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+      (qual_var == [instruction, op].to_qual_name) &&
+      (
+        (ident == load.toMurphiString) ||
+        (ident == ldar.toMurphiString)
+      )
     | .var ident, .qualified_var qual_var =>
-      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+      (qual_var == [instruction, op].to_qual_name) &&
+      (
+        (ident == load.toMurphiString) ||
+        (ident == ldar.toMurphiString)
+      )
     | _, _ => false
   | .binand term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld
   -- | .binor term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld

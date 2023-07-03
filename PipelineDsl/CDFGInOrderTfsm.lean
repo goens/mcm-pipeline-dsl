@@ -140,29 +140,34 @@ def CDFG.Graph.BinaryInOrderTransform
 
   dbg_trace s!"<< States to query (with new stall states?): ({query_ctrler_state})"
 
-  let dsl_stall_nodes : List ( Pipeline.Description × StateName × CtrlerState × InstType) := ← new_stall_state_names.mapM (do
-    let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
+  -- let dsl_stall_nodes
+  let updated_ctrlers
+    -- : List ( Pipeline.Description × StateName × CtrlerState × InstType)
+    : Ctrlers
+    := ← new_stall_state_names.foldlM (
+    λ ctrlers' (stall_point, /- new_stall_state_name -/ _, inst_to_stall_type') => do
+    -- let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
     let dsl_stall := ← ctrlers.StallNode
       stall_point.state stall_point.ctrler
       query_ctrler_states'
-      /-inst_to_stall_on_types-/ inst_to_stall_type'
+      inst_to_stall_type'
       -- new_stall_state_name
       stall_point.state -- just reuse the state, don't generate a stall state, and keep this simple.
       |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while generating the stall state"
-    pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
-  )
+    -- pure (dsl_stall, new_stall_state_name , stall_point, inst_to_stall_type')
+    ctrlers'.update_ctrler_state stall_point.ctrler dsl_stall
+  ) ctrlers
 
-  dbg_trace s!"<< Generated DSL stall nodes: ({dsl_stall_nodes})"
+  -- dbg_trace s!"<< Generated DSL stall nodes: ({dsl_stall_nodes})"
+  dbg_trace s!"<< Generated DSL stall nodes: ({updated_ctrlers})"
 
-  let updated_ctrlers ←
-    dsl_stall_nodes.foldlM (
-      λ ctrlers' dsl_stall_node_state => do
-        let (stall_node, /- new_stall_state_name -/ _, stall_point, /- inst_to_stall_type' -/ _) := dsl_stall_node_state;
+  -- let updated_ctrlers ←
+  --   dsl_stall_nodes.foldlM (
+  --     λ ctrlers' dsl_stall_node_state => do
+  --       let (stall_node, /- new_stall_state_name -/ _, stall_point, /- inst_to_stall_type' -/ _) := dsl_stall_node_state;
 
-        ctrlers'.update_ctrler_state stall_point.ctrler stall_node
-        -- UpdateCtrlerWithNode ctrlers' stall_point.ctrler new_stall_state_name stall_node stall_point.state (some inst_to_stall_type')
-        --   |>.throw_exception_nesting_msg s!"Error in BinaryInOrderTransformation while updating the controllers with the stall state"
-    ) ctrlers
+  --       ctrlers'.update_ctrler_state stall_point.ctrler stall_node
+  --   ) ctrlers
   
   dbg_trace s!"<< Finished In Order Transformation: ({inst_to_stall_on_types}) -> ({inst_to_stall_types}) or ({stall_point_param?})"
 
