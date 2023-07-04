@@ -162,7 +162,7 @@ def transformTesting : AST → Array Nat → IO Unit
       dbg_trace s!"Error applying ldar -> load in CDFG InOrderTfsm: ({msg})"
       []
 
-      dbg_trace s!"++ Adding stlr, store, load -> stlr ordering."
+      dbg_trace s!"++ Adding stlr, store -> stlr ordering."
       let stlr_ordering := ( MCMOrdering.binary_ordering
         (BinaryOrdering.mk [ store, stlr ] [ stlr ] Addresses.any) )
       let ctrlers := match CDFG.InOrderTransform ctrlers stlr_ordering none with
@@ -171,6 +171,7 @@ def transformTesting : AST → Array Nat → IO Unit
           dbg_trace s!"Error applying stlr, load, store -> stlr in CDFG InOrderTfsm: ({msg})"
           []
 
+      -- println! s!"!begin stlr, store -> stlr Ctrlers: ({ctrlers})"
 
       -- === DMB fence ordering testing ===
       -- dbg_trace s!"++ Adding ld -> DMB_LD -> ld ordering."
@@ -190,25 +191,26 @@ def transformTesting : AST → Array Nat → IO Unit
         | .error msg =>
           dbg_trace s!"Error applying st->dmb_st->st in CDFG InOrderTfsm: ({msg})"
           []
+      -- println! s!"!begin st -> DMB_ST -> st Ctrlers: ({ctrlers})"
 
-      dbg_trace s!"++ Adding st -> st ordering."
-      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
-      let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
-        | .ok ctrler_list => ctrler_list
-        | .error msg =>
-          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-          []
-      println! s!"!begin st,st Ctrlers: ({ctrlers}) end st,st Ctrlers"
-
-
-      -- dbg_trace s!"++ Adding ld,st -> DMB_SY -> ld ordering."
-      -- let ld_st_fence_ld_st := ( MCMOrdering.ternary_ordering
-      --   (TernaryOrdering.mk [ load', store' ] dmb_sy' [ load' ] Addresses.any) )
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers ld_st_fence_ld_st none with
+      -- dbg_trace s!"++ Adding st -> st ordering."
+      -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
+      -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
       --   | .ok ctrler_list => ctrler_list
       --   | .error msg =>
-      --     dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
+      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
       --     []
+      -- println! s!"!begin st,st Ctrlers: ({ctrlers}) end st,st Ctrlers"
+
+
+      dbg_trace s!"++ Adding ld,st -> DMB_SY -> ld, st ordering."
+      let ld_st_fence_ld_st := ( MCMOrdering.ternary_ordering
+        (TernaryOrdering.mk [ load', store' ] dmb_sy' [ load', store' ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers ld_st_fence_ld_st none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg =>
+          dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
+          []
       let dmb_sy_dmb_ld_to_ld_replay := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ dmb_sy, dmb_ld ] [ load ] Addresses.any) )
       let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers dmb_sy_dmb_ld_to_ld_replay with
         | .ok ctrler_list => ctrler_list
