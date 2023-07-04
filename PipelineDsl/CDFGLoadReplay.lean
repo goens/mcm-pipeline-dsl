@@ -781,7 +781,10 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
     -- (5) Enforce any additional orderings on the replay load
     match mcm_ordering? with
     | some mcm_ordering =>
-      CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
+      let ctrlers'''' := ←
+        CDFG.InOrderTransform ctrlers''' mcm_ordering (some (commit_start_replay_state_name, load))
+          |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
+      CDFG.InOrderTransform ctrlers'''' mcm_ordering (some (commit_start_replay_state_name, ldar))
         |>.throw_exception_nesting_msg "Error while adding InOrderTfsm to Ctrlers after adding Load-Replay!"
     | none =>
       pure ctrlers'''
