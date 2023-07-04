@@ -415,7 +415,6 @@ begin
   LQ_squash_remove_count := 0;
   while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
     LQ_curr_idx := ((LQ_entry_idx + LQ_offset) % LQ_NUM_ENTRIES_CONST);
-
     curr_entry := lq_new.entries[ LQ_curr_idx ];
     if (curr_entry.instruction.seq_num = seq_num) then
       -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
@@ -1094,20 +1093,28 @@ end;
 
 ruleset j : cores_t; i : LQ_idx_t do 
   rule "LQ build_packet_send_mem_request ===> build_packet_send_mem_request || await_mem_response || await_creation" 
-(((((Sta.core_[ j ].LQ_.entries[ i ].state = build_packet_send_mem_request) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
+(((((((((Sta.core_[ j ].LQ_.entries[ i ].state = build_packet_send_mem_request) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
+  var RENAME_dmb_sy_is_in_state_set : boolean;
+  var ROB_dmb_sy_is_in_state_set : boolean;
+  var is_instruction_on_any_state : boolean;
   var RENAME_LDAR_is_in_state_set : boolean;
   var IQ_LDAR_is_in_state_set : boolean;
   var LQ_LDAR_is_in_state_set : boolean;
   var ROB_LDAR_is_in_state_set : boolean;
-  var is_instruction_on_any_state : boolean;
   var RENAME_while_break : boolean;
   var RENAME_found_entry : boolean;
   var RENAME_entry_idx : RENAME_idx_t;
   var RENAME_difference : RENAME_count_t;
   var RENAME_offset : RENAME_count_t;
   var RENAME_curr_idx : RENAME_idx_t;
+  var ROB_while_break : boolean;
+  var ROB_found_entry : boolean;
+  var ROB_entry_idx : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_curr_idx : ROB_idx_t;
   var found_entry : boolean;
   var found_element : inst_count_t;
   var found_idx : IQ_idx_t;
@@ -1117,17 +1124,11 @@ ruleset j : cores_t; i : LQ_idx_t do
   var LQ_difference : LQ_count_t;
   var LQ_offset : LQ_count_t;
   var LQ_curr_idx : LQ_idx_t;
-  var ROB_while_break : boolean;
-  var ROB_found_entry : boolean;
-  var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_count_t;
-  var ROB_offset : ROB_count_t;
-  var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  RENAME_LDAR_is_in_state_set := false;
+  RENAME_dmb_sy_is_in_state_set := false;
   RENAME_while_break := false;
   RENAME_found_entry := false;
   if (next_state.core_[ j ].RENAME_.num_entries = 0) then
@@ -1138,11 +1139,11 @@ begin
   RENAME_offset := 0;
   while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
     RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+    if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = dmb_sy)) then
       if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
-        RENAME_LDAR_is_in_state_set := true;
+        RENAME_dmb_sy_is_in_state_set := true;
       else
-        RENAME_LDAR_is_in_state_set := false;
+        RENAME_dmb_sy_is_in_state_set := false;
       end;
       RENAME_found_entry := true;
     end;
@@ -1152,58 +1153,7 @@ begin
   end;
   if (RENAME_found_entry = false) then
   end;
-  IQ_LDAR_is_in_state_set := false;
-  found_entry := false;
-  for IQ_iter : IQ_idx_t do
-    if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
-      if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
-        if (found_entry = false) then
-          found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-          found_idx := IQ_iter;
-        else
-          if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
-            found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-            found_idx := IQ_iter;
-          end;
-        end;
-        found_entry := true;
-      end;
-    end;
-  endfor;
-  if (found_entry = false) then
-  elsif (found_entry = true) then
-    if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
-      IQ_LDAR_is_in_state_set := true;
-    else
-      IQ_LDAR_is_in_state_set := false;
-    end;
-  end;
-  LQ_LDAR_is_in_state_set := false;
-  LQ_while_break := false;
-  LQ_found_entry := false;
-  if (next_state.core_[ j ].LQ_.num_entries = 0) then
-    LQ_while_break := true;
-  end;
-  LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
-  LQ_difference := next_state.core_[ j ].LQ_.num_entries;
-  LQ_offset := 0;
-  while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
-    LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
-      if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
-        LQ_LDAR_is_in_state_set := true;
-      else
-        LQ_LDAR_is_in_state_set := false;
-      end;
-      LQ_found_entry := true;
-    end;
-    if (LQ_offset < LQ_difference) then
-      LQ_offset := (LQ_offset + 1);
-    end;
-  end;
-  if (LQ_found_entry = false) then
-  end;
-  ROB_LDAR_is_in_state_set := false;
+  ROB_dmb_sy_is_in_state_set := false;
   ROB_while_break := false;
   ROB_found_entry := false;
   if (next_state.core_[ j ].ROB_.num_entries = 0) then
@@ -1214,11 +1164,11 @@ begin
   ROB_offset := 0;
   while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
-      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
-        ROB_LDAR_is_in_state_set := true;
+    if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = dmb_sy)) then
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+        ROB_dmb_sy_is_in_state_set := true;
       else
-        ROB_LDAR_is_in_state_set := false;
+        ROB_dmb_sy_is_in_state_set := false;
       end;
       ROB_found_entry := true;
     end;
@@ -1228,10 +1178,604 @@ begin
   end;
   if (ROB_found_entry = false) then
   end;
-  is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+  is_instruction_on_any_state := (RENAME_dmb_sy_is_in_state_set | ROB_dmb_sy_is_in_state_set);
   if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ld) then
     if is_instruction_on_any_state then
       next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+    else
+      RENAME_LDAR_is_in_state_set := false;
+      RENAME_while_break := false;
+      RENAME_found_entry := false;
+      if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+        RENAME_while_break := true;
+      end;
+      RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+      RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+      RENAME_offset := 0;
+      while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+        RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+          if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+            RENAME_LDAR_is_in_state_set := true;
+          else
+            RENAME_LDAR_is_in_state_set := false;
+          end;
+          RENAME_found_entry := true;
+        end;
+        if (RENAME_offset < RENAME_difference) then
+          RENAME_offset := (RENAME_offset + 1);
+        end;
+      end;
+      if (RENAME_found_entry = false) then
+      end;
+      IQ_LDAR_is_in_state_set := false;
+      found_entry := false;
+      for IQ_iter : IQ_idx_t do
+        if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+          if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
+            if (found_entry = false) then
+              found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            else
+              if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              end;
+            end;
+            found_entry := true;
+          end;
+        end;
+      endfor;
+      if (found_entry = false) then
+      elsif (found_entry = true) then
+        if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+          IQ_LDAR_is_in_state_set := true;
+        else
+          IQ_LDAR_is_in_state_set := false;
+        end;
+      end;
+      LQ_LDAR_is_in_state_set := false;
+      LQ_while_break := false;
+      LQ_found_entry := false;
+      if (next_state.core_[ j ].LQ_.num_entries = 0) then
+        LQ_while_break := true;
+      end;
+      LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+      LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+      LQ_offset := 0;
+      while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+        LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
+          if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
+            LQ_LDAR_is_in_state_set := true;
+          else
+            LQ_LDAR_is_in_state_set := false;
+          end;
+          LQ_found_entry := true;
+        end;
+        if (LQ_offset < LQ_difference) then
+          LQ_offset := (LQ_offset + 1);
+        end;
+      end;
+      if (LQ_found_entry = false) then
+      end;
+      ROB_LDAR_is_in_state_set := false;
+      ROB_while_break := false;
+      ROB_found_entry := false;
+      if (next_state.core_[ j ].ROB_.num_entries = 0) then
+        ROB_while_break := true;
+      end;
+      ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+      ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+      ROB_offset := 0;
+      while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+        ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
+            ROB_LDAR_is_in_state_set := true;
+          else
+            ROB_LDAR_is_in_state_set := false;
+          end;
+          ROB_found_entry := true;
+        end;
+        if (ROB_offset < ROB_difference) then
+          ROB_offset := (ROB_offset + 1);
+        end;
+      end;
+      if (ROB_found_entry = false) then
+      end;
+      is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+      if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ld) then
+        if is_instruction_on_any_state then
+          next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+        else
+          RENAME_LDAR_is_in_state_set := false;
+          RENAME_while_break := false;
+          RENAME_found_entry := false;
+          if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+            RENAME_while_break := true;
+          end;
+          RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+          RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+          RENAME_offset := 0;
+          while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+            RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+              if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+                RENAME_LDAR_is_in_state_set := true;
+              else
+                RENAME_LDAR_is_in_state_set := false;
+              end;
+              RENAME_found_entry := true;
+            end;
+            if (RENAME_offset < RENAME_difference) then
+              RENAME_offset := (RENAME_offset + 1);
+            end;
+          end;
+          if (RENAME_found_entry = false) then
+          end;
+          IQ_LDAR_is_in_state_set := false;
+          found_entry := false;
+          for IQ_iter : IQ_idx_t do
+            if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+              if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
+                if (found_entry = false) then
+                  found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                else
+                  if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                    found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                    found_idx := IQ_iter;
+                  end;
+                end;
+                found_entry := true;
+              end;
+            end;
+          endfor;
+          if (found_entry = false) then
+          elsif (found_entry = true) then
+            if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+              IQ_LDAR_is_in_state_set := true;
+            else
+              IQ_LDAR_is_in_state_set := false;
+            end;
+          end;
+          LQ_LDAR_is_in_state_set := false;
+          LQ_while_break := false;
+          LQ_found_entry := false;
+          if (next_state.core_[ j ].LQ_.num_entries = 0) then
+            LQ_while_break := true;
+          end;
+          LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+          LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+          LQ_offset := 0;
+          while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+            LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
+              if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
+                LQ_LDAR_is_in_state_set := true;
+              else
+                LQ_LDAR_is_in_state_set := false;
+              end;
+              LQ_found_entry := true;
+            end;
+            if (LQ_offset < LQ_difference) then
+              LQ_offset := (LQ_offset + 1);
+            end;
+          end;
+          if (LQ_found_entry = false) then
+          end;
+          ROB_LDAR_is_in_state_set := false;
+          ROB_while_break := false;
+          ROB_found_entry := false;
+          if (next_state.core_[ j ].ROB_.num_entries = 0) then
+            ROB_while_break := true;
+          end;
+          ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+          ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+          ROB_offset := 0;
+          while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+            ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
+              if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
+                ROB_LDAR_is_in_state_set := true;
+              else
+                ROB_LDAR_is_in_state_set := false;
+              end;
+              ROB_found_entry := true;
+            end;
+            if (ROB_offset < ROB_difference) then
+              ROB_offset := (ROB_offset + 1);
+            end;
+          end;
+          if (ROB_found_entry = false) then
+          end;
+          is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+          if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ldar) then
+            if is_instruction_on_any_state then
+              next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+            else
+              next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+              next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+              next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+              next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+              next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+              next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+              next_state.core_[ j ].mem_interface_.out_busy := true;
+              next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+            end;
+          else
+            next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+            next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+            next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+            next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+            next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+            next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+            next_state.core_[ j ].mem_interface_.out_busy := true;
+            next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+          end;
+        end;
+      else
+        RENAME_LDAR_is_in_state_set := false;
+        RENAME_while_break := false;
+        RENAME_found_entry := false;
+        if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+          RENAME_while_break := true;
+        end;
+        RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+        RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+        RENAME_offset := 0;
+        while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+          RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+            if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+              RENAME_LDAR_is_in_state_set := true;
+            else
+              RENAME_LDAR_is_in_state_set := false;
+            end;
+            RENAME_found_entry := true;
+          end;
+          if (RENAME_offset < RENAME_difference) then
+            RENAME_offset := (RENAME_offset + 1);
+          end;
+        end;
+        if (RENAME_found_entry = false) then
+        end;
+        IQ_LDAR_is_in_state_set := false;
+        found_entry := false;
+        for IQ_iter : IQ_idx_t do
+          if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+            if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              else
+                if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+            IQ_LDAR_is_in_state_set := true;
+          else
+            IQ_LDAR_is_in_state_set := false;
+          end;
+        end;
+        LQ_LDAR_is_in_state_set := false;
+        LQ_while_break := false;
+        LQ_found_entry := false;
+        if (next_state.core_[ j ].LQ_.num_entries = 0) then
+          LQ_while_break := true;
+        end;
+        LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+        LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+        LQ_offset := 0;
+        while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+          LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
+            if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
+              LQ_LDAR_is_in_state_set := true;
+            else
+              LQ_LDAR_is_in_state_set := false;
+            end;
+            LQ_found_entry := true;
+          end;
+          if (LQ_offset < LQ_difference) then
+            LQ_offset := (LQ_offset + 1);
+          end;
+        end;
+        if (LQ_found_entry = false) then
+        end;
+        ROB_LDAR_is_in_state_set := false;
+        ROB_while_break := false;
+        ROB_found_entry := false;
+        if (next_state.core_[ j ].ROB_.num_entries = 0) then
+          ROB_while_break := true;
+        end;
+        ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+        ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+        ROB_offset := 0;
+        while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+          ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
+              ROB_LDAR_is_in_state_set := true;
+            else
+              ROB_LDAR_is_in_state_set := false;
+            end;
+            ROB_found_entry := true;
+          end;
+          if (ROB_offset < ROB_difference) then
+            ROB_offset := (ROB_offset + 1);
+          end;
+        end;
+        if (ROB_found_entry = false) then
+        end;
+        is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+        if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ldar) then
+          if is_instruction_on_any_state then
+            next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+          else
+            next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+            next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+            next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+            next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+            next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+            next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+            next_state.core_[ j ].mem_interface_.out_busy := true;
+            next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+          end;
+        else
+          next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+          next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+          next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+          next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+          next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+          next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+          next_state.core_[ j ].mem_interface_.out_busy := true;
+          next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+        end;
+      end;
+    end;
+  else
+    RENAME_LDAR_is_in_state_set := false;
+    RENAME_while_break := false;
+    RENAME_found_entry := false;
+    if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+      RENAME_while_break := true;
+    end;
+    RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+    RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+    RENAME_offset := 0;
+    while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+      RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+        if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+          RENAME_LDAR_is_in_state_set := true;
+        else
+          RENAME_LDAR_is_in_state_set := false;
+        end;
+        RENAME_found_entry := true;
+      end;
+      if (RENAME_offset < RENAME_difference) then
+        RENAME_offset := (RENAME_offset + 1);
+      end;
+    end;
+    if (RENAME_found_entry = false) then
+    end;
+    IQ_LDAR_is_in_state_set := false;
+    found_entry := false;
+    for IQ_iter : IQ_idx_t do
+      if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+        if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
+          if (found_entry = false) then
+            found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+            found_idx := IQ_iter;
+          else
+            if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+              found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            end;
+          end;
+          found_entry := true;
+        end;
+      end;
+    endfor;
+    if (found_entry = false) then
+    elsif (found_entry = true) then
+      if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+        IQ_LDAR_is_in_state_set := true;
+      else
+        IQ_LDAR_is_in_state_set := false;
+      end;
+    end;
+    LQ_LDAR_is_in_state_set := false;
+    LQ_while_break := false;
+    LQ_found_entry := false;
+    if (next_state.core_[ j ].LQ_.num_entries = 0) then
+      LQ_while_break := true;
+    end;
+    LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+    LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+    LQ_offset := 0;
+    while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+      LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
+        if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
+          LQ_LDAR_is_in_state_set := true;
+        else
+          LQ_LDAR_is_in_state_set := false;
+        end;
+        LQ_found_entry := true;
+      end;
+      if (LQ_offset < LQ_difference) then
+        LQ_offset := (LQ_offset + 1);
+      end;
+    end;
+    if (LQ_found_entry = false) then
+    end;
+    ROB_LDAR_is_in_state_set := false;
+    ROB_while_break := false;
+    ROB_found_entry := false;
+    if (next_state.core_[ j ].ROB_.num_entries = 0) then
+      ROB_while_break := true;
+    end;
+    ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+    ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+    ROB_offset := 0;
+    while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+      ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
+          ROB_LDAR_is_in_state_set := true;
+        else
+          ROB_LDAR_is_in_state_set := false;
+        end;
+        ROB_found_entry := true;
+      end;
+      if (ROB_offset < ROB_difference) then
+        ROB_offset := (ROB_offset + 1);
+      end;
+    end;
+    if (ROB_found_entry = false) then
+    end;
+    is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+    if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ld) then
+      if is_instruction_on_any_state then
+        next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+      else
+        RENAME_LDAR_is_in_state_set := false;
+        RENAME_while_break := false;
+        RENAME_found_entry := false;
+        if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+          RENAME_while_break := true;
+        end;
+        RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+        RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+        RENAME_offset := 0;
+        while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+          RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
+            if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+              RENAME_LDAR_is_in_state_set := true;
+            else
+              RENAME_LDAR_is_in_state_set := false;
+            end;
+            RENAME_found_entry := true;
+          end;
+          if (RENAME_offset < RENAME_difference) then
+            RENAME_offset := (RENAME_offset + 1);
+          end;
+        end;
+        if (RENAME_found_entry = false) then
+        end;
+        IQ_LDAR_is_in_state_set := false;
+        found_entry := false;
+        for IQ_iter : IQ_idx_t do
+          if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+            if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              else
+                if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+            IQ_LDAR_is_in_state_set := true;
+          else
+            IQ_LDAR_is_in_state_set := false;
+          end;
+        end;
+        LQ_LDAR_is_in_state_set := false;
+        LQ_while_break := false;
+        LQ_found_entry := false;
+        if (next_state.core_[ j ].LQ_.num_entries = 0) then
+          LQ_while_break := true;
+        end;
+        LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+        LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+        LQ_offset := 0;
+        while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+          LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
+            if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
+              LQ_LDAR_is_in_state_set := true;
+            else
+              LQ_LDAR_is_in_state_set := false;
+            end;
+            LQ_found_entry := true;
+          end;
+          if (LQ_offset < LQ_difference) then
+            LQ_offset := (LQ_offset + 1);
+          end;
+        end;
+        if (LQ_found_entry = false) then
+        end;
+        ROB_LDAR_is_in_state_set := false;
+        ROB_while_break := false;
+        ROB_found_entry := false;
+        if (next_state.core_[ j ].ROB_.num_entries = 0) then
+          ROB_while_break := true;
+        end;
+        ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+        ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+        ROB_offset := 0;
+        while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+          ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
+              ROB_LDAR_is_in_state_set := true;
+            else
+              ROB_LDAR_is_in_state_set := false;
+            end;
+            ROB_found_entry := true;
+          end;
+          if (ROB_offset < ROB_difference) then
+            ROB_offset := (ROB_offset + 1);
+          end;
+        end;
+        if (ROB_found_entry = false) then
+        end;
+        is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
+        if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ldar) then
+          if is_instruction_on_any_state then
+            next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
+          else
+            next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+            next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+            next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+            next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+            next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+            next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+            next_state.core_[ j ].mem_interface_.out_busy := true;
+            next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+          end;
+        else
+          next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
+          next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
+          next_state.core_[ j ].mem_interface_.out_msg.valid := true;
+          next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
+          next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
+          next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
+          next_state.core_[ j ].mem_interface_.out_busy := true;
+          next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
+        end;
+      end;
     else
       RENAME_LDAR_is_in_state_set := false;
       RENAME_while_break := false;
@@ -1358,132 +1902,6 @@ begin
         next_state.core_[ j ].mem_interface_.out_busy := true;
         next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
       end;
-    end;
-  else
-    RENAME_LDAR_is_in_state_set := false;
-    RENAME_while_break := false;
-    RENAME_found_entry := false;
-    if (next_state.core_[ j ].RENAME_.num_entries = 0) then
-      RENAME_while_break := true;
-    end;
-    RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
-    RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
-    RENAME_offset := 0;
-    while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
-      RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ldar)) then
-        if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
-          RENAME_LDAR_is_in_state_set := true;
-        else
-          RENAME_LDAR_is_in_state_set := false;
-        end;
-        RENAME_found_entry := true;
-      end;
-      if (RENAME_offset < RENAME_difference) then
-        RENAME_offset := (RENAME_offset + 1);
-      end;
-    end;
-    if (RENAME_found_entry = false) then
-    end;
-    IQ_LDAR_is_in_state_set := false;
-    found_entry := false;
-    for IQ_iter : IQ_idx_t do
-      if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
-        if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ldar)) then
-          if (found_entry = false) then
-            found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-            found_idx := IQ_iter;
-          else
-            if ((next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
-              found_element := (next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-              found_idx := IQ_iter;
-            end;
-          end;
-          found_entry := true;
-        end;
-      end;
-    endfor;
-    if (found_entry = false) then
-    elsif (found_entry = true) then
-      if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
-        IQ_LDAR_is_in_state_set := true;
-      else
-        IQ_LDAR_is_in_state_set := false;
-      end;
-    end;
-    LQ_LDAR_is_in_state_set := false;
-    LQ_while_break := false;
-    LQ_found_entry := false;
-    if (next_state.core_[ j ].LQ_.num_entries = 0) then
-      LQ_while_break := true;
-    end;
-    LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
-    LQ_difference := next_state.core_[ j ].LQ_.num_entries;
-    LQ_offset := 0;
-    while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
-      LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ldar)) then
-        if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_creation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request)))))))) then
-          LQ_LDAR_is_in_state_set := true;
-        else
-          LQ_LDAR_is_in_state_set := false;
-        end;
-        LQ_found_entry := true;
-      end;
-      if (LQ_offset < LQ_difference) then
-        LQ_offset := (LQ_offset + 1);
-      end;
-    end;
-    if (LQ_found_entry = false) then
-    end;
-    ROB_LDAR_is_in_state_set := false;
-    ROB_while_break := false;
-    ROB_found_entry := false;
-    if (next_state.core_[ j ].ROB_.num_entries = 0) then
-      ROB_while_break := true;
-    end;
-    ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-    ROB_difference := next_state.core_[ j ].ROB_.num_entries;
-    ROB_offset := 0;
-    while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
-      ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ldar)) then
-        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
-          ROB_LDAR_is_in_state_set := true;
-        else
-          ROB_LDAR_is_in_state_set := false;
-        end;
-        ROB_found_entry := true;
-      end;
-      if (ROB_offset < ROB_difference) then
-        ROB_offset := (ROB_offset + 1);
-      end;
-    end;
-    if (ROB_found_entry = false) then
-    end;
-    is_instruction_on_any_state := (RENAME_LDAR_is_in_state_set | (IQ_LDAR_is_in_state_set | (LQ_LDAR_is_in_state_set | ROB_LDAR_is_in_state_set)));
-    if (next_state.core_[ j ].LQ_.entries[ i ].instruction.op = ldar) then
-      if is_instruction_on_any_state then
-        next_state.core_[ j ].LQ_.entries[ i ].state := build_packet_send_mem_request;
-      else
-        next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-        next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
-        next_state.core_[ j ].mem_interface_.out_msg.valid := true;
-        next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
-        next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-        next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-        next_state.core_[ j ].mem_interface_.out_busy := true;
-        next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
-      end;
-    else
-      next_state.core_[ j ].mem_interface_.out_msg.addr := next_state.core_[ j ].LQ_.entries[ i ].phys_addr;
-      next_state.core_[ j ].mem_interface_.out_msg.r_w := read;
-      next_state.core_[ j ].mem_interface_.out_msg.valid := true;
-      next_state.core_[ j ].mem_interface_.out_msg.dest := mem;
-      next_state.core_[ j ].mem_interface_.out_msg.dest_id := j;
-      next_state.core_[ j ].mem_interface_.out_msg.seq_num := next_state.core_[ j ].LQ_.entries[ i ].instruction.seq_num;
-      next_state.core_[ j ].mem_interface_.out_busy := true;
-      next_state.core_[ j ].LQ_.entries[ i ].state := await_mem_response;
     end;
   end;
   Sta := next_state;
@@ -2038,6 +2456,8 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          squash_from_sq := squash_from_sq;
                           if squash_from_sq then
                             squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                           else
@@ -2278,6 +2698,8 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          squash_from_sq := squash_from_sq;
                           if squash_from_sq then
                             squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                           else
@@ -2518,6 +2940,8 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          squash_from_sq := squash_from_sq;
                           if squash_from_sq then
                             squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                           else
@@ -2758,6 +3182,8 @@ begin
                     for IQ_squash_idx : IQ_idx_t do
                       if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                         if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                          violating_seq_num := violating_seq_num;
+                          squash_from_sq := squash_from_sq;
                           if squash_from_sq then
                             squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                           else
@@ -2894,8 +3320,8 @@ begin
           if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_await_executed) then
             violating_seq_num := violating_seq_num;
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+              squash_from_sq := true;
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = ld) then
-                squash_from_sq := true;
                 LQ_while_break := false;
                 LQ_found_entry := false;
                 if (next_state.core_[ j ].LQ_.num_entries = 0) then
@@ -3137,6 +3563,8 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                    violating_seq_num := violating_seq_num;
+                    squash_from_sq := squash_from_sq;
                     if squash_from_sq then
                       squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                     else
@@ -3162,8 +3590,8 @@ begin
           elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = rob_commit_if_head) then
             violating_seq_num := violating_seq_num;
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+              squash_from_sq := true;
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = ld) then
-                squash_from_sq := true;
                 LQ_while_break := false;
                 LQ_found_entry := false;
                 if (next_state.core_[ j ].LQ_.num_entries = 0) then
@@ -3405,6 +3833,8 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                    violating_seq_num := violating_seq_num;
+                    squash_from_sq := squash_from_sq;
                     if squash_from_sq then
                       squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                     else
@@ -3430,8 +3860,8 @@ begin
            elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = ROB_await_replay_complete) then
             violating_seq_num := violating_seq_num;
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+              squash_from_sq := true;
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = ld) then
-                squash_from_sq := true;
                 LQ_while_break := false;
                 LQ_found_entry := false;
                 if (next_state.core_[ j ].LQ_.num_entries = 0) then
@@ -3673,6 +4103,8 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                    violating_seq_num := violating_seq_num;
+                    squash_from_sq := squash_from_sq;
                     if squash_from_sq then
                       squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                     else
@@ -3698,8 +4130,8 @@ begin
            elsif (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].state = original_commit_rob_commit_if_head) then
             violating_seq_num := violating_seq_num;
             if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.seq_num >= violating_seq_num) then
+              squash_from_sq := true;
               if (next_state.core_[ j ].ROB_.entries[ ROB_squash_curr_idx ].instruction.op = ld) then
-                squash_from_sq := true;
                 LQ_while_break := false;
                 LQ_found_entry := false;
                 if (next_state.core_[ j ].LQ_.num_entries = 0) then
@@ -3941,6 +4373,8 @@ begin
               for IQ_squash_idx : IQ_idx_t do
                 if next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].valid then
                   if (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].state = iq_schedule_inst) then
+                    violating_seq_num := violating_seq_num;
+                    squash_from_sq := squash_from_sq;
                     if squash_from_sq then
                       squash_inclusive_if_from_sq := (next_state.core_[ j ].IQ_.entries[ IQ_squash_idx ].instruction.seq_num >= violating_seq_num);
                     else
@@ -4040,14 +4474,16 @@ ruleset j : cores_t; i : SB_idx_t do
 (((((((((Sta.core_[ j ].SB_.entries[ i ].state = sb_await_send_mem_req) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy)) & !(Sta.core_[ j ].mem_interface_.out_busy))
 ==>
  
+  var RENAME_dmb_sy_is_in_state_set : boolean;
+  var ROB_dmb_sy_is_in_state_set : boolean;
+  var is_instruction_on_any_state : boolean;
+  var RENAME_dmb_st_is_in_state_set : boolean;
+  var ROB_dmb_st_is_in_state_set : boolean;
   var RENAME_Store_is_in_state_set : boolean;
   var IQ_Store_is_in_state_set : boolean;
   var SQ_Store_is_in_state_set : boolean;
   var SB_Store_is_in_state_set : boolean;
   var ROB_Store_is_in_state_set : boolean;
-  var is_instruction_on_any_state : boolean;
-  var RENAME_dmb_st_is_in_state_set : boolean;
-  var ROB_dmb_st_is_in_state_set : boolean;
   var RENAME_STLR_is_in_state_set : boolean;
   var IQ_STLR_is_in_state_set : boolean;
   var SQ_STLR_is_in_state_set : boolean;
@@ -4059,6 +4495,12 @@ ruleset j : cores_t; i : SB_idx_t do
   var RENAME_difference : RENAME_count_t;
   var RENAME_offset : RENAME_count_t;
   var RENAME_curr_idx : RENAME_idx_t;
+  var ROB_while_break : boolean;
+  var ROB_found_entry : boolean;
+  var ROB_entry_idx : ROB_idx_t;
+  var ROB_difference : ROB_count_t;
+  var ROB_offset : ROB_count_t;
+  var ROB_curr_idx : ROB_idx_t;
   var found_entry : boolean;
   var found_element : inst_count_t;
   var found_idx : IQ_idx_t;
@@ -4068,17 +4510,11 @@ ruleset j : cores_t; i : SB_idx_t do
   var SQ_difference : SQ_count_t;
   var SQ_offset : SQ_count_t;
   var SQ_curr_idx : SQ_idx_t;
-  var ROB_while_break : boolean;
-  var ROB_found_entry : boolean;
-  var ROB_entry_idx : ROB_idx_t;
-  var ROB_difference : ROB_count_t;
-  var ROB_offset : ROB_count_t;
-  var ROB_curr_idx : ROB_idx_t;
   var next_state : STATE;
 
 begin
   next_state := Sta;
-  RENAME_Store_is_in_state_set := false;
+  RENAME_dmb_sy_is_in_state_set := false;
   RENAME_while_break := false;
   RENAME_found_entry := false;
   if (next_state.core_[ j ].RENAME_.num_entries = 0) then
@@ -4089,11 +4525,11 @@ begin
   RENAME_offset := 0;
   while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
     RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+    if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = dmb_sy)) then
       if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
-        RENAME_Store_is_in_state_set := true;
+        RENAME_dmb_sy_is_in_state_set := true;
       else
-        RENAME_Store_is_in_state_set := false;
+        RENAME_dmb_sy_is_in_state_set := false;
       end;
       RENAME_found_entry := true;
     end;
@@ -4103,84 +4539,7 @@ begin
   end;
   if (RENAME_found_entry = false) then
   end;
-  IQ_Store_is_in_state_set := false;
-  found_entry := false;
-  for IQ_iter : IQ_idx_t do
-    if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
-      if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
-        if (found_entry = false) then
-          found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-          found_idx := IQ_iter;
-        else
-          if ((next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
-            found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-            found_idx := IQ_iter;
-          end;
-        end;
-        found_entry := true;
-      end;
-    end;
-  endfor;
-  if (found_entry = false) then
-  elsif (found_entry = true) then
-    if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
-      IQ_Store_is_in_state_set := true;
-    else
-      IQ_Store_is_in_state_set := false;
-    end;
-  end;
-  SQ_Store_is_in_state_set := false;
-  SQ_while_break := false;
-  SQ_found_entry := false;
-  if (next_state.core_[ j ].SQ_.num_entries = 0) then
-    SQ_while_break := true;
-  end;
-  SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
-  SQ_difference := next_state.core_[ j ].SQ_.num_entries;
-  SQ_offset := 0;
-  while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
-    SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
-      if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_creation) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled)))) then
-        SQ_Store_is_in_state_set := true;
-      else
-        SQ_Store_is_in_state_set := false;
-      end;
-      SQ_found_entry := true;
-    end;
-    if (SQ_offset < SQ_difference) then
-      SQ_offset := (SQ_offset + 1);
-    end;
-  end;
-  if (SQ_found_entry = false) then
-  end;
-  SB_Store_is_in_state_set := false;
-  found_entry := false;
-  for SB_iter : SB_idx_t do
-    if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
-      if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
-        if (found_entry = false) then
-          found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
-          found_idx := SB_iter;
-        else
-          if ((next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
-            found_element := (next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
-            found_idx := SB_iter;
-          end;
-        end;
-        found_entry := true;
-      end;
-    end;
-  endfor;
-  if (found_entry = false) then
-  elsif (found_entry = true) then
-    if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
-      SB_Store_is_in_state_set := true;
-    else
-      SB_Store_is_in_state_set := false;
-    end;
-  end;
-  ROB_Store_is_in_state_set := false;
+  ROB_dmb_sy_is_in_state_set := false;
   ROB_while_break := false;
   ROB_found_entry := false;
   if (next_state.core_[ j ].ROB_.num_entries = 0) then
@@ -4191,11 +4550,11 @@ begin
   ROB_offset := 0;
   while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
     ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
-    if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
-      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed)) then
-        ROB_Store_is_in_state_set := true;
+    if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].SB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = dmb_sy)) then
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+        ROB_dmb_sy_is_in_state_set := true;
       else
-        ROB_Store_is_in_state_set := false;
+        ROB_dmb_sy_is_in_state_set := false;
       end;
       ROB_found_entry := true;
     end;
@@ -4205,7 +4564,7 @@ begin
   end;
   if (ROB_found_entry = false) then
   end;
-  is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
+  is_instruction_on_any_state := (RENAME_dmb_sy_is_in_state_set | ROB_dmb_sy_is_in_state_set);
   if (next_state.core_[ j ].SB_.entries[ i ].instruction.op = st) then
     if is_instruction_on_any_state then
       next_state.core_[ j ].SB_.entries[ i ].state := sb_await_send_mem_req;
@@ -5526,6 +5885,10 @@ ruleset j : cores_t; i : ROB_idx_t do
   var RENAME_dmb_ld_is_in_state_set : boolean;
   var ROB_dmb_ld_is_in_state_set : boolean;
   var is_instruction_on_any_state : boolean;
+  var RENAME_Load_is_in_state_set : boolean;
+  var IQ_Load_is_in_state_set : boolean;
+  var LQ_Load_is_in_state_set : boolean;
+  var ROB_Load_is_in_state_set : boolean;
   var RENAME_Store_is_in_state_set : boolean;
   var IQ_Store_is_in_state_set : boolean;
   var SQ_Store_is_in_state_set : boolean;
@@ -5546,18 +5909,18 @@ ruleset j : cores_t; i : ROB_idx_t do
   var found_entry : boolean;
   var found_element : inst_count_t;
   var found_idx : IQ_idx_t;
-  var SQ_while_break : boolean;
-  var SQ_found_entry : boolean;
-  var SQ_entry_idx : SQ_idx_t;
-  var SQ_difference : SQ_count_t;
-  var SQ_offset : SQ_count_t;
-  var SQ_curr_idx : SQ_idx_t;
   var LQ_while_break : boolean;
   var LQ_found_entry : boolean;
   var LQ_entry_idx : LQ_idx_t;
   var LQ_difference : LQ_count_t;
   var LQ_offset : LQ_count_t;
   var LQ_curr_idx : LQ_idx_t;
+  var SQ_while_break : boolean;
+  var SQ_found_entry : boolean;
+  var SQ_entry_idx : SQ_idx_t;
+  var SQ_difference : SQ_count_t;
+  var SQ_offset : SQ_count_t;
+  var SQ_curr_idx : SQ_idx_t;
   var next_state : STATE;
 
 begin
@@ -5666,6 +6029,1088 @@ begin
   if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) then
     if is_instruction_on_any_state then
       next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+    else
+      RENAME_Load_is_in_state_set := false;
+      RENAME_while_break := false;
+      RENAME_found_entry := false;
+      if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+        RENAME_while_break := true;
+      end;
+      RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+      RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+      RENAME_offset := 0;
+      while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+        RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ld)) then
+          if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+            RENAME_Load_is_in_state_set := true;
+          else
+            RENAME_Load_is_in_state_set := false;
+          end;
+          RENAME_found_entry := true;
+        end;
+        if (RENAME_offset < RENAME_difference) then
+          RENAME_offset := (RENAME_offset + 1);
+        end;
+      end;
+      if (RENAME_found_entry = false) then
+      end;
+      IQ_Load_is_in_state_set := false;
+      found_entry := false;
+      for IQ_iter : IQ_idx_t do
+        if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+          if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ld)) then
+            if (found_entry = false) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            else
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              end;
+            end;
+            found_entry := true;
+          end;
+        end;
+      endfor;
+      if (found_entry = false) then
+      elsif (found_entry = true) then
+        if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+          IQ_Load_is_in_state_set := true;
+        else
+          IQ_Load_is_in_state_set := false;
+        end;
+      end;
+      LQ_Load_is_in_state_set := false;
+      LQ_while_break := false;
+      LQ_found_entry := false;
+      if (next_state.core_[ j ].LQ_.num_entries = 0) then
+        LQ_while_break := true;
+      end;
+      LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+      LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+      LQ_offset := 0;
+      while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+        LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ld)) then
+          if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request))))))) then
+            LQ_Load_is_in_state_set := true;
+          else
+            LQ_Load_is_in_state_set := false;
+          end;
+          LQ_found_entry := true;
+        end;
+        if (LQ_offset < LQ_difference) then
+          LQ_offset := (LQ_offset + 1);
+        end;
+      end;
+      if (LQ_found_entry = false) then
+      end;
+      ROB_Load_is_in_state_set := false;
+      ROB_while_break := false;
+      ROB_found_entry := false;
+      if (next_state.core_[ j ].ROB_.num_entries = 0) then
+        ROB_while_break := true;
+      end;
+      ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+      ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+      ROB_offset := 0;
+      while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+        ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ld)) then
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+            ROB_Load_is_in_state_set := true;
+          else
+            ROB_Load_is_in_state_set := false;
+          end;
+          ROB_found_entry := true;
+        end;
+        if (ROB_offset < ROB_difference) then
+          ROB_offset := (ROB_offset + 1);
+        end;
+      end;
+      if (ROB_found_entry = false) then
+      end;
+      RENAME_Store_is_in_state_set := false;
+      RENAME_while_break := false;
+      RENAME_found_entry := false;
+      if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+        RENAME_while_break := true;
+      end;
+      RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+      RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+      RENAME_offset := 0;
+      while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+        RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+          if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+            RENAME_Store_is_in_state_set := true;
+          else
+            RENAME_Store_is_in_state_set := false;
+          end;
+          RENAME_found_entry := true;
+        end;
+        if (RENAME_offset < RENAME_difference) then
+          RENAME_offset := (RENAME_offset + 1);
+        end;
+      end;
+      if (RENAME_found_entry = false) then
+      end;
+      IQ_Store_is_in_state_set := false;
+      found_entry := false;
+      for IQ_iter : IQ_idx_t do
+        if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+          if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
+            if (found_entry = false) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            else
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              end;
+            end;
+            found_entry := true;
+          end;
+        end;
+      endfor;
+      if (found_entry = false) then
+      elsif (found_entry = true) then
+        if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+          IQ_Store_is_in_state_set := true;
+        else
+          IQ_Store_is_in_state_set := false;
+        end;
+      end;
+      SQ_Store_is_in_state_set := false;
+      SQ_while_break := false;
+      SQ_found_entry := false;
+      if (next_state.core_[ j ].SQ_.num_entries = 0) then
+        SQ_while_break := true;
+      end;
+      SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
+      SQ_difference := next_state.core_[ j ].SQ_.num_entries;
+      SQ_offset := 0;
+      while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
+        SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
+          if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
+            SQ_Store_is_in_state_set := true;
+          else
+            SQ_Store_is_in_state_set := false;
+          end;
+          SQ_found_entry := true;
+        end;
+        if (SQ_offset < SQ_difference) then
+          SQ_offset := (SQ_offset + 1);
+        end;
+      end;
+      if (SQ_found_entry = false) then
+      end;
+      SB_Store_is_in_state_set := false;
+      found_entry := false;
+      for SB_iter : SB_idx_t do
+        if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
+          if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+            if (found_entry = false) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+              found_idx := SB_iter;
+            else
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                found_idx := SB_iter;
+              end;
+            end;
+            found_entry := true;
+          end;
+        end;
+      endfor;
+      if (found_entry = false) then
+      elsif (found_entry = true) then
+        if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
+          SB_Store_is_in_state_set := true;
+        else
+          SB_Store_is_in_state_set := false;
+        end;
+      end;
+      ROB_Store_is_in_state_set := false;
+      ROB_while_break := false;
+      ROB_found_entry := false;
+      if (next_state.core_[ j ].ROB_.num_entries = 0) then
+        ROB_while_break := true;
+      end;
+      ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+      ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+      ROB_offset := 0;
+      while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+        ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+            ROB_Store_is_in_state_set := true;
+          else
+            ROB_Store_is_in_state_set := false;
+          end;
+          ROB_found_entry := true;
+        end;
+        if (ROB_offset < ROB_difference) then
+          ROB_offset := (ROB_offset + 1);
+        end;
+      end;
+      if (ROB_found_entry = false) then
+      end;
+      is_instruction_on_any_state := (RENAME_Load_is_in_state_set | (IQ_Load_is_in_state_set | (LQ_Load_is_in_state_set | (ROB_Load_is_in_state_set | (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))))))));
+      if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_sy) then
+        if is_instruction_on_any_state then
+          next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+        else
+          RENAME_Store_is_in_state_set := false;
+          RENAME_while_break := false;
+          RENAME_found_entry := false;
+          if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+            RENAME_while_break := true;
+          end;
+          RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+          RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+          RENAME_offset := 0;
+          while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+            RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+              if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+                RENAME_Store_is_in_state_set := true;
+              else
+                RENAME_Store_is_in_state_set := false;
+              end;
+              RENAME_found_entry := true;
+            end;
+            if (RENAME_offset < RENAME_difference) then
+              RENAME_offset := (RENAME_offset + 1);
+            end;
+          end;
+          if (RENAME_found_entry = false) then
+          end;
+          IQ_Store_is_in_state_set := false;
+          found_entry := false;
+          for IQ_iter : IQ_idx_t do
+            if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+              if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
+                if (found_entry = false) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                else
+                  if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                    found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                    found_idx := IQ_iter;
+                  end;
+                end;
+                found_entry := true;
+              end;
+            end;
+          endfor;
+          if (found_entry = false) then
+          elsif (found_entry = true) then
+            if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+              IQ_Store_is_in_state_set := true;
+            else
+              IQ_Store_is_in_state_set := false;
+            end;
+          end;
+          SQ_Store_is_in_state_set := false;
+          SQ_while_break := false;
+          SQ_found_entry := false;
+          if (next_state.core_[ j ].SQ_.num_entries = 0) then
+            SQ_while_break := true;
+          end;
+          SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
+          SQ_difference := next_state.core_[ j ].SQ_.num_entries;
+          SQ_offset := 0;
+          while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
+            SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
+              if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
+                SQ_Store_is_in_state_set := true;
+              else
+                SQ_Store_is_in_state_set := false;
+              end;
+              SQ_found_entry := true;
+            end;
+            if (SQ_offset < SQ_difference) then
+              SQ_offset := (SQ_offset + 1);
+            end;
+          end;
+          if (SQ_found_entry = false) then
+          end;
+          SB_Store_is_in_state_set := false;
+          found_entry := false;
+          for SB_iter : SB_idx_t do
+            if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
+              if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+                if (found_entry = false) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                  found_idx := SB_iter;
+                else
+                  if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+                    found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                    found_idx := SB_iter;
+                  end;
+                end;
+                found_entry := true;
+              end;
+            end;
+          endfor;
+          if (found_entry = false) then
+          elsif (found_entry = true) then
+            if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
+              SB_Store_is_in_state_set := true;
+            else
+              SB_Store_is_in_state_set := false;
+            end;
+          end;
+          ROB_Store_is_in_state_set := false;
+          ROB_while_break := false;
+          ROB_found_entry := false;
+          if (next_state.core_[ j ].ROB_.num_entries = 0) then
+            ROB_while_break := true;
+          end;
+          ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+          ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+          ROB_offset := 0;
+          while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+            ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
+              if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+                ROB_Store_is_in_state_set := true;
+              else
+                ROB_Store_is_in_state_set := false;
+              end;
+              ROB_found_entry := true;
+            end;
+            if (ROB_offset < ROB_difference) then
+              ROB_offset := (ROB_offset + 1);
+            end;
+          end;
+          if (ROB_found_entry = false) then
+          end;
+          is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
+          if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_st) then
+            if is_instruction_on_any_state then
+              next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+            else
+              if (next_state.core_[ j ].ROB_.head = i) then
+                if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+                  LQ_while_break := false;
+                  LQ_found_entry := false;
+                  if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                    LQ_while_break := true;
+                  end;
+                  LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+                  LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+                  LQ_offset := 0;
+                  while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                    LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                    if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                      if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                        next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                        next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                      else
+                        error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                      end;
+                      LQ_found_entry := true;
+                    end;
+                    if (LQ_offset < LQ_difference) then
+                      LQ_offset := (LQ_offset + 1);
+                    end;
+                  end;
+                  if (LQ_found_entry = false) then
+                  end;
+                  next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+                else
+                  next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+                end;
+              else
+                next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+              end;
+            end;
+          else
+            if (next_state.core_[ j ].ROB_.head = i) then
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+                LQ_while_break := false;
+                LQ_found_entry := false;
+                if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                  LQ_while_break := true;
+                end;
+                LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+                LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+                LQ_offset := 0;
+                while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                  LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                  if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                    if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                    else
+                      error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                    end;
+                    LQ_found_entry := true;
+                  end;
+                  if (LQ_offset < LQ_difference) then
+                    LQ_offset := (LQ_offset + 1);
+                  end;
+                end;
+                if (LQ_found_entry = false) then
+                end;
+                next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+              else
+                next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+              end;
+            else
+              next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+            end;
+          end;
+        end;
+      else
+        RENAME_Store_is_in_state_set := false;
+        RENAME_while_break := false;
+        RENAME_found_entry := false;
+        if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+          RENAME_while_break := true;
+        end;
+        RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+        RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+        RENAME_offset := 0;
+        while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+          RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+            if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+              RENAME_Store_is_in_state_set := true;
+            else
+              RENAME_Store_is_in_state_set := false;
+            end;
+            RENAME_found_entry := true;
+          end;
+          if (RENAME_offset < RENAME_difference) then
+            RENAME_offset := (RENAME_offset + 1);
+          end;
+        end;
+        if (RENAME_found_entry = false) then
+        end;
+        IQ_Store_is_in_state_set := false;
+        found_entry := false;
+        for IQ_iter : IQ_idx_t do
+          if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+            if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              else
+                if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+            IQ_Store_is_in_state_set := true;
+          else
+            IQ_Store_is_in_state_set := false;
+          end;
+        end;
+        SQ_Store_is_in_state_set := false;
+        SQ_while_break := false;
+        SQ_found_entry := false;
+        if (next_state.core_[ j ].SQ_.num_entries = 0) then
+          SQ_while_break := true;
+        end;
+        SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
+        SQ_difference := next_state.core_[ j ].SQ_.num_entries;
+        SQ_offset := 0;
+        while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
+          SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
+            if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
+              SQ_Store_is_in_state_set := true;
+            else
+              SQ_Store_is_in_state_set := false;
+            end;
+            SQ_found_entry := true;
+          end;
+          if (SQ_offset < SQ_difference) then
+            SQ_offset := (SQ_offset + 1);
+          end;
+        end;
+        if (SQ_found_entry = false) then
+        end;
+        SB_Store_is_in_state_set := false;
+        found_entry := false;
+        for SB_iter : SB_idx_t do
+          if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
+            if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                found_idx := SB_iter;
+              else
+                if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                  found_idx := SB_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
+            SB_Store_is_in_state_set := true;
+          else
+            SB_Store_is_in_state_set := false;
+          end;
+        end;
+        ROB_Store_is_in_state_set := false;
+        ROB_while_break := false;
+        ROB_found_entry := false;
+        if (next_state.core_[ j ].ROB_.num_entries = 0) then
+          ROB_while_break := true;
+        end;
+        ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+        ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+        ROB_offset := 0;
+        while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+          ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+              ROB_Store_is_in_state_set := true;
+            else
+              ROB_Store_is_in_state_set := false;
+            end;
+            ROB_found_entry := true;
+          end;
+          if (ROB_offset < ROB_difference) then
+            ROB_offset := (ROB_offset + 1);
+          end;
+        end;
+        if (ROB_found_entry = false) then
+        end;
+        is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
+        if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_st) then
+          if is_instruction_on_any_state then
+            next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+          else
+            if (next_state.core_[ j ].ROB_.head = i) then
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+                LQ_while_break := false;
+                LQ_found_entry := false;
+                if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                  LQ_while_break := true;
+                end;
+                LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+                LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+                LQ_offset := 0;
+                while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                  LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                  if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                    if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                    else
+                      error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                    end;
+                    LQ_found_entry := true;
+                  end;
+                  if (LQ_offset < LQ_difference) then
+                    LQ_offset := (LQ_offset + 1);
+                  end;
+                end;
+                if (LQ_found_entry = false) then
+                end;
+                next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+              else
+                next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+              end;
+            else
+              next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+            end;
+          end;
+        else
+          if (next_state.core_[ j ].ROB_.head = i) then
+            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+              LQ_while_break := false;
+              LQ_found_entry := false;
+              if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                LQ_while_break := true;
+              end;
+              LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+              LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+              LQ_offset := 0;
+              while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                  if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                    next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                    next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                  else
+                    error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                  end;
+                  LQ_found_entry := true;
+                end;
+                if (LQ_offset < LQ_difference) then
+                  LQ_offset := (LQ_offset + 1);
+                end;
+              end;
+              if (LQ_found_entry = false) then
+              end;
+              next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+            else
+              next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+            end;
+          else
+            next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+          end;
+        end;
+      end;
+    end;
+  else
+    RENAME_Load_is_in_state_set := false;
+    RENAME_while_break := false;
+    RENAME_found_entry := false;
+    if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+      RENAME_while_break := true;
+    end;
+    RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+    RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+    RENAME_offset := 0;
+    while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+      RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = ld)) then
+        if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+          RENAME_Load_is_in_state_set := true;
+        else
+          RENAME_Load_is_in_state_set := false;
+        end;
+        RENAME_found_entry := true;
+      end;
+      if (RENAME_offset < RENAME_difference) then
+        RENAME_offset := (RENAME_offset + 1);
+      end;
+    end;
+    if (RENAME_found_entry = false) then
+    end;
+    IQ_Load_is_in_state_set := false;
+    found_entry := false;
+    for IQ_iter : IQ_idx_t do
+      if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+        if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = ld)) then
+          if (found_entry = false) then
+            found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+            found_idx := IQ_iter;
+          else
+            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            end;
+          end;
+          found_entry := true;
+        end;
+      end;
+    endfor;
+    if (found_entry = false) then
+    elsif (found_entry = true) then
+      if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+        IQ_Load_is_in_state_set := true;
+      else
+        IQ_Load_is_in_state_set := false;
+      end;
+    end;
+    LQ_Load_is_in_state_set := false;
+    LQ_while_break := false;
+    LQ_found_entry := false;
+    if (next_state.core_[ j ].LQ_.num_entries = 0) then
+      LQ_while_break := true;
+    end;
+    LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+    LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+    LQ_offset := 0;
+    while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+      LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.op = ld)) then
+        if ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_translation) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_fwd_check) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_sb_fwd_check_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_mem_response) | ((next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = await_scheduled) | (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = build_packet_send_mem_request))))))) then
+          LQ_Load_is_in_state_set := true;
+        else
+          LQ_Load_is_in_state_set := false;
+        end;
+        LQ_found_entry := true;
+      end;
+      if (LQ_offset < LQ_difference) then
+        LQ_offset := (LQ_offset + 1);
+      end;
+    end;
+    if (LQ_found_entry = false) then
+    end;
+    ROB_Load_is_in_state_set := false;
+    ROB_while_break := false;
+    ROB_found_entry := false;
+    if (next_state.core_[ j ].ROB_.num_entries = 0) then
+      ROB_while_break := true;
+    end;
+    ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+    ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+    ROB_offset := 0;
+    while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+      ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = ld)) then
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+          ROB_Load_is_in_state_set := true;
+        else
+          ROB_Load_is_in_state_set := false;
+        end;
+        ROB_found_entry := true;
+      end;
+      if (ROB_offset < ROB_difference) then
+        ROB_offset := (ROB_offset + 1);
+      end;
+    end;
+    if (ROB_found_entry = false) then
+    end;
+    RENAME_Store_is_in_state_set := false;
+    RENAME_while_break := false;
+    RENAME_found_entry := false;
+    if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+      RENAME_while_break := true;
+    end;
+    RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+    RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+    RENAME_offset := 0;
+    while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+      RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+        if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+          RENAME_Store_is_in_state_set := true;
+        else
+          RENAME_Store_is_in_state_set := false;
+        end;
+        RENAME_found_entry := true;
+      end;
+      if (RENAME_offset < RENAME_difference) then
+        RENAME_offset := (RENAME_offset + 1);
+      end;
+    end;
+    if (RENAME_found_entry = false) then
+    end;
+    IQ_Store_is_in_state_set := false;
+    found_entry := false;
+    for IQ_iter : IQ_idx_t do
+      if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+        if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
+          if (found_entry = false) then
+            found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+            found_idx := IQ_iter;
+          else
+            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+              found_idx := IQ_iter;
+            end;
+          end;
+          found_entry := true;
+        end;
+      end;
+    endfor;
+    if (found_entry = false) then
+    elsif (found_entry = true) then
+      if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+        IQ_Store_is_in_state_set := true;
+      else
+        IQ_Store_is_in_state_set := false;
+      end;
+    end;
+    SQ_Store_is_in_state_set := false;
+    SQ_while_break := false;
+    SQ_found_entry := false;
+    if (next_state.core_[ j ].SQ_.num_entries = 0) then
+      SQ_while_break := true;
+    end;
+    SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
+    SQ_difference := next_state.core_[ j ].SQ_.num_entries;
+    SQ_offset := 0;
+    while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
+      SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
+        if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
+          SQ_Store_is_in_state_set := true;
+        else
+          SQ_Store_is_in_state_set := false;
+        end;
+        SQ_found_entry := true;
+      end;
+      if (SQ_offset < SQ_difference) then
+        SQ_offset := (SQ_offset + 1);
+      end;
+    end;
+    if (SQ_found_entry = false) then
+    end;
+    SB_Store_is_in_state_set := false;
+    found_entry := false;
+    for SB_iter : SB_idx_t do
+      if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
+        if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+          if (found_entry = false) then
+            found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+            found_idx := SB_iter;
+          else
+            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+              found_idx := SB_iter;
+            end;
+          end;
+          found_entry := true;
+        end;
+      end;
+    endfor;
+    if (found_entry = false) then
+    elsif (found_entry = true) then
+      if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
+        SB_Store_is_in_state_set := true;
+      else
+        SB_Store_is_in_state_set := false;
+      end;
+    end;
+    ROB_Store_is_in_state_set := false;
+    ROB_while_break := false;
+    ROB_found_entry := false;
+    if (next_state.core_[ j ].ROB_.num_entries = 0) then
+      ROB_while_break := true;
+    end;
+    ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+    ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+    ROB_offset := 0;
+    while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+      ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
+        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+          ROB_Store_is_in_state_set := true;
+        else
+          ROB_Store_is_in_state_set := false;
+        end;
+        ROB_found_entry := true;
+      end;
+      if (ROB_offset < ROB_difference) then
+        ROB_offset := (ROB_offset + 1);
+      end;
+    end;
+    if (ROB_found_entry = false) then
+    end;
+    is_instruction_on_any_state := (RENAME_Load_is_in_state_set | (IQ_Load_is_in_state_set | (LQ_Load_is_in_state_set | (ROB_Load_is_in_state_set | (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))))))));
+    if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_sy) then
+      if is_instruction_on_any_state then
+        next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+      else
+        RENAME_Store_is_in_state_set := false;
+        RENAME_while_break := false;
+        RENAME_found_entry := false;
+        if (next_state.core_[ j ].RENAME_.num_entries = 0) then
+          RENAME_while_break := true;
+        end;
+        RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
+        RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
+        RENAME_offset := 0;
+        while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
+          RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
+            if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
+              RENAME_Store_is_in_state_set := true;
+            else
+              RENAME_Store_is_in_state_set := false;
+            end;
+            RENAME_found_entry := true;
+          end;
+          if (RENAME_offset < RENAME_difference) then
+            RENAME_offset := (RENAME_offset + 1);
+          end;
+        end;
+        if (RENAME_found_entry = false) then
+        end;
+        IQ_Store_is_in_state_set := false;
+        found_entry := false;
+        for IQ_iter : IQ_idx_t do
+          if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
+            if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                found_idx := IQ_iter;
+              else
+                if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
+                  found_idx := IQ_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
+            IQ_Store_is_in_state_set := true;
+          else
+            IQ_Store_is_in_state_set := false;
+          end;
+        end;
+        SQ_Store_is_in_state_set := false;
+        SQ_while_break := false;
+        SQ_found_entry := false;
+        if (next_state.core_[ j ].SQ_.num_entries = 0) then
+          SQ_while_break := true;
+        end;
+        SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
+        SQ_difference := next_state.core_[ j ].SQ_.num_entries;
+        SQ_offset := 0;
+        while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
+          SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
+            if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
+              SQ_Store_is_in_state_set := true;
+            else
+              SQ_Store_is_in_state_set := false;
+            end;
+            SQ_found_entry := true;
+          end;
+          if (SQ_offset < SQ_difference) then
+            SQ_offset := (SQ_offset + 1);
+          end;
+        end;
+        if (SQ_found_entry = false) then
+        end;
+        SB_Store_is_in_state_set := false;
+        found_entry := false;
+        for SB_iter : SB_idx_t do
+          if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
+            if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
+              if (found_entry = false) then
+                found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                found_idx := SB_iter;
+              else
+                if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
+                  found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
+                  found_idx := SB_iter;
+                end;
+              end;
+              found_entry := true;
+            end;
+          end;
+        endfor;
+        if (found_entry = false) then
+        elsif (found_entry = true) then
+          if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
+            SB_Store_is_in_state_set := true;
+          else
+            SB_Store_is_in_state_set := false;
+          end;
+        end;
+        ROB_Store_is_in_state_set := false;
+        ROB_while_break := false;
+        ROB_found_entry := false;
+        if (next_state.core_[ j ].ROB_.num_entries = 0) then
+          ROB_while_break := true;
+        end;
+        ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
+        ROB_difference := next_state.core_[ j ].ROB_.num_entries;
+        ROB_offset := 0;
+        while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
+          ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
+          if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
+            if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
+              ROB_Store_is_in_state_set := true;
+            else
+              ROB_Store_is_in_state_set := false;
+            end;
+            ROB_found_entry := true;
+          end;
+          if (ROB_offset < ROB_difference) then
+            ROB_offset := (ROB_offset + 1);
+          end;
+        end;
+        if (ROB_found_entry = false) then
+        end;
+        is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
+        if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_st) then
+          if is_instruction_on_any_state then
+            next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+          else
+            if (next_state.core_[ j ].ROB_.head = i) then
+              if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+                LQ_while_break := false;
+                LQ_found_entry := false;
+                if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                  LQ_while_break := true;
+                end;
+                LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+                LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+                LQ_offset := 0;
+                while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                  LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                  if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                    if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                      next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                    else
+                      error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                    end;
+                    LQ_found_entry := true;
+                  end;
+                  if (LQ_offset < LQ_difference) then
+                    LQ_offset := (LQ_offset + 1);
+                  end;
+                end;
+                if (LQ_found_entry = false) then
+                end;
+                next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+              else
+                next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+              end;
+            else
+              next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+            end;
+          end;
+        else
+          if (next_state.core_[ j ].ROB_.head = i) then
+            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
+              LQ_while_break := false;
+              LQ_found_entry := false;
+              if (next_state.core_[ j ].LQ_.num_entries = 0) then
+                LQ_while_break := true;
+              end;
+              LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
+              LQ_difference := next_state.core_[ j ].LQ_.num_entries;
+              LQ_offset := 0;
+              while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+                LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
+                if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
+                  if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
+                    next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
+                    next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
+                  else
+                    error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
+                  end;
+                  LQ_found_entry := true;
+                end;
+                if (LQ_offset < LQ_difference) then
+                  LQ_offset := (LQ_offset + 1);
+                end;
+              end;
+              if (LQ_found_entry = false) then
+              end;
+              next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
+            else
+              next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
+            end;
+          else
+            next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
+          end;
+        end;
+      end;
     else
       RENAME_Store_is_in_state_set := false;
       RENAME_while_break := false;
@@ -5869,210 +7314,6 @@ begin
         else
           next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
         end;
-      end;
-    end;
-  else
-    RENAME_Store_is_in_state_set := false;
-    RENAME_while_break := false;
-    RENAME_found_entry := false;
-    if (next_state.core_[ j ].RENAME_.num_entries = 0) then
-      RENAME_while_break := true;
-    end;
-    RENAME_entry_idx := ((next_state.core_[ j ].RENAME_.tail + (RENAME_NUM_ENTRIES_CONST - 1)) % RENAME_NUM_ENTRIES_CONST);
-    RENAME_difference := next_state.core_[ j ].RENAME_.num_entries;
-    RENAME_offset := 0;
-    while ((RENAME_offset < RENAME_difference) & ((RENAME_while_break = false) & (RENAME_found_entry = false))) do
-      RENAME_curr_idx := ((RENAME_entry_idx + (RENAME_NUM_ENTRIES_CONST - RENAME_offset)) % RENAME_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].instruction.op = st)) then
-        if (next_state.core_[ j ].RENAME_.entries[ RENAME_curr_idx ].state = issue_if_head) then
-          RENAME_Store_is_in_state_set := true;
-        else
-          RENAME_Store_is_in_state_set := false;
-        end;
-        RENAME_found_entry := true;
-      end;
-      if (RENAME_offset < RENAME_difference) then
-        RENAME_offset := (RENAME_offset + 1);
-      end;
-    end;
-    if (RENAME_found_entry = false) then
-    end;
-    IQ_Store_is_in_state_set := false;
-    found_entry := false;
-    for IQ_iter : IQ_idx_t do
-      if next_state.core_[ j ].IQ_.entries[ IQ_iter ].valid then
-        if ((next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.op = st)) then
-          if (found_entry = false) then
-            found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-            found_idx := IQ_iter;
-          else
-            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num) < found_element) then
-              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].IQ_.entries[ IQ_iter ].instruction.seq_num);
-              found_idx := IQ_iter;
-            end;
-          end;
-          found_entry := true;
-        end;
-      end;
-    endfor;
-    if (found_entry = false) then
-    elsif (found_entry = true) then
-      if (next_state.core_[ j ].IQ_.entries[ found_idx ].state = iq_schedule_inst) then
-        IQ_Store_is_in_state_set := true;
-      else
-        IQ_Store_is_in_state_set := false;
-      end;
-    end;
-    SQ_Store_is_in_state_set := false;
-    SQ_while_break := false;
-    SQ_found_entry := false;
-    if (next_state.core_[ j ].SQ_.num_entries = 0) then
-      SQ_while_break := true;
-    end;
-    SQ_entry_idx := ((next_state.core_[ j ].SQ_.tail + (SQ_NUM_ENTRIES_CONST - 1)) % SQ_NUM_ENTRIES_CONST);
-    SQ_difference := next_state.core_[ j ].SQ_.num_entries;
-    SQ_offset := 0;
-    while ((SQ_offset < SQ_difference) & ((SQ_while_break = false) & (SQ_found_entry = false))) do
-      SQ_curr_idx := ((SQ_entry_idx + (SQ_NUM_ENTRIES_CONST - SQ_offset)) % SQ_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].instruction.op = st)) then
-        if ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_translation) | ((next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_committed) | (next_state.core_[ j ].SQ_.entries[ SQ_curr_idx ].state = sq_await_scheduled))) then
-          SQ_Store_is_in_state_set := true;
-        else
-          SQ_Store_is_in_state_set := false;
-        end;
-        SQ_found_entry := true;
-      end;
-      if (SQ_offset < SQ_difference) then
-        SQ_offset := (SQ_offset + 1);
-      end;
-    end;
-    if (SQ_found_entry = false) then
-    end;
-    SB_Store_is_in_state_set := false;
-    found_entry := false;
-    for SB_iter : SB_idx_t do
-      if next_state.core_[ j ].SB_.entries[ SB_iter ].valid then
-        if ((next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.op = st)) then
-          if (found_entry = false) then
-            found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
-            found_idx := SB_iter;
-          else
-            if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num) < found_element) then
-              found_element := (next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num - next_state.core_[ j ].SB_.entries[ SB_iter ].instruction.seq_num);
-              found_idx := SB_iter;
-            end;
-          end;
-          found_entry := true;
-        end;
-      end;
-    endfor;
-    if (found_entry = false) then
-    elsif (found_entry = true) then
-      if ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req) | ((next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_mem_response) | (next_state.core_[ j ].SB_.entries[ found_idx ].state = sb_await_send_mem_req))) then
-        SB_Store_is_in_state_set := true;
-      else
-        SB_Store_is_in_state_set := false;
-      end;
-    end;
-    ROB_Store_is_in_state_set := false;
-    ROB_while_break := false;
-    ROB_found_entry := false;
-    if (next_state.core_[ j ].ROB_.num_entries = 0) then
-      ROB_while_break := true;
-    end;
-    ROB_entry_idx := ((next_state.core_[ j ].ROB_.tail + (ROB_NUM_ENTRIES_CONST - 1)) % ROB_NUM_ENTRIES_CONST);
-    ROB_difference := next_state.core_[ j ].ROB_.num_entries;
-    ROB_offset := 0;
-    while ((ROB_offset < ROB_difference) & ((ROB_while_break = false) & (ROB_found_entry = false))) do
-      ROB_curr_idx := ((ROB_entry_idx + (ROB_NUM_ENTRIES_CONST - ROB_offset)) % ROB_NUM_ENTRIES_CONST);
-      if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.seq_num < next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) & (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].instruction.op = st)) then
-        if ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head) | ((next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_await_executed) | (next_state.core_[ j ].ROB_.entries[ ROB_curr_idx ].state = rob_commit_if_head))) then
-          ROB_Store_is_in_state_set := true;
-        else
-          ROB_Store_is_in_state_set := false;
-        end;
-        ROB_found_entry := true;
-      end;
-      if (ROB_offset < ROB_difference) then
-        ROB_offset := (ROB_offset + 1);
-      end;
-    end;
-    if (ROB_found_entry = false) then
-    end;
-    is_instruction_on_any_state := (RENAME_Store_is_in_state_set | (IQ_Store_is_in_state_set | (SQ_Store_is_in_state_set | (SB_Store_is_in_state_set | ROB_Store_is_in_state_set))));
-    if (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = dmb_st) then
-      if is_instruction_on_any_state then
-        next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
-      else
-        if (next_state.core_[ j ].ROB_.head = i) then
-          if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
-            LQ_while_break := false;
-            LQ_found_entry := false;
-            if (next_state.core_[ j ].LQ_.num_entries = 0) then
-              LQ_while_break := true;
-            end;
-            LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
-            LQ_difference := next_state.core_[ j ].LQ_.num_entries;
-            LQ_offset := 0;
-            while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
-              LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
-              if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-                if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
-                  next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
-                  next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
-                else
-                  error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
-                end;
-                LQ_found_entry := true;
-              end;
-              if (LQ_offset < LQ_difference) then
-                LQ_offset := (LQ_offset + 1);
-              end;
-            end;
-            if (LQ_found_entry = false) then
-            end;
-            next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
-          else
-            next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
-          end;
-        else
-          next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
-        end;
-      end;
-    else
-      if (next_state.core_[ j ].ROB_.head = i) then
-        if ((next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ld) | (next_state.core_[ j ].ROB_.entries[ i ].instruction.op = ldar)) then
-          LQ_while_break := false;
-          LQ_found_entry := false;
-          if (next_state.core_[ j ].LQ_.num_entries = 0) then
-            LQ_while_break := true;
-          end;
-          LQ_entry_idx := ((next_state.core_[ j ].LQ_.tail + (LQ_NUM_ENTRIES_CONST - 1)) % LQ_NUM_ENTRIES_CONST);
-          LQ_difference := next_state.core_[ j ].LQ_.num_entries;
-          LQ_offset := 0;
-          while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
-            LQ_curr_idx := ((LQ_entry_idx + (LQ_NUM_ENTRIES_CONST - LQ_offset)) % LQ_NUM_ENTRIES_CONST);
-            if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction.seq_num = next_state.core_[ j ].ROB_.entries[ i ].instruction.seq_num) then
-              if (next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state = LoadReplay_await_replay_start) then
-                next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].instruction := next_state.core_[ j ].ROB_.entries[ i ].instruction;
-                next_state.core_[ j ].LQ_.entries[ LQ_curr_idx ].state := replay_issue_load_to_mem;
-              else
-                error "Controller is not on an expected state for a msg: (start_replay) from: (ROB) to: (LQ)";
-              end;
-              LQ_found_entry := true;
-            end;
-            if (LQ_offset < LQ_difference) then
-              LQ_offset := (LQ_offset + 1);
-            end;
-          end;
-          if (LQ_found_entry = false) then
-          end;
-          next_state.core_[ j ].ROB_.entries[ i ].state := ROB_await_replay_complete;
-        else
-          next_state.core_[ j ].ROB_.entries[ i ].state := original_commit_rob_commit_if_head;
-        end;
-      else
-        next_state.core_[ j ].ROB_.entries[ i ].state := rob_commit_if_head;
       end;
     end;
   end;
