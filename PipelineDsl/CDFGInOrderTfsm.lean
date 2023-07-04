@@ -110,46 +110,44 @@ def CDFG.Graph.BinaryInOrderTransform
 
   dbg_trace s!"<< States to query: ({query_ctrler_state})"
 
-  let new_stall_state_names : List (CtrlerState × StateName × InstType) := stall_points.map (
-    let (stall_point, inst_type) := ·;
-    let new_state_name := stall_point.state
-      -- stall_point.new_stall_state_name inst_to_stall_on_types inst_type none
-      --   ( stall_point, new_state_name, inst_type)
-    (stall_point, new_state_name, inst_type)
-  )
+  -- let new_stall_state_names : List (CtrlerState × StateName × InstType) := stall_points.map (
+  --   let (stall_point, inst_type) := ·;
+  --   let new_state_name := stall_point.state
+  --     -- stall_point.new_stall_state_name inst_to_stall_on_types inst_type none
+  --     --   ( stall_point, new_state_name, inst_type)
+  --   (stall_point, new_state_name, inst_type)
+  -- )
 
-  dbg_trace s!"<< New stall state names: ({new_stall_state_names})"
+  -- dbg_trace s!"<< New stall state names: ({new_stall_state_names})"
 
-  -- let query_ctrler_states' : List CtrlerStates := ← stall_points.map (·.append_if_in_list query_ctrler_state new_stall_state_name)
-  --   |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
-  let query_ctrler_states' : List ( (List CtrlerStates) × InstType) := ←
-    query_ctrler_state.mapM (do
-      let (query_ctrler_state, inst_type) := ·;
-      let updated_states := ← new_stall_state_names.foldlM (
-        λ query_states new_names => do
-          let (stall_point, new_name, /- stalled_inst_type -/ _) := new_names;
+  -- let query_ctrler_states' : List ( (List CtrlerStates) × InstType) := ←
+  --   query_ctrler_state.mapM (do
+  --     let (query_ctrler_state, inst_type) := ·;
+  --     let updated_states := ← new_stall_state_names.foldlM (
+  --       λ query_states new_names => do
+  --         let (stall_point, new_name, /- stalled_inst_type -/ _) := new_names;
 
-          let updated_query_states := ← stall_point.append_if_in_list query_states new_name
-            |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
+  --         let updated_query_states := ← stall_point.append_if_in_list query_states new_name
+  --           |>.throw_exception_nesting_msg s!"Error appending ctrler/state ({stall_point.ctrler}) state ({stall_point.state}) to list ({query_ctrler_state})"
 
-          pure (updated_query_states)
-      ) query_ctrler_state
+  --         pure (updated_query_states)
+  --     ) query_ctrler_state
 
-      pure (updated_states, inst_type)
-    )
+  --     pure (updated_states, inst_type)
+  --   )
 
-  dbg_trace s!"<< States to query (with new stall states?): ({query_ctrler_state})"
+  -- dbg_trace s!"<< States to query (with new stall states?): ({query_ctrler_state})"
 
   -- let dsl_stall_nodes
   let updated_ctrlers
     -- : List ( Pipeline.Description × StateName × CtrlerState × InstType)
     : Ctrlers
-    := ← new_stall_state_names.foldlM (
-    λ ctrlers' (stall_point, /- new_stall_state_name -/ _, inst_to_stall_type') => do
+    := ← stall_points.foldlM (
+    λ ctrlers' (stall_point, inst_to_stall_type') => do
     -- let (stall_point, new_stall_state_name, inst_to_stall_type') := ·;
     let dsl_stall := ← ctrlers.StallNode
       stall_point.state stall_point.ctrler
-      query_ctrler_states'
+      query_ctrler_state
       inst_to_stall_type'
       -- new_stall_state_name
       stall_point.state -- just reuse the state, don't generate a stall state, and keep this simple.
