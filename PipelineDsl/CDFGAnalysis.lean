@@ -859,14 +859,13 @@ def CDFG.Graph.commit_transition_state_ctrler (graph : Graph) : Except String No
     (graph.nodes.filter (·.transitions.any (·.has_commit_labelled_stmt)))
 
   match global_perform_nodes with
-  | [] => throw "Error: No commit state found"
+  | [] => throw s!"Error: No commit state found. Graph: ({graph})"
   | [node] => pure node
   | _ => throw "Error: More than one commit state found"
 
 -- structure NodeTransition where
 -- node : CDFG.Node
 -- transition : CDFG.Transition
-#check List.foldl
 -- TODO: Stub
 partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
 (depth := 0)
@@ -980,6 +979,7 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
 
     dbg_trace s!"Depth ({depth}) test6"
     let msg'd_nodes := msg'd_nodes_unfiltered.filter (! trans'd_to_visited_taken.contains ·)
+    dbg_trace s!"Depth ({depth}) Messaged Nodes: ({msg'd_nodes})"
 
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: visited_taken node/trans: ({visited_taken})"
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans'd visited_taken node/trans: ({trans'd_to_visited_taken})"
