@@ -626,7 +626,8 @@ partial def Pipeline.Statement.is_contains_transition
     stmts.any (·.is_contains_transition)
   | .when _ _ stmt =>
     stmt.is_contains_transition
-  | .labelled_statement _ _
+  | .labelled_statement _ stmt =>
+    stmt.is_contains_transition
   | .variable_declaration _
   | .value_declaration _ _
   | .variable_assignment _ _
@@ -669,4 +670,41 @@ partial def Pipeline.Statement.get_all_child_stmts
     List.join $ stmts.map (·.get_all_child_stmts)
   | .when _ _ stmt =>
     stmt.get_all_child_stmts
+
+partial def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .commit => true
+    | _ => false
+  | .block stmts =>
+    stmts.any (·.is_commit_labelled)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.is_commit_labelled || stmt2.is_commit_labelled
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.is_commit_labelled
+  | .listen_handle stmt1 handle_blks =>
+    -- should error. since
+    let handle_stmts :=
+    handle_blks.any (
+      match · with
+      | .mk _ _ stmt => stmt.is_commit_labelled
+    )
+    stmt1.is_commit_labelled || handle_stmts
+  | .await _ stmts =>
+    stmts.any (·.is_commit_labelled)
+  | .when _ _ stmt =>
+    stmt.is_commit_labelled
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => false
 
