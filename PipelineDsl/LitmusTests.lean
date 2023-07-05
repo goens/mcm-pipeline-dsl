@@ -513,6 +513,33 @@ def n5 : LitmusTest := {
   orderings := [(binary_ordering [ store ] [ load ] Addresses.same)]
 }
 
+def n7 : LitmusTest := {
+  test_name := "n7",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+    ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0}
+    ]},
+    {
+      core_idx := 2,
+      insts := [
+        {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+        {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]
+    }
+  ],
+  expected := {
+    per_core_reg_file := [
+      {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+      {core_idx := 2, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}, -- Allow, Permitted in TSO
+  orderings := [(binary_ordering [ store ] [ load ] Addresses.same)]
+}
 
 -- (** Ensure that po-loc is respected *)
 -- Definition d1
@@ -678,6 +705,7 @@ amd2,
 -- n2, -- permitted test, not yet implemented "permitted"
 n4,
 n5,
+n7,
 Dekker,
 load_fence,
 dekker_fence,
