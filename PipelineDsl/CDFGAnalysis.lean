@@ -979,7 +979,7 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
 
     dbg_trace s!"Depth ({depth}) test6"
     let msg'd_nodes := msg'd_nodes_unfiltered.filter (! trans'd_to_visited_taken.contains ·)
-    dbg_trace s!"Depth ({depth}) Messaged Nodes: ({msg'd_nodes})"
+    -- dbg_trace s!"Depth ({depth}) Messaged Nodes: ({msg'd_nodes})"
 
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: visited_taken node/trans: ({visited_taken})"
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans'd visited_taken node/trans: ({trans'd_to_visited_taken})"
