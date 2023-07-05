@@ -4036,12 +4036,78 @@ lst_stmts_decls
             let dsl_term_write_value : Pipeline.Term := Pipeline.Term.var ("write_value")
             let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
 
-            let phys_addr_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            -- let phys_addr_trans_term' : term_translation_info :=
+            --   assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            let phys_addr_trans_term : term_translation_info := {
+              term := dsl_term_phys_addr,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
             let write_value_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_write_value
+              -- assn_stmt_to_term_translation_info stmt_trans_info dsl_term_write_value
+              {
+              term := dsl_term_write_value,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
             let inst_seq_num_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              -- assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              {
+              term := dsl_term_inst_seq_num,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
 
             let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
             let murphi_write_value_expr := ast_term_to_murphi_expr write_value_trans_term
