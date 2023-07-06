@@ -2413,6 +2413,7 @@ def SearchType.search_api
     | .Unordered => some search_all
     | .BasicCtrler => none
 
+open Pipeline in
 def CtrlerStates.query_older_insts
 (ctrler_states : CtrlerStates)
 (stall_on_inst_type : InstType)
@@ -2431,7 +2432,10 @@ def CtrlerStates.query_older_insts
     let stall_inst_type := stall_on_inst_type.to_const_term
     let entry_is_stall_type := equal entry_inst_type stall_inst_type
 
-    let entry_seq_num_valid := not_equal (qualified_var [ctrler_states.ctrler, instruction, seq_num].to_qual_name) (Pipeline.Term.const $ num_lit 0)
+    let entry_seq_num_valid :=
+      less_than
+        (qualified_var [ctrler_states.ctrler, instruction, seq_num].to_qual_name)
+        (qualified_var [instruction, seq_num].to_qual_name)
 
     let entry_is_stall_type_and_valid := binand entry_is_stall_type.to_term entry_seq_num_valid.to_term
   
