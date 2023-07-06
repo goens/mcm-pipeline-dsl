@@ -3088,7 +3088,10 @@ def CDFG.Graph.find_pre_receive_stall_states
   let post_receive_inst_graph := post_receive_inst_graph_with_receive_node.filter (·.current_state != receive_response_node.current_state)
   -- dbg_trace s!">> inst_type: ({first_'to_stall_on'_inst_type}) post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"
 
-  let pre_receive_inst_graph := inst_graph.filter (·.current_state ∉ post_receive_inst_graph.map (·.current_state) )
+  let without_inst_source_ctrler : List Node :=
+    inst_graph.filter (·.ctrler_name != inst_source_node.ctrler_name)
+  let pre_receive_inst_graph :=
+    without_inst_source_ctrler.filter (·.current_state ∉ post_receive_inst_graph.map (·.current_state) )
   -- dbg_trace s!">> inst_graph: ({inst_graph.qualified_state_names})"
   -- dbg_trace s!">> receive_response_node: ({receive_response_node.qualified_state_name})"
   -- dbg_trace s!">> post_receive_inst_graph: ({post_receive_inst_graph.qualified_state_names})"
