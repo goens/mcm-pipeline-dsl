@@ -708,3 +708,57 @@ partial def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : 
   | .stall _
     => false
 
+def Pipeline.Expr.get_message_term?
+(expr : Expr)
+: Option Term :=
+  match expr with
+  | .some_term term =>
+    match term with
+    | .function_call qual_name /- exprs -/ _ =>
+      if qual_name.idents.length == 2 then
+        some term
+      else
+        none
+    | _ => none
+  | _ => none
+
+partial def Pipeline.Statement.get_messages (stmt : Statement) : List Term :=
+  match stmt with
+  | .stray_expr expr =>
+    match expr.get_message_term? with
+    | some term => [term]
+    | none => []
+  | .labelled_statement /- label -/ _ stmt' =>
+    stmt'.get_messages
+  | .block stmts =>
+    List.join $ stmts.map (·.get_messages)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.get_messages ++ stmt2.get_messages
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.get_messages
+  | .listen_handle stmt1 handle_blks =>
+    -- should error. since
+    let handle_stmts :=
+      List.join $
+        handle_blks.map (
+          match · with
+          | .mk _ _ stmt' => stmt'.get_messages
+        )
+    stmt1.get_messages ++ handle_stmts
+  | .await _ stmts =>
+    List.join $ stmts.map (·.get_messages)
+  | .when _ _ stmt' =>
+    stmt'.get_messages
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .return_stmt _
+  | .stall _
+    => []
+
+
