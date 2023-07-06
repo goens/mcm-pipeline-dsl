@@ -157,7 +157,7 @@ def CDFG.Graph.BinaryInOrderTransform
   ) ctrlers
 
   -- dbg_trace s!"<< Generated DSL stall nodes: ({dsl_stall_nodes})"
-  dbg_trace s!"<< Generated DSL stall nodes: ({updated_ctrlers})"
+  -- dbg_trace s!"<< Generated DSL stall nodes: ({updated_ctrlers})"
 
   -- let updated_ctrlers ←
   --   dsl_stall_nodes.foldlM (
