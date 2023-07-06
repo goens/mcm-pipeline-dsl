@@ -213,12 +213,25 @@ def PrepareHandleCondAndStmts
 def EmptyTransitionsLists : TransitionsLists :=
 {incomplete_transitions := [], complete_transitions := []}
 
-def AppendTransitionMessages (transition : IncompleteTransition) (message : Message)
+def AppendTransitionMessage (transition : IncompleteTransition) (message : Message)
 : IncompleteTransition
 := {
   predicate := transition.predicate
   orig_state := transition.orig_state
   messages := transition.messages.concat message
+  effects := transition.effects
+  stmts := transition.stmts
+  queue_info := transition.queue_info
+  constraint_info := transition.constraint_info
+  commit := transition.commit
+}
+
+def AppendTransitionMessages (transition : IncompleteTransition) (messages : List Message)
+: IncompleteTransition
+:= {
+  predicate := transition.predicate
+  orig_state := transition.orig_state
+  messages := transition.messages ++ messages
   effects := transition.effects
   stmts := transition.stmts
   queue_info := transition.queue_info
@@ -325,12 +338,16 @@ partial def StmtsToTransitions
               added_branches_transitions_lists
           | false =>
             let child_stmts := [stmt] ++ stmt.get_all_child_stmts
+            let msg_terms := stmt.get_messages.map (Message.mk ·)
 
             let transitions_with_stmt : IncompleteTransitions :=
               transitions_lists.incomplete_transitions.map
                 (AppendTransitionStmts · child_stmts)
+            let transitions_with_msgs : IncompleteTransitions :=
+              transitions_with_stmt.map
+                (AppendTransitionMessages · msg_terms)
             let lists : TransitionsLists :=
-            { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+            { incomplete_transitions := transitions_with_msgs, complete_transitions := transitions_lists.complete_transitions}
             lists
         | .block lst_stmt =>
           -- recurse to get incomplete stmts & complete stmts
@@ -366,12 +383,16 @@ partial def StmtsToTransitions
             updated_transitions_lists
           | false =>
             let child_stmts := [ stmt ] ++ stmt.get_all_child_stmts
+            let msg_terms := stmt.get_messages.map (Message.mk ·)
 
             let transitions_with_stmt : IncompleteTransitions :=
               transitions_lists.incomplete_transitions.map
                 (AppendTransitionStmts · child_stmts)
+            let transitions_with_msgs : IncompleteTransitions :=
+              transitions_with_stmt.map
+                (AppendTransitionMessages · msg_terms)
             let lists : TransitionsLists :=
-              { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+              { incomplete_transitions := transitions_with_msgs, complete_transitions := transitions_lists.complete_transitions}
             lists
         | .when _ _ _ =>
           dbg_trace "Shouldn't see a when by itself. Figure out how to throw in dsl to cdfg translation"
@@ -403,12 +424,16 @@ partial def StmtsToTransitions
             updated_transitions_lists
           | false =>
             let child_stmts := [ stmt ] ++ stmt.get_all_child_stmts
+            let msg_terms := stmt.get_messages.map (Message.mk ·)
 
             let transitions_with_stmt : IncompleteTransitions :=
               transitions_lists.incomplete_transitions.map
               (AppendTransitionStmts · child_stmts)
+            let transitions_with_msgs : IncompleteTransitions :=
+              transitions_with_stmt.map
+              (AppendTransitionMessages · msg_terms)
             let lists : TransitionsLists :=
-              { incomplete_transitions := transitions_with_stmt, complete_transitions := transitions_lists.complete_transitions}
+              { incomplete_transitions := transitions_with_msgs, complete_transitions := transitions_lists.complete_transitions}
             lists
         | .stray_expr expr =>
           -- stray expr is func call or message
@@ -421,7 +446,7 @@ partial def StmtsToTransitions
               if qual_name.idents.length == 2 then
                 let updated_incomplete_transitions := transitions_lists.incomplete_transitions.map (
                   λ transition =>
-                    AppendTransitionMessages transition (Message.mk term)
+                    AppendTransitionMessage transition (Message.mk term)
                 )
                 let updated_transitions := {
                   incomplete_transitions := updated_incomplete_transitions,
