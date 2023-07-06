@@ -174,14 +174,14 @@ def transformTesting : AST → Array Nat → IO Unit
       -- println! s!"!begin stlr, store -> stlr Ctrlers: ({ctrlers})"
 
       -- === DMB fence ordering testing ===
-      -- dbg_trace s!"++ Adding ld -> DMB_LD -> ld ordering."
-      -- let ld_dmb_ld_ld := ( MCMOrdering.ternary_ordering
-      --   (TernaryOrdering.mk [ load' ] dmb_ld' [ load' ] Addresses.any) )
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers ld_dmb_ld_ld none with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg =>
-      --     dbg_trace s!"Error applying ld->dmb_ld->ld in CDFG InOrderTfsm: ({msg})"
-      --     []
+      dbg_trace s!"++ Adding ld -> DMB_LD -> ld ordering."
+      let ld_dmb_ld_ld := ( MCMOrdering.ternary_ordering
+        (TernaryOrdering.mk [ load' ] dmb_ld' [ load' ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers ld_dmb_ld_ld none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg =>
+          dbg_trace s!"Error applying ld->dmb_ld->ld in CDFG InOrderTfsm: ({msg})"
+          []
 
       dbg_trace s!"++ Adding st -> DMB_ST -> st ordering."
       let st_dmb_st_st := ( MCMOrdering.ternary_ordering
@@ -211,12 +211,13 @@ def transformTesting : AST → Array Nat → IO Unit
         | .error msg =>
           dbg_trace s!"Error applying st->mfence in CDFG InOrderTfsm: ({msg})"
           []
-      let dmb_sy_dmb_ld_to_ld_replay := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ dmb_sy, dmb_ld ] [ load ] Addresses.any) )
-      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers dmb_sy_dmb_ld_to_ld_replay with
-        | .ok ctrler_list => ctrler_list
-        | .error msg => 
-          dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
-          []
+
+      -- let dmb_sy_dmb_ld_to_ld_replay := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ dmb_sy, dmb_ld ] [ load ] Addresses.any) )
+      -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers dmb_sy_dmb_ld_to_ld_replay with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg => 
+      --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+      --     []
 
       -- dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
       -- let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
