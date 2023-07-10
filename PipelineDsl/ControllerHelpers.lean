@@ -472,3 +472,96 @@ def Ctrlers.AddRemoveFromLATWhenCommit
       commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_commit
   
   ctrlers_remove_key_from_lat
+
+def ast0021_empty_controller : controller_info
+:= {
+  name := default,
+  controller_descript := default,
+  entry_descript := default,
+  init_trans := default,
+  state_vars := default,
+  transition_list := default,
+  ctrler_init_trans := default,
+  ctrler_state_vars := default
+  ctrler_trans_list := default
+  }
+
+def ast0022_set_controller_name ( name : Identifier ) (ctrl : controller_info) : controller_info
+:= {
+  name := name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
+
+open Pipeline AST in
+def ast0024_set_entry_descript (ctrl : controller_info) ( descript : Description ) : controller_info
+:= {
+  name := ctrl.name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
+
+open Pipeline AST in
+def ast0025_set_entry_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0024_set_entry_descript ctrl_and_entry.1 ctrl_and_entry.2 
+
+def ast0026_set_controller_init (ctrl : controller_info) ( trans : Identifier ) : controller_info := {
+  name := ctrl.name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
+
+def ast0027_set_controller_init ( ctrl_and_entry : controller_info × Identifier ) :=
+  ast0026_set_controller_init ctrl_and_entry.1 ctrl_and_entry.2 
+
+def set_ctrler_name
+(ctrl : controller_info)
+(name : String)
+: controller_info := {
+  name := name
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
+
+open Pipeline AST in
+def ast0030_set_controller_descript (ctrl : controller_info) ( descript : Description ) : controller_info
+:= {
+  name := ctrl.name,
+  controller_descript := descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
+
+open Pipeline AST in
+def ast0031_set_controller_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0030_set_controller_descript ctrl_and_entry.1 ctrl_and_entry.2 
+

@@ -233,6 +233,83 @@ private partial def statementToString (indentationLevel := 0) (inputStatement : 
 
 end -- mutual
 
+def ast0009_last_identifier (idens : List Identifier) [Inhabited Identifier] :=
+  match idens with 
+  | [one] => --dbg_trace idens
+  one
+  | h::t => ast0009_last_identifier t
+  | [] => default
+
+def ast0008_qname (qname : QualifiedName) :=
+  match qname with
+  | QualifiedName.mk lst => -- dbg_trace "TEST5"
+  ast0009_last_identifier lst
+
+def ast0018_term_var (term : Term) :=
+  match term with
+  | Term.var iden => iden 
+  | _ => default
+
+def ast0017_expr_to_ident (expr : Expr) :=
+  match expr with
+  | Expr.some_term term => ast0018_term_var term
+  | _ => default
+  
+
+-- Now this returns a "list" of identifiers
+-- for a given statement
+def ast0007_find_init (stmt : Statement) :=
+  match stmt with
+  | Statement.variable_assignment qname expr => -- dbg_trace "TEST4"
+  if (ast0008_qname qname) == "init_entry"
+    then [ast0017_expr_to_ident expr]
+    else []
+  | _ => default
+
+
+def ast0006_match_block (stmts : Statement) :=
+  match stmts with
+  | Statement.block blk => -- dbg_trace "TEST3"
+    List.join (blk.map ast0007_find_init)
+  | _ => []
+
+
+def ast0005 (ctrl : Description) :=
+  match ctrl with
+  | Description.controller identifier stmt => -- dbg_trace "TEST2"
+    ast0006_match_block stmt
+  | _ => []
+  -- find stmt with init transition
+  -- ctrl.statement
+
+-- from list of controllers, process each one
+def ast0004 (controller_list : List Description) :=
+  -- match controller_list with
+  -- -- with the controller entries, get the init transition
+  -- -- then all other transitions
+  -- | lst => lst
+  -- | [] => []
+ --dbg_trace "TEST1"
+  List.join (controller_list.map ast0005)
+
+-- ======= Funcs used to get controller descripts =========
+
+def ast0003_get_controllers (descript : Description) : List Description :=
+  match descript with
+  | Description.controller identifier stmts => [descript]
+  | _ => []
+
+-- def ast0002_get_controllers (ast : AST) : List Description :=
+--   match ast with
+--   | structure_descriptions lst => --dbg_trace "TEST"
+--   List.join (lst.map ast0003_get_controllers)
+
+-- ======= Funcs used to get controller entries descripts =========
+
+def ast0011_get_entries (descript : Description) : List Description :=
+  match descript with
+  | Description.entry iden stmt => [descript]
+  | _ => []
 
 instance : ToString Const where toString := constToString
 instance : ToString Term where toString := termToString
