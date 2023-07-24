@@ -239,7 +239,14 @@ def CDFG.Transition.fully_qualified_dest_name (transition : Transition) (ctrler_
 abbrev NodeTransition := CDFG.Node × CDFG.Transition 
 
 def NodeTransition.toString : NodeTransition → String
-| (node, transition) => s!"({node.ctrler_name}, {node.current_state}) -> ({transition.if_expr_src_dest})"
+| (node, transition) => s!"(Node: {node.ctrler_name}, {node.current_state}) -> (Transition: {transition.if_expr_src_dest})"
+
+def NodeTransition.not_complete_transition : NodeTransition → Bool
+| (_, transition) =>
+  match transition.trans_type with
+  | .Completion => false
+  | .Reset
+  | .Transition => true
 
 instance : ToString NodeTransition := ⟨NodeTransition.toString⟩
 
@@ -967,7 +974,8 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     let unique_transition_msgs :=
       List.eraseDups $ List.join $ trans_compls_for_this_inst_type.map (·.messages)
 
-    dbg_trace s!"Depth ({depth} Length unique_transition_msgs: ({unique_transition_msgs}))"
+    dbg_trace s!"Depth ({depth} Length unique_transition_msgs: ({unique_transition_msgs.length}))"
+    dbg_trace s!"Depth ({depth} unique_transition_msgs: ({unique_transition_msgs}))"
 
     let msg'd_nodes_unfiltered := List.join $
       ← unique_transition_msgs.mapM
@@ -976,9 +984,11 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
           |>.throw_exception_nesting_msg s!"Error finding transition's msg'd_nodes: Transition: ()"
           )
         )
+    dbg_trace s!"Depth ({depth}) msg'd_nodes: ({msg'd_nodes_unfiltered})"
 
     dbg_trace s!"Depth ({depth}) test6"
-    let msg'd_nodes := msg'd_nodes_unfiltered.filter (! trans'd_to_visited_taken.contains ·)
+    let msg'd_non_complete_transitions := msg'd_nodes_unfiltered.filter (·.not_complete_transition)
+    let msg'd_nodes := msg'd_non_complete_transitions.filter (! trans'd_to_visited_taken.contains ·)
     -- dbg_trace s!"Depth ({depth}) Messaged Nodes: ({msg'd_nodes})"
 
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: visited_taken node/trans: ({visited_taken})"
@@ -1030,8 +1040,10 @@ def CDFG.Graph.global_receive_node_of_inst_type (graph : Graph) (inst_type : Ins
       let commit_node := ← graph.commit_transition_state_ctrler |>.throw_exception_nesting_msg s!"Multiple Nodes: Error when searching for post commit nodes in graph : ({graph.nodes.map (·.qualified_state_name)})"
       -- dbg_trace s!">> Multiple Nodes: commit_node: ({commit_node.qualified_state_name}) Now find post-commit nodes"
       -- let post_commit_nodes := 
+      dbg_trace s!">> Finding post-commit nodes!"
       let (post_commit_nodes', /- visited nodes -/_) := ← graph.reachable_nodes_from_node_up_to_option_node 0 commit_node none inst_type [] none
       let post_commit_nodes := post_commit_nodes'.eraseDups
+      dbg_trace s!">> Got post-commit nodes!"
       -- dbg_trace s!">> Multiple Nodes: post_commit_nodes: ({post_commit_nodes.qualified_state_names})"
       let speculative_receive_states := receive_states_that_reach_completion.filter ( ! post_commit_nodes.contains · )
       -- dbg_trace s!">> Multiple Nodes: speculative receive states: ({speculative_receive_states.qualified_state_names})"
