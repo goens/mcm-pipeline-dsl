@@ -15,11 +15,16 @@ def indent : Nat → String
   | Nat.zero => ""
   | Nat.succ n => "  " ++ indent n
 
+structure QualifiedName where
+ (indentifiers : List Identifier)
+ deriving Inhabited, BEq
+
 mutual
 
 --@[deriving BEq]
-inductive AST
-| structure_descriptions : List Description → AST
+-- inductive AST
+-- | structure_descriptions : List Description → AST
+
 
 inductive TypedIdentifier
  | mk : TIden → Identifier → TypedIdentifier
@@ -69,9 +74,9 @@ inductive Const
 | num_lit : Nat → Const
 | str_lit : String → Const
 
-inductive QualifiedName
-| mk : List Identifier → QualifiedName
-deriving Inhabited, BEq
+-- inductive QualifiedName
+-- | mk : List Identifier → QualifiedName
+-- deriving Inhabited, BEq
 
 -- TODO: Test this (expr) in a sandbox
 inductive Expr
@@ -117,13 +122,16 @@ deriving BEq
 
 end  -- mutual
 
+structure AST where 
+  structure_descriptions : List Description
+
 def QualifiedName.toList : QualifiedName → List Identifier
 | .mk ids => ids
 
 mutual
 
-private partial def astToString : AST → String
-  | .structure_descriptions descs => String.intercalate "\n" (descs.map descriptionToString)
+private partial def astToString (ast : AST) : String :=
+  String.intercalate "\n" (ast.structure_descriptions.map descriptionToString)
 
 private partial def typedIdentifierToString : TypedIdentifier → String
   | .mk t id => (toString t) ++ " " ++ (toString id)
@@ -178,9 +186,8 @@ private partial def constToString : Const → String
 | .num_lit n => toString n
 | .str_lit s => s
 
-private partial def qualifiedNameToString : QualifiedName → String
-  | .mk l =>
-    ".".intercalate l
+private partial def qualifiedNameToString (qualName: QualifiedName) : String :=
+  ".".intercalate qualName.indentifiers
 
 private partial def exprToString : Expr → String
   | .add x y => (termToString x) ++ " + " ++ (termToString y)
@@ -245,7 +252,7 @@ instance : ToString TypedIdentifier where toString := typedIdentifierToString
 instance : ToString HandleBlock where toString := handleBlockToString
 instance : Inhabited Const where default := Const.num_lit 0
 instance : Inhabited Term where default := Term.const default
-instance : Inhabited AST where default := AST.structure_descriptions []
+instance : Inhabited AST where default := {structure_descriptions := []}
 instance : Inhabited Expr where default := Expr.some_term default
 instance : Inhabited Statement where default := Statement.block []
 instance : Inhabited Description where default := Description.controller default default

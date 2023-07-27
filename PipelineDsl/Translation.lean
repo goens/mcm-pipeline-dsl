@@ -46,8 +46,7 @@ def ast0001_descript (descript : Pipeline.Description) : Identifier :=
 -- ...
 open Pipeline.AST in
 def ast0000 ( input : Pipeline.AST) : Identifier :=
-  match input with
-  | structure_descriptions lst => String.join (lst.map ast0001_descript)
+  String.join (input.structure_descriptions.map ast0001_descript)
   -- note that this will just glue together all strings with nothing in between,
   -- if you want to have something between them, you can try List.intercalate
 
@@ -549,9 +548,8 @@ def ast0003_get_controllers (descript : Description) : List Description :=
   | _ => []
 
 def ast0002_get_controllers (ast : AST) : List Description :=
-  match ast with
-  | structure_descriptions lst => --dbg_trace "TEST"
-  List.join (lst.map ast0003_get_controllers)
+   --dbg_trace "TEST"
+  List.join (ast.structure_descriptions.map ast0003_get_controllers)
 
 -- ======= Funcs used to get controller entries descripts =========
 
@@ -636,10 +634,8 @@ def ast0023_entry_to_name (entry : Description) :=
 
 -- Description is really entries (return type)
 def ast0010_get_entries (ast : AST) : List Description :=
-  match ast with
-  | structure_descriptions lst =>
   --dbg_trace "gettin' entries y'all!"
-  List.join (lst.map ast0011_get_entries)
+  List.join (ast.structure_descriptions.map ast0011_get_entries)
 
 -- Get Description of Controller
 
@@ -649,10 +645,8 @@ def ast0028_get_controllers (descript : Description) : List Description :=
   | _ => []
 
 def ast0029_get_controllers (ast : AST) : List Description :=
-  match ast with
-  | structure_descriptions lst =>
   --dbg_trace "gettin' entries y'all!"
-  List.join (lst.map ast0028_get_controllers)
+  List.join (ast.structure_descriptions.map ast0028_get_controllers)
 
 def set_ctrler_name
 (ctrl : controller_info)
@@ -927,12 +921,8 @@ def ast0039_trans_ident_to_list
   )
   )
 
-def ast0040_get_trans
-(ast : AST)
-:=
-  match ast with
-  | structure_descriptions lst =>
-    lst.filter
+def ast0040_get_trans (ast : AST) :=
+    ast.structure_descriptions.filter
     (
       λ descript => match descript with
         | Description.state iden stmt => true
@@ -1146,7 +1136,7 @@ def ast0019_controller_info (ast : AST)
 := do
   dbg_trace "Start ctrler info extraction from parsed AST"
   -- Get all AST descriptions
-  let ast_descriptions : List Description := match ast with | structure_descriptions lst => lst;
+  let ast_descriptions : List Description := ast.structure_descriptions;
   -- -- Get description Identifiers / Names of controllers
   -- let description_idents : List Identifier := List.join (ast_descriptions.map ast0023_entry_to_name)
   -- -- make ctler_info objs with the name of controllers/structures
@@ -9957,7 +9947,7 @@ def ex0006 : Pipeline.Statement := Statement.await none [ex0004]
 def ex0007 : Description := Description.controller "example_structure" ex0006
 
 -- === AST with 1 description!
-def ex0008 : AST := AST.structure_descriptions [ ex0007 ]
+def ex0008 : AST := {structure_descriptions := [ ex0007 ]}
 
 def ex1000 : List Description := ast0002_get_controllers ex0008
 #eval ex1000
