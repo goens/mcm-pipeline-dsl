@@ -5,10 +5,6 @@ import PipelineDsl.AnalysisHelpers
 import Murphi
 
 import PipelineDsl.AST
-
-import PipelineDsl.TranslationHelpers
-
-import PipelineDsl.ControllerHelpers
 -- import PipelineDsl.Transformation
 
 -- start at the top of the AST
@@ -101,10 +97,10 @@ def ast0000 ( input : Pipeline.AST) : Identifier :=
 open Pipeline AST
 -- How to write this more idiomatically?
 
--- structure lst_stmts_decls where
--- stmts : List Murϕ.Statement
--- decls : List Murϕ.Decl
--- deriving Inhabited
+structure lst_stmts_decls where
+stmts : List Murϕ.Statement
+decls : List Murϕ.Decl
+deriving Inhabited
 
 instance : ToString lst_stmts_decls where
   toString (stmts_decls : lst_stmts_decls) :=
@@ -115,100 +111,100 @@ instance : ToString lst_stmts_decls where
   s!"\ndecls: ({decls_str})";
   str
 
--- def empty_stmt_decl_lsts : lst_stmts_decls := {
---   stmts := [],
---   decls := []
--- }
+def empty_stmt_decl_lsts : lst_stmts_decls := {
+  stmts := [],
+  decls := []
+}
 
--- inductive how_many_found
--- | nothing
--- | one
--- | two_or_more
+inductive how_many_found
+| nothing
+| one
+| two_or_more
 
 
--- structure dsl_trans_info where
--- ctrler_name: Identifier
--- ctrler_lst : List controller_info
--- trans : Description -- Description.state
+structure dsl_trans_info where
+ctrler_name: Identifier
+ctrler_lst : List controller_info
+trans : Description -- Description.state
 
--- inductive tail_or_entry
--- | tail : tail_or_entry
--- | entry : tail_or_entry
--- | custom_entry : tail_or_entry
--- def tail_or_entry.toString : tail_or_entry → String
--- | .tail => "tail_or_entry.tail"
--- | .entry => "tail_or_entry.entry"  
--- | .custom_entry => "tail_or_entry.custom_entry"  
+inductive tail_or_entry
+| tail : tail_or_entry
+| entry : tail_or_entry
+| custom_entry : tail_or_entry
+def tail_or_entry.toString : tail_or_entry → String
+| .tail => "tail_or_entry.tail"
+| .entry => "tail_or_entry.entry"  
+| .custom_entry => "tail_or_entry.custom_entry"  
 instance : ToString tail_or_entry where toString := tail_or_entry.toString
 
--- inductive await_or_not_state
--- | await : await_or_not_state
--- | not_await : await_or_not_state
--- def await_or_not_state.toString : await_or_not_state → String
--- | .await => "This state has a top level 'await' statement"
--- | .not_await => "This state has no top level 'await' statements"  
+inductive await_or_not_state
+| await : await_or_not_state
+| not_await : await_or_not_state
+def await_or_not_state.toString : await_or_not_state → String
+| .await => "This state has a top level 'await' statement"
+| .not_await => "This state has no top level 'await' statements"  
 instance : ToString await_or_not_state where toString := await_or_not_state.toString
 
 
--- structure term_translation_info where
--- term : Pipeline.Term
--- lst_ctrlers : List controller_info
--- ctrler_name : Identifier
--- -- when statement stuff
--- src_ctrler : Option Identifier
--- lst_src_args : Option (List Identifier)
--- func : Option Identifier
--- is_await : await_or_not_state
--- entry_keyword_dest : Option Identifier
--- trans_obj : Description
--- specific_murphi_dest_expr : Option Murϕ.Expr
--- lst_decls : List Murϕ.Decl
--- is_rhs : Bool
--- -- Do we use specific_murphi_dest_expr in sth
--- -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
--- -- or just LQ.entries[ i ].state := state_
--- use_specific_dest_in_transition : Bool
--- curr_ctrler_designator_idx : Option Murϕ.Expr
--- lhs_var_is_just_default : Bool
--- translate_entry_or_ctrler : entry_or_ctrler
+structure term_translation_info where
+term : Pipeline.Term
+lst_ctrlers : List controller_info
+ctrler_name : Identifier
+-- when statement stuff
+src_ctrler : Option Identifier
+lst_src_args : Option (List Identifier)
+func : Option Identifier
+is_await : await_or_not_state
+entry_keyword_dest : Option Identifier
+trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
+is_rhs : Bool
+-- Do we use specific_murphi_dest_expr in sth
+-- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+-- or just LQ.entries[ i ].state := state_
+use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
+lhs_var_is_just_default : Bool
+translate_entry_or_ctrler : entry_or_ctrler
 
--- structure expr_translation_info where
--- expr : Pipeline.Expr
--- lst_ctrlers : List controller_info
--- ctrler_name : Identifier
--- -- when statement stuff
--- src_ctrler : Option Identifier
--- lst_src_args : Option (List Identifier)
--- func : Option Identifier
--- is_await : await_or_not_state
--- entry_keyword_dest : Option Identifier
--- trans_obj : Description
--- specific_murphi_dest_expr : Option Murϕ.Expr
--- lst_decls : List Murϕ.Decl
--- is_rhs : Bool
--- use_specific_dest_in_transition : Bool
--- curr_ctrler_designator_idx : Option Murϕ.Expr
--- lhs_var_is_just_default : Bool
--- translate_entry_or_ctrler : entry_or_ctrler
+structure expr_translation_info where
+expr : Pipeline.Expr
+lst_ctrlers : List controller_info
+ctrler_name : Identifier
+-- when statement stuff
+src_ctrler : Option Identifier
+lst_src_args : Option (List Identifier)
+func : Option Identifier
+is_await : await_or_not_state
+entry_keyword_dest : Option Identifier
+trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
+is_rhs : Bool
+use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
+lhs_var_is_just_default : Bool
+translate_entry_or_ctrler : entry_or_ctrler
 
--- structure stmt_translation_info where
--- stmt : Pipeline.Statement
--- lst_ctrlers : List controller_info
--- ctrler_name : Identifier
--- -- when statement stuff
--- src_ctrler : Option Identifier
--- lst_src_args : Option (List Identifier)
--- func : Option Identifier
--- is_await : await_or_not_state
--- entry_keyword_dest : Option Identifier
--- trans_obj : Description
--- specific_murphi_dest_expr : Option Murϕ.Expr
--- lst_decls : List Murϕ.Decl
--- is_rhs : Bool
--- use_specific_dest_in_transition : Bool
--- curr_ctrler_designator_idx : Option Murϕ.Expr
--- lhs_var_is_just_default : Bool
--- translate_entry_or_ctrler : entry_or_ctrler
+structure stmt_translation_info where
+stmt : Pipeline.Statement
+lst_ctrlers : List controller_info
+ctrler_name : Identifier
+-- when statement stuff
+src_ctrler : Option Identifier
+lst_src_args : Option (List Identifier)
+func : Option Identifier
+is_await : await_or_not_state
+entry_keyword_dest : Option Identifier
+trans_obj : Description
+specific_murphi_dest_expr : Option Murϕ.Expr
+lst_decls : List Murϕ.Decl
+is_rhs : Bool
+use_specific_dest_in_transition : Bool
+curr_ctrler_designator_idx : Option Murϕ.Expr
+lhs_var_is_just_default : Bool
+translate_entry_or_ctrler : entry_or_ctrler
 
 instance : ToString stmt_translation_info where
   toString (info : stmt_translation_info) :=
@@ -316,167 +312,167 @@ instance : ToString term_translation_info where
   s!"\nentry_or_ctrler: ({entry_or_ctrler})";
   str
 
--- structure trans_and_expected_func where
--- expected_func : Identifier
--- expected_struct : Identifier
--- trans : Pipeline.Description
--- parent_trans_info : stmt_translation_info
--- stmt_trans_info : stmt_translation_info
--- dest_ctrler_name : Identifier
--- -- dest_ctrler_entry : Murϕ.Expr
--- -- NOTE: This is for translating and 
--- -- using a specific entry name with a
--- -- ctrler which has entries
--- specific_murphi_dest_expr : Murϕ.Expr
--- -- lst_decls : List Murϕ.Decl
--- curr_ctrler_designator_idx : Option Murϕ.Expr
+structure trans_and_expected_func where
+expected_func : Identifier
+expected_struct : Identifier
+trans : Pipeline.Description
+parent_trans_info : stmt_translation_info
+stmt_trans_info : stmt_translation_info
+dest_ctrler_name : Identifier
+-- dest_ctrler_entry : Murϕ.Expr
+-- NOTE: This is for translating and 
+-- using a specific entry name with a
+-- ctrler which has entries
+specific_murphi_dest_expr : Murϕ.Expr
+-- lst_decls : List Murϕ.Decl
+curr_ctrler_designator_idx : Option Murϕ.Expr
 
--- partial def assn_stmt_to_stmt_translation_info
--- (translation_info : stmt_translation_info)
--- (stmt : Pipeline.Statement)
--- : stmt_translation_info
--- := (
---   stmt_translation_info.mk
---   stmt
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_stmt_to_stmt_translation_info
+(translation_info : stmt_translation_info)
+(stmt : Pipeline.Statement)
+: stmt_translation_info
+:= (
+  stmt_translation_info.mk
+  stmt
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 
--- partial def assn_stmt_to_term_translation_info
--- (translation_info : stmt_translation_info)
--- (term : Pipeline.Term)
--- : term_translation_info
--- := (
---   term_translation_info.mk
---   term
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_stmt_to_term_translation_info
+(translation_info : stmt_translation_info)
+(term : Pipeline.Term)
+: term_translation_info
+:= (
+  term_translation_info.mk
+  term
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 
--- partial def assn_stmt_to_expr_translation_info
--- (translation_info : stmt_translation_info)
--- (expr : Pipeline.Expr)
--- : expr_translation_info
--- := (
---   expr_translation_info.mk
---   expr
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_stmt_to_expr_translation_info
+(translation_info : stmt_translation_info)
+(expr : Pipeline.Expr)
+: expr_translation_info
+:= (
+  expr_translation_info.mk
+  expr
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 
--- partial def assn_expr_to_term_translation_info
--- (translation_info : expr_translation_info)
--- (term : Pipeline.Term)
--- :
--- term_translation_info
--- := (
---   term_translation_info.mk
---   term
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_expr_to_term_translation_info
+(translation_info : expr_translation_info)
+(term : Pipeline.Term)
+:
+term_translation_info
+:= (
+  term_translation_info.mk
+  term
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 
--- partial def assn_term_to_term_translation_info
--- (translation_info : term_translation_info)
--- (term : Pipeline.Term)
--- :
--- term_translation_info
--- := (
---   term_translation_info.mk
---   term
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_term_to_term_translation_info
+(translation_info : term_translation_info)
+(term : Pipeline.Term)
+:
+term_translation_info
+:= (
+  term_translation_info.mk
+  term
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 
--- partial def assn_term_to_expr_translation_info
--- (translation_info : term_translation_info)
--- (expr : Pipeline.Expr)
--- :
--- expr_translation_info
--- := (
---   expr_translation_info.mk
---   expr 
---   translation_info.lst_ctrlers
---   translation_info.ctrler_name
---   translation_info.src_ctrler
---   translation_info.lst_src_args
---   translation_info.func
---   translation_info.is_await
---   translation_info.entry_keyword_dest
---   translation_info.trans_obj
---   translation_info.specific_murphi_dest_expr
---   translation_info.lst_decls
---   translation_info.is_rhs
---   translation_info.use_specific_dest_in_transition
---   translation_info.curr_ctrler_designator_idx
---   translation_info.lhs_var_is_just_default
---   translation_info.translate_entry_or_ctrler
--- )
+partial def assn_term_to_expr_translation_info
+(translation_info : term_translation_info)
+(expr : Pipeline.Expr)
+:
+expr_translation_info
+:= (
+  expr_translation_info.mk
+  expr 
+  translation_info.lst_ctrlers
+  translation_info.ctrler_name
+  translation_info.src_ctrler
+  translation_info.lst_src_args
+  translation_info.func
+  translation_info.is_await
+  translation_info.entry_keyword_dest
+  translation_info.trans_obj
+  translation_info.specific_murphi_dest_expr
+  translation_info.lst_decls
+  translation_info.is_rhs
+  translation_info.use_specific_dest_in_transition
+  translation_info.curr_ctrler_designator_idx
+  translation_info.lhs_var_is_just_default
+  translation_info.translate_entry_or_ctrler
+)
 --- =========== CUT FROM TRANSFORMATION ================
 
 --- =========== CUT FROM TRANSFORMATION ================
@@ -486,83 +482,83 @@ instance : ToString term_translation_info where
 
 -- NOTE: Shouldn't get an empty list?
 -- But going to write this for now...
--- def ast0009_last_identifier (idens : List Identifier) [Inhabited Identifier] :=
---   match idens with 
---   | [one] => --dbg_trace idens
---   one
---   | h::t => ast0009_last_identifier t
---   | [] => default
+def ast0009_last_identifier (idens : List Identifier) [Inhabited Identifier] :=
+  match idens with 
+  | [one] => --dbg_trace idens
+  one
+  | h::t => ast0009_last_identifier t
+  | [] => default
 
--- def ast0008_qname (qname : QualifiedName) :=
---   match qname with
---   | QualifiedName.mk lst => -- dbg_trace "TEST5"
---   ast0009_last_identifier lst
+def ast0008_qname (qname : QualifiedName) :=
+  match qname with
+  | QualifiedName.mk lst => -- dbg_trace "TEST5"
+  ast0009_last_identifier lst
 
--- def ast0018_term_var (term : Term) :=
---   match term with
---   | Term.var iden => iden 
---   | _ => default
+def ast0018_term_var (term : Term) :=
+  match term with
+  | Term.var iden => iden 
+  | _ => default
 
--- def ast0017_expr_to_ident (expr : Expr) :=
---   match expr with
---   | Expr.some_term term => ast0018_term_var term
---   | _ => default
+def ast0017_expr_to_ident (expr : Expr) :=
+  match expr with
+  | Expr.some_term term => ast0018_term_var term
+  | _ => default
   
 
--- -- Now this returns a "list" of identifiers
--- -- for a given statement
--- def ast0007_find_init (stmt : Statement) :=
---   match stmt with
---   | Statement.variable_assignment qname expr => -- dbg_trace "TEST4"
---   if (ast0008_qname qname) == "init_entry"
---     then [ast0017_expr_to_ident expr]
---     else []
---   | _ => default
+-- Now this returns a "list" of identifiers
+-- for a given statement
+def ast0007_find_init (stmt : Statement) :=
+  match stmt with
+  | Statement.variable_assignment qname expr => -- dbg_trace "TEST4"
+  if (ast0008_qname qname) == "init_entry"
+    then [ast0017_expr_to_ident expr]
+    else []
+  | _ => default
 
 
--- def ast0006_match_block (stmts : Statement) :=
---   match stmts with
---   | Statement.block blk => -- dbg_trace "TEST3"
---     List.join (blk.map ast0007_find_init)
---   | _ => []
+def ast0006_match_block (stmts : Statement) :=
+  match stmts with
+  | Statement.block blk => -- dbg_trace "TEST3"
+    List.join (blk.map ast0007_find_init)
+  | _ => []
 
 
--- def ast0005 (ctrl : Description) :=
---   match ctrl with
---   | Description.controller identifier stmt => -- dbg_trace "TEST2"
---     ast0006_match_block stmt
---   | _ => []
---   -- find stmt with init transition
---   -- ctrl.statement
+def ast0005 (ctrl : Description) :=
+  match ctrl with
+  | Description.controller identifier stmt => -- dbg_trace "TEST2"
+    ast0006_match_block stmt
+  | _ => []
+  -- find stmt with init transition
+  -- ctrl.statement
 
--- -- from list of controllers, process each one
--- def ast0004 (controller_list : List Description) :=
---   -- match controller_list with
---   -- -- with the controller entries, get the init transition
---   -- -- then all other transitions
---   -- | lst => lst
---   -- | [] => []
---  --dbg_trace "TEST1"
---   List.join (controller_list.map ast0005)
+-- from list of controllers, process each one
+def ast0004 (controller_list : List Description) :=
+  -- match controller_list with
+  -- -- with the controller entries, get the init transition
+  -- -- then all other transitions
+  -- | lst => lst
+  -- | [] => []
+ --dbg_trace "TEST1"
+  List.join (controller_list.map ast0005)
 
--- -- ======= Funcs used to get controller descripts =========
+-- ======= Funcs used to get controller descripts =========
 
--- def ast0003_get_controllers (descript : Description) : List Description :=
---   match descript with
---   | Description.controller identifier stmts => [descript]
---   | _ => []
+def ast0003_get_controllers (descript : Description) : List Description :=
+  match descript with
+  | Description.controller identifier stmts => [descript]
+  | _ => []
 
 def ast0002_get_controllers (ast : AST) : List Description :=
   match ast with
   | structure_descriptions lst => --dbg_trace "TEST"
   List.join (lst.map ast0003_get_controllers)
 
--- -- ======= Funcs used to get controller entries descripts =========
+-- ======= Funcs used to get controller entries descripts =========
 
--- def ast0011_get_entries (descript : Description) : List Description :=
---   match descript with
---   | Description.entry iden stmt => [descript]
---   | _ => []
+def ast0011_get_entries (descript : Description) : List Description :=
+  match descript with
+  | Description.entry iden stmt => [descript]
+  | _ => []
 
 structure murphi_consts where
   num_elems : Nat
@@ -576,119 +572,119 @@ structure murphi_records where
   -- This is since the await + when combinations
   -- are allowed to be interleaved at the moment
 
--- def ast0021_empty_controller : controller_info
--- := {
---   name := default,
---   controller_descript := default,
---   entry_descript := default,
---   init_trans := default,
---   state_vars := default,
---   transition_list := default,
---   ctrler_init_trans := default,
---   ctrler_state_vars := default
---   ctrler_trans_list := default
---   }
+def ast0021_empty_controller : controller_info
+:= {
+  name := default,
+  controller_descript := default,
+  entry_descript := default,
+  init_trans := default,
+  state_vars := default,
+  transition_list := default,
+  ctrler_init_trans := default,
+  ctrler_state_vars := default
+  ctrler_trans_list := default
+  }
 
--- def ast0022_set_controller_name ( name : Identifier ) (ctrl : controller_info) : controller_info
--- := {
---   name := name,
---   controller_descript := ctrl.controller_descript,
---   entry_descript := ctrl.entry_descript,
---   init_trans := ctrl.init_trans,
---   state_vars := ctrl.state_vars,
---   transition_list := ctrl.transition_list
---   ctrler_init_trans := ctrl.ctrler_init_trans,
---   ctrler_state_vars := ctrl.ctrler_state_vars
---   ctrler_trans_list := ctrl.ctrler_trans_list
---   }
+def ast0022_set_controller_name ( name : Identifier ) (ctrl : controller_info) : controller_info
+:= {
+  name := name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
 
--- def ast0024_set_entry_descript (ctrl : controller_info) ( descript : Description ) : controller_info
--- := {
---   name := ctrl.name,
---   controller_descript := ctrl.controller_descript,
---   entry_descript := descript,
---   init_trans := ctrl.init_trans,
---   state_vars := ctrl.state_vars,
---   transition_list := ctrl.transition_list
---   ctrler_init_trans := ctrl.ctrler_init_trans,
---   ctrler_state_vars := ctrl.ctrler_state_vars
---   ctrler_trans_list := ctrl.ctrler_trans_list
---   }
+def ast0024_set_entry_descript (ctrl : controller_info) ( descript : Description ) : controller_info
+:= {
+  name := ctrl.name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
 
--- def ast0025_set_entry_descript ( ctrl_and_entry : controller_info × Description ) :=
---   ast0024_set_entry_descript ctrl_and_entry.1 ctrl_and_entry.2 
+def ast0025_set_entry_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0024_set_entry_descript ctrl_and_entry.1 ctrl_and_entry.2 
 
--- def ast0026_set_controller_init (ctrl : controller_info) ( trans : Identifier ) : controller_info := {
---   name := ctrl.name,
---   controller_descript := ctrl.controller_descript,
---   entry_descript := ctrl.entry_descript,
---   init_trans := trans,
---   state_vars := ctrl.state_vars,
---   transition_list := ctrl.transition_list
---   ctrler_init_trans := ctrl.ctrler_init_trans,
---   ctrler_state_vars := ctrl.ctrler_state_vars
---   ctrler_trans_list := ctrl.ctrler_trans_list
---   }
+def ast0026_set_controller_init (ctrl : controller_info) ( trans : Identifier ) : controller_info := {
+  name := ctrl.name,
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
 
--- def ast0027_set_controller_init ( ctrl_and_entry : controller_info × Identifier ) :=
---   ast0026_set_controller_init ctrl_and_entry.1 ctrl_and_entry.2 
+def ast0027_set_controller_init ( ctrl_and_entry : controller_info × Identifier ) :=
+  ast0026_set_controller_init ctrl_and_entry.1 ctrl_and_entry.2 
 
--- def ast0023_entry_to_name (entry : Description) :=
---   match entry with
---   | Description.entry iden stmt => [iden]
---   | _ => []
+def ast0023_entry_to_name (entry : Description) :=
+  match entry with
+  | Description.entry iden stmt => [iden]
+  | _ => []
 
--- -- Description is really entries (return type)
--- def ast0010_get_entries (ast : AST) : List Description :=
---   match ast with
---   | structure_descriptions lst =>
---   --dbg_trace "gettin' entries y'all!"
---   List.join (lst.map ast0011_get_entries)
+-- Description is really entries (return type)
+def ast0010_get_entries (ast : AST) : List Description :=
+  match ast with
+  | structure_descriptions lst =>
+  --dbg_trace "gettin' entries y'all!"
+  List.join (lst.map ast0011_get_entries)
 
 -- Get Description of Controller
 
--- def ast0028_get_controllers (descript : Description) : List Description :=
---   match descript with
---   | Description.controller iden stmt => [descript]
---   | _ => []
+def ast0028_get_controllers (descript : Description) : List Description :=
+  match descript with
+  | Description.controller iden stmt => [descript]
+  | _ => []
 
--- def ast0029_get_controllers (ast : AST) : List Description :=
---   match ast with
---   | structure_descriptions lst =>
---   --dbg_trace "gettin' entries y'all!"
---   List.join (lst.map ast0028_get_controllers)
+def ast0029_get_controllers (ast : AST) : List Description :=
+  match ast with
+  | structure_descriptions lst =>
+  --dbg_trace "gettin' entries y'all!"
+  List.join (lst.map ast0028_get_controllers)
 
--- def set_ctrler_name
--- (ctrl : controller_info)
--- (name : String)
--- : controller_info := {
---   name := name
---   controller_descript := ctrl.controller_descript,
---   entry_descript := ctrl.entry_descript,
---   init_trans := ctrl.init_trans,
---   state_vars := ctrl.state_vars,
---   transition_list := ctrl.transition_list
---   ctrler_init_trans := ctrl.ctrler_init_trans,
---   ctrler_state_vars := ctrl.ctrler_state_vars
---   ctrler_trans_list := ctrl.ctrler_trans_list
---   }
+def set_ctrler_name
+(ctrl : controller_info)
+(name : String)
+: controller_info := {
+  name := name
+  controller_descript := ctrl.controller_descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
   
 
--- def ast0030_set_controller_descript (ctrl : controller_info) ( descript : Description ) : controller_info
--- := {
---   name := ctrl.name,
---   controller_descript := descript,
---   entry_descript := ctrl.entry_descript,
---   init_trans := ctrl.init_trans,
---   state_vars := ctrl.state_vars,
---   transition_list := ctrl.transition_list
---   ctrler_init_trans := ctrl.ctrler_init_trans,
---   ctrler_state_vars := ctrl.ctrler_state_vars
---   ctrler_trans_list := ctrl.ctrler_trans_list
---   }
+def ast0030_set_controller_descript (ctrl : controller_info) ( descript : Description ) : controller_info
+:= {
+  name := ctrl.name,
+  controller_descript := descript,
+  entry_descript := ctrl.entry_descript,
+  init_trans := ctrl.init_trans,
+  state_vars := ctrl.state_vars,
+  transition_list := ctrl.transition_list
+  ctrler_init_trans := ctrl.ctrler_init_trans,
+  ctrler_state_vars := ctrl.ctrler_state_vars
+  ctrler_trans_list := ctrl.ctrler_trans_list
+  }
 
--- def ast0031_set_controller_descript ( ctrl_and_entry : controller_info × Description ) :=
---   ast0030_set_controller_descript ctrl_and_entry.1 ctrl_and_entry.2 
+def ast0031_set_controller_descript ( ctrl_and_entry : controller_info × Description ) :=
+  ast0030_set_controller_descript ctrl_and_entry.1 ctrl_and_entry.2 
 
 ---------- Extract entry info ----------
 -- find stmt with init transition
@@ -772,176 +768,176 @@ def ctrl_set_ctrl_state_vars (ctrl : controller_info) : controller_info := {
   ctrler_trans_list := ctrl.ctrler_trans_list
   }
 
--- -- NOTE: Also get the resets!
--- -- But may want to write a different function for this...
--- partial def get_stmts_with_transitions
--- (stmt : Statement)
--- :=
---           -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
---           -- dbg_trace stmt
---           -- dbg_trace "==END GET-TRANSITIONS ==\n"
+-- NOTE: Also get the resets!
+-- But may want to write a different function for this...
+partial def get_stmts_with_transitions
+(stmt : Statement)
+:=
+          -- dbg_trace "==BEGIN GET-TRANSITIONS ==\n"
+          -- dbg_trace stmt
+          -- dbg_trace "==END GET-TRANSITIONS ==\n"
 
---   match stmt with
---   | Statement.transition ident => [ident]
---   | Statement.reset ident => [ident]
---   | Statement.complete ident => [ident]
---   | Statement.listen_handle stmt lst =>
---     List.join
---     (
---       [get_stmts_with_transitions stmt]
---       ++
---       (
---         lst.map
---         (
---           λ handl =>
---           match handl with
---           | HandleBlock.mk qname iden_list stmt1 =>
---             get_stmts_with_transitions stmt1
---         )
---       )
---     )
---   | Statement.conditional_stmt cond =>
---     match cond with
---     | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
---     | Conditional.if_statement expr1 stmt1 => get_stmts_with_transitions stmt1
---   | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
---   | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
---   | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
---   | Statement.labelled_statement /-label-/ _ stmt => get_stmts_with_transitions stmt
---   -- | Statement.listen_handle  => 
---   | _ => default
+  match stmt with
+  | Statement.transition ident => [ident]
+  | Statement.reset ident => [ident]
+  | Statement.complete ident => [ident]
+  | Statement.listen_handle stmt lst =>
+    List.join
+    (
+      [get_stmts_with_transitions stmt]
+      ++
+      (
+        lst.map
+        (
+          λ handl =>
+          match handl with
+          | HandleBlock.mk qname iden_list stmt1 =>
+            get_stmts_with_transitions stmt1
+        )
+      )
+    )
+  | Statement.conditional_stmt cond =>
+    match cond with
+    | Conditional.if_else_statement expr1 stmt1 stmt2 => List.join ([stmt1,stmt2].map get_stmts_with_transitions)
+    | Conditional.if_statement expr1 stmt1 => get_stmts_with_transitions stmt1
+  | Statement.block lst_stmt => List.join (lst_stmt.map get_stmts_with_transitions)
+  | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_stmts_with_transitions)
+  | Statement.when qname list_idens stmt => get_stmts_with_transitions stmt
+  | Statement.labelled_statement /-label-/ _ stmt => get_stmts_with_transitions stmt
+  -- | Statement.listen_handle  => 
+  | _ => default
 
--- partial def ast0038_trans_ident_to_trans_list
--- (trans_name : Identifier)
--- -- basically, list of all transitions, the "graph". this should always be
--- -- the same.
--- (list : List Description)
--- (visited : List Identifier)
--- :=
---   List.foldl
---   (
---     λ visited next =>
---     if (visited.contains next)
---       then visited
---       else -- find the child nodes
---         -- dbg_trace "==&&&&&&&&==\n"
---         -- dbg_trace next
---         -- dbg_trace "==&&&&&&&&==\n"
---         ast0038_trans_ident_to_trans_list next list visited
---   )
---   -- append the current node (trans_name)
---   (visited.cons trans_name)
---   (
---   List.join
---   (
---   -- Attempt to get child nodes from this node
---   -- If element's identifier matches trans_name
---   -- NOTE:
---   -- Must also do a kind of "deeper"
---   -- search if Description can contain
---   -- more statements, like await, or when
---   -- NOTE:
---   -- Also Conditionals (if statements) as well!
---   (
---   List.join (
---   -- This list is actually just the current node...
---   (
---   list.filter (
---     λ descript => match descript with
---     | Description.state iden stmt =>
---       iden == trans_name
---     | _ => false
---   )
---   ).map
---   -- current node (in a list) now we find the transition stmts inside the
---   -- matching transitions, these transition identifiers are
---   -- the "child nodes"
---   (
---     λ transit => match transit with
---     | Description.state iden stmt =>
+partial def ast0038_trans_ident_to_trans_list
+(trans_name : Identifier)
+-- basically, list of all transitions, the "graph". this should always be
+-- the same.
+(list : List Description)
+(visited : List Identifier)
+:=
+  List.foldl
+  (
+    λ visited next =>
+    if (visited.contains next)
+      then visited
+      else -- find the child nodes
+        -- dbg_trace "==&&&&&&&&==\n"
+        -- dbg_trace next
+        -- dbg_trace "==&&&&&&&&==\n"
+        ast0038_trans_ident_to_trans_list next list visited
+  )
+  -- append the current node (trans_name)
+  (visited.cons trans_name)
+  (
+  List.join
+  (
+  -- Attempt to get child nodes from this node
+  -- If element's identifier matches trans_name
+  -- NOTE:
+  -- Must also do a kind of "deeper"
+  -- search if Description can contain
+  -- more statements, like await, or when
+  -- NOTE:
+  -- Also Conditionals (if statements) as well!
+  (
+  List.join (
+  -- This list is actually just the current node...
+  (
+  list.filter (
+    λ descript => match descript with
+    | Description.state iden stmt =>
+      iden == trans_name
+    | _ => false
+  )
+  ).map
+  -- current node (in a list) now we find the transition stmts inside the
+  -- matching transitions, these transition identifiers are
+  -- the "child nodes"
+  (
+    λ transit => match transit with
+    | Description.state iden stmt =>
           
---         -- dbg_trace "==BEGIN &&&&&&&&==\n"
---         -- dbg_trace trans_name
---         -- dbg_trace stmt
---         -- dbg_trace "==END &&&&&&&&==\n"
---       match stmt with
---       | Statement.block lst =>
---         lst.filter
---         (
---           λ stmt1 => match stmt1 with
---           | Statement.conditional_stmt cond => true
---           | Statement.transition iden1 => true
---           | Statement.reset iden1 => true
---           | Statement.complete iden1 => true
---           | Statement.block lst_stmts1 => true
---           | Statement.await _ await_lst =>
---           -- dbg_trace "==BEGIN await ==\n"
---           -- dbg_trace trans_name
---           -- dbg_trace await_lst
---           -- dbg_trace "==END await ==\n"
---           true
---           | Statement.when qname ident_list stmt =>
---           -- dbg_trace "==BEGIN when ==\n"
---           -- dbg_trace trans_name
---           -- dbg_trace stmt
---           -- dbg_trace "==END when ==\n"
---           true
---           | Statement.listen_handle stmt1 lst => true
---           | Statement.labelled_statement label stmt' => true
---           | _ => false
---         )
---       | Statement.await _ await_lst => await_lst
---       | Statement.when qname ident_list stmt => [stmt]
---       | Statement.transition iden2 => [stmt]
---       | Statement.reset iden2 => [stmt]
---       | Statement.complete iden2 => [stmt]
---       | Statement.conditional_stmt cond => [stmt]
---       | Statement.listen_handle stmt1 lst => [stmt]
---       | Statement.labelled_statement label stmt' => [stmt]
---       | _ => []
---     | _ => []
---   )
---   )
---   ).map
---   get_stmts_with_transitions
---   )
---   )
+        -- dbg_trace "==BEGIN &&&&&&&&==\n"
+        -- dbg_trace trans_name
+        -- dbg_trace stmt
+        -- dbg_trace "==END &&&&&&&&==\n"
+      match stmt with
+      | Statement.block lst =>
+        lst.filter
+        (
+          λ stmt1 => match stmt1 with
+          | Statement.conditional_stmt cond => true
+          | Statement.transition iden1 => true
+          | Statement.reset iden1 => true
+          | Statement.complete iden1 => true
+          | Statement.block lst_stmts1 => true
+          | Statement.await _ await_lst =>
+          -- dbg_trace "==BEGIN await ==\n"
+          -- dbg_trace trans_name
+          -- dbg_trace await_lst
+          -- dbg_trace "==END await ==\n"
+          true
+          | Statement.when qname ident_list stmt =>
+          -- dbg_trace "==BEGIN when ==\n"
+          -- dbg_trace trans_name
+          -- dbg_trace stmt
+          -- dbg_trace "==END when ==\n"
+          true
+          | Statement.listen_handle stmt1 lst => true
+          | Statement.labelled_statement label stmt' => true
+          | _ => false
+        )
+      | Statement.await _ await_lst => await_lst
+      | Statement.when qname ident_list stmt => [stmt]
+      | Statement.transition iden2 => [stmt]
+      | Statement.reset iden2 => [stmt]
+      | Statement.complete iden2 => [stmt]
+      | Statement.conditional_stmt cond => [stmt]
+      | Statement.listen_handle stmt1 lst => [stmt]
+      | Statement.labelled_statement label stmt' => [stmt]
+      | _ => []
+    | _ => []
+  )
+  )
+  ).map
+  get_stmts_with_transitions
+  )
+  )
 
--- def ast0039_trans_ident_to_list
--- (trans_names : List Identifier)
--- (list : List Description)
--- :=
---   -- for each transition identifier,
---   -- find it's corresponding transition object!
---   List.join
---   (
---   trans_names.map
---   (
---     λ iden =>
---       list.filter
---       (
---         λ descript =>
---           match descript with
---           | Description.state iden1 stmt =>
---             if (iden1 == iden)
---               then true
---               else false
---           | _ => false
---       )
---   )
---   )
+def ast0039_trans_ident_to_list
+(trans_names : List Identifier)
+(list : List Description)
+:=
+  -- for each transition identifier,
+  -- find it's corresponding transition object!
+  List.join
+  (
+  trans_names.map
+  (
+    λ iden =>
+      list.filter
+      (
+        λ descript =>
+          match descript with
+          | Description.state iden1 stmt =>
+            if (iden1 == iden)
+              then true
+              else false
+          | _ => false
+      )
+  )
+  )
 
--- def ast0040_get_trans
--- (ast : AST)
--- :=
---   match ast with
---   | structure_descriptions lst =>
---     lst.filter
---     (
---       λ descript => match descript with
---         | Description.state iden stmt => true
---         | _ => false
---     )
+def ast0040_get_trans
+(ast : AST)
+:=
+  match ast with
+  | structure_descriptions lst =>
+    lst.filter
+    (
+      λ descript => match descript with
+        | Description.state iden stmt => true
+        | _ => false
+    )
 
 def ast0036_ctrl_obj_find_trans
 -- (ctrl : controller_info)
@@ -1761,10 +1757,7 @@ partial def list_ident_to_murphi_designator_ctrler_var_check
         if specific_murphi_dest_expr.isSome then
           specific_murphi_dest_expr.get!
         else
-          -- panic! "TODO: throw! should have passed this as a non-none arg"
-          dbg_trace "specific_murphi_dest_expr is None"
-          dbg_trace s!"TODO: Explain"
-          ([murϕ| i ] : Murϕ.Expr) -- the default
+          panic! "TODO: throw! should have passed this as a non-none arg"
 
         let fifo_idx_expr : Murϕ.Expr :=
         match tail_entry with
