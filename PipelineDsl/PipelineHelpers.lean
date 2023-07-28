@@ -40,7 +40,60 @@ abbrev listen := Statement.listen_handle
 abbrev value_decl := Statement.value_declaration
 
 abbrev if_statement := Conditional.if_statement
-  
+
+abbrev labelled_stmt := Pipeline.Statement.labelled_statement
+
+def Pipeline.Statement.get_await_when_blocks
+(stmt : Statement)
+: Except String (List Statement) :=
+  match stmt with
+  | .await _ list_stmt =>
+    pure list_stmt
+  | _ => throw s!"Error: Expected input stmt to be an Await, instead got: ({stmt})"
+
+def List.first!
+(list : List a)
+: Except String a :=
+  match list with
+  | [one] => pure one
+  | h :: _ => pure h
+  | [] => throw s!"Error: Expected a non-empty list!"
+
+def Pipeline.QualifiedName.idents
+(qual_name : QualifiedName)
+: List Identifier :=
+match qual_name with
+| .mk idents => idents
+
+def Pipeline.Expr.var's_identifier
+(expr : Expr)
+: Except String Identifier :=
+  match expr with
+  | .some_term term =>
+    match term with
+    | .var ident => pure ident
+    | .qualified_var qual_name =>
+      qual_name.idents.first!
+    | _ => throw s!"Error: Expected term to be a var or qualified var?"
+  | _ => throw s!"Error: Expected expr to be some_term, and that term to be a var or qualified var?"
+
+def Pipeline.Statement.append_stmts_to_block
+(stmt_blk : Statement)
+(stmt : List Statement)
+: Except String Statement :=
+  match stmt_blk with
+  | .block stmts =>
+  pure $ Statement.block (stmts ++ stmt)
+  | _ => throw s!"Error: Expected stmt to be a block? Stmt_blk: ({stmt_blk})"
+
+def Pipeline.Statement.append_to_block
+(stmt_blk stmt : Statement)
+: Except String Statement :=
+  match stmt_blk with
+  | .block stmts =>
+    pure $ Statement.block (stmts ++ [stmt])
+  | _ => throw s!"Error: Expected stmt to be a block? Stmt_blk: ({stmt_blk})"
+
 def Pipeline.Statement.to_block : Statement → Statement
 | stmt => match stmt with
   | .block _ => stmt
@@ -69,6 +122,20 @@ def Pipeline.Statement.stmt_block : Pipeline.Statement → Except String (List P
 | .block stmts => pure stmts
 | _ => throw "Statement is not a block"
 
+def Pipeline.Description.body_stmts : Pipeline.Description → Except String (List Statement)
+| .state ident stmt =>
+  match stmt with
+  | .block stmts =>
+    match stmts with
+    | h :: _ =>
+      match h with
+      | .listen_handle stmt /- handle_blks -/ _ =>
+        stmt.stmt_block
+      | _ => pure stmts
+    | [] => throw s!"Error: Description.stmt_body Stmts Block in State is empty? State: ({ident})"
+  | _ => throw s!"Error: Description.stmt_body State stmt isn't a block? Stmt: ({stmt})"
+| _ => throw "Error: Description is not a state"
+
 def List.to_qual_name (idents : List Identifier) : Pipeline.QualifiedName :=
   Pipeline.QualifiedName.mk idents
 
@@ -86,9 +153,13 @@ def qual_var_term (var_name : List Identifier) : Pipeline.Term :=
 def var_asn_var (var1 : List String) (var2 : String) : Statement :=
   variable_assignment var1.to_qual_name <| var_expr var2
 
-def List.to_dsl_var_expr : List Identifier → Pipeline.Expr
+open Pipeline in
+def List.to_dsl_var_expr : List Identifier → Except String Expr
 | idents =>
-  Pipeline.Expr.some_term (Pipeline.Term.qualified_var idents.to_qual_name)
+  match idents with
+  | [one] => pure $ var_expr one
+  | _::_ => pure $ qual_var_expr idents
+  | [] => throw s!"Error: passed empty list of Idenifiers to convert to DSL Expr."
 
 -- function that checks if an expr is in a list of exprs
 -- and finds an expr with the matching index in another list
@@ -122,6 +193,79 @@ def Pipeline.Statement.get_when_stmt_src_args
     let msg : String := "Error: function expected a when stmt\n"++
       s!"Instead got this stmt: ({when_stmt})"
     throw msg
+
+def Pipeline.Statement.is_ident_in_when_args
+(when_stmt : Statement)
+(arg_ident : Identifier)
+: Except String Bool
+:= do
+  match when_stmt with
+  | .when _ args _ => return args.contains arg_ident
+  | _ =>
+    let msg : String := "Error: function expected a when stmt\n"++
+    s!"Instead got this stmt: ({when_stmt})"
+    throw msg
+
+def Pipeline.Statement.is_send_load_api
+(statement : Statement)
+: Bool :=
+  match statement with
+  | .stray_expr expr =>
+    match expr with
+    | .some_term term =>
+      match term with
+      | .function_call qual_name /- args -/ _ =>
+        qual_name.idents == ["memory_interface", "send_load_request"]
+      | _ => false
+    | _ => false
+  | _ => false
+
+open Pipeline in
+def List.remove_post_send_load_stmts
+(stmts : List Statement)
+: /- Except String -/ (List Statement) :=
+  match stmts with
+  | h :: t =>
+    if h.is_send_load_api then
+      [h]
+    else
+      [h] ++ (t.remove_post_send_load_stmts)
+  | [] => []
+
+def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
+| .mk type' identifier => (type', identifier)
+
+def Pipeline.Statement.is_stmt_var_assign_to_var
+(stmt : Statement)
+(var_name : Identifier)
+(only_consider_var_assign : Bool)
+: Bool :=
+  match stmt with
+  | .variable_assignment qual_name /- expr -/ _ =>
+    let qual_idents := qual_name.idents
+    qual_idents == [var_name]
+  | .value_declaration typed_ident /- expr -/ _ =>
+    if only_consider_var_assign then
+      false
+    else
+      let (_, value_var_name) := typed_ident.type_ident
+      value_var_name == var_name
+  | _ => false
+
+open Pipeline in
+def List.first_var_assign_to_var
+(stmts : List Statement)
+(var_name : Identifier)
+(only_consider_var_assign : Bool)
+: Option Statement :=
+  match stmts with
+  | h :: t =>
+    let h_is_the_var_assign : Bool := h.is_stmt_var_assign_to_var var_name only_consider_var_assign
+    if h_is_the_var_assign then
+      some h
+    else
+      t.first_var_assign_to_var var_name only_consider_var_assign
+  | [] => none
 
 def Identifier.to_term (ident : Identifier) : Term :=
   var_term ident
@@ -364,9 +508,6 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
     pure $ Statement.labelled_statement label stmt''
 end
 
-def Pipeline.TypedIdentifier.type_ident : TypedIdentifier → (TIden × Identifier)
-| .mk type' identifier => (type', identifier)
-
 def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
 | typed_ident =>
   let (type', ident) := typed_ident.type_ident
@@ -430,4 +571,194 @@ def Pipeline.Statement.result_write_from_effects? : Pipeline.Statement → Optio
     | .commit
     | .inst_source => none
   | _ => none
-    
+
+def Pipeline.TypedIdentifier.var_name
+(t_ident : TypedIdentifier)
+: Identifier :=
+  let (/-type-/_, ident) := t_ident.type_ident
+  ident
+
+def Pipeline.Description.add_stmt_to_ctrler
+(ctrler_description : Description)
+(stmt : Statement)
+: Except String Description := do
+  match ctrler_description with
+  | .controller ident stmt_blk => do
+    let appended ← stmt_blk.append_to_block stmt
+    pure $ Description.controller ident appended
+  | _ =>
+    throw s!"Error: Description wasn't controller type?"
+
+def Pipeline.Description.add_stmt_to_entry
+(ctrler_description : Description)
+(stmt : Statement)
+: Except String Description := do
+  match ctrler_description with
+  | .entry ident stmt_blk => do
+    let appended ← stmt_blk.append_to_block stmt
+    pure $ Description.entry ident appended
+  | _ =>
+    throw s!"Error: Description wasn't entry type?"
+
+partial def Pipeline.Statement.is_contains_transition
+(stmt : Statement)
+: Bool :=
+  match stmt with
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+    => true
+  | .block stmts =>
+    stmts.any (·.is_contains_transition)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.is_contains_transition || stmt2.is_contains_transition
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.is_contains_transition
+  | .listen_handle stmt1 handle_blks =>
+    let handle_stmts := handle_blks.any (
+      match · with
+      | .mk _ _ stmt => stmt.is_contains_transition
+      )
+    stmt1.is_contains_transition || handle_stmts
+  | .await _ stmts =>
+    stmts.any (·.is_contains_transition)
+  | .when _ _ stmt =>
+    stmt.is_contains_transition
+  | .labelled_statement _ stmt =>
+    stmt.is_contains_transition
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => false
+
+partial def Pipeline.Statement.get_all_child_stmts
+(stmt : Statement)
+: List Statement :=
+  match stmt with
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .labelled_statement _ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => [stmt]
+  | .block stmts =>
+    List.join $ stmts.map (·.get_all_child_stmts)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.get_all_child_stmts ++ stmt2.get_all_child_stmts
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.get_all_child_stmts
+  | .listen_handle stmt1 handle_blks =>
+    let handle_stmts :=
+      List.join $ handle_blks.map (
+        match · with
+        | .mk _ _ stmt => stmt.get_all_child_stmts
+      )
+    stmt1.get_all_child_stmts ++ handle_stmts
+  | .await _ stmts =>
+    List.join $ stmts.map (·.get_all_child_stmts)
+  | .when _ _ stmt =>
+    stmt.get_all_child_stmts
+
+partial def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : Bool :=
+  match stmt with
+  | .labelled_statement label /-stmt-/ _ =>
+    match label with
+    | .commit => true
+    | _ => false
+  | .block stmts =>
+    stmts.any (·.is_commit_labelled)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.is_commit_labelled || stmt2.is_commit_labelled
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.is_commit_labelled
+  | .listen_handle stmt1 handle_blks =>
+    -- should error. since
+    let handle_stmts :=
+    handle_blks.any (
+      match · with
+      | .mk _ _ stmt => stmt.is_commit_labelled
+    )
+    stmt1.is_commit_labelled || handle_stmts
+  | .await _ stmts =>
+    stmts.any (·.is_commit_labelled)
+  | .when _ _ stmt =>
+    stmt.is_commit_labelled
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .stray_expr _
+  | .return_stmt _
+  | .stall _
+    => false
+
+def Pipeline.Expr.get_message_term?
+(expr : Expr)
+: Option Term :=
+  match expr with
+  | .some_term term =>
+    match term with
+    | .function_call qual_name /- exprs -/ _ =>
+      if qual_name.idents.length == 2 then
+        some term
+      else
+        none
+    | _ => none
+  | _ => none
+
+partial def Pipeline.Statement.get_messages (stmt : Statement) : List Term :=
+  match stmt with
+  | .stray_expr expr =>
+    match expr.get_message_term? with
+    | some term => [term]
+    | none => []
+  | .labelled_statement /- label -/ _ stmt' =>
+    stmt'.get_messages
+  | .block stmts =>
+    List.join $ stmts.map (·.get_messages)
+  | .conditional_stmt cond =>
+    match cond with
+    | .if_else_statement /- cond_expr -/ _ stmt1 stmt2 =>
+      stmt1.get_messages ++ stmt2.get_messages
+    | .if_statement /- cond_expr -/ _ stmt1 =>
+      stmt1.get_messages
+  | .listen_handle stmt1 handle_blks =>
+    -- should error. since
+    let handle_stmts :=
+      List.join $
+        handle_blks.map (
+          match · with
+          | .mk _ _ stmt' => stmt'.get_messages
+        )
+    stmt1.get_messages ++ handle_stmts
+  | .await _ stmts =>
+    List.join $ stmts.map (·.get_messages)
+  | .when _ _ stmt' =>
+    stmt'.get_messages
+  | .complete /- state_name -/ _
+  | .transition /- state_name -/ _
+  | .reset /- state_name -/ _
+  | .variable_declaration _
+  | .value_declaration _ _
+  | .variable_assignment _ _
+  | .return_stmt _
+  | .stall _
+    => []
+
+

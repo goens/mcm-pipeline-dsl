@@ -98,6 +98,13 @@ abbrev Ctrler := controller_info
 
 -- == Translation Helpers ==
 
+def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info
+| ctrlers, ctrler_name => do
+  match ctrlers.filter (·.name == ctrler_name) with
+  | [ctrler] => pure ctrler
+  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
+
 def Ctrler.entry_or_ctrler_translation
 (dest_ctrler : Ctrler)
 : Except String entry_or_ctrler := do
@@ -125,6 +132,29 @@ def Ctrler.states (ctrler : Ctrler) : Except String (List Description)
     throw s!"ERROR, ctrler doesn't have states? ({ctrler})"
 
 open Pipeline in
+def List.state_matching_name
+(states : List Description)
+(state_name : StateName)
+: Except String Description := do
+  let states_list := ←
+    states.filterM (do
+      let a_state_name ← ·.state_name
+      pure (a_state_name == state_name)
+    )
+  match states_list with
+  | [state] => pure state
+  | _::_ => throw s!"Error: multiple states matching a name ({state_name})? States: ({states_list})"
+  | [] => throw s!"Error: no states matching name ({state_name}) found?"
+
+open Pipeline in
+def Ctrler.state_of_name
+(ctrler : Ctrler)
+(state_name : StateName)
+: Except String Description := do
+  let states ← ctrler.states
+  states.state_matching_name state_name
+
+open Pipeline in
 def CreateTableQueue -- CAM like table
 (table_name : String)
 (table_size : Nat)
@@ -140,6 +170,7 @@ def CreateTableQueue -- CAM like table
 
 (commit_ctrler : CtrlerName)
 (squash_sender : CtrlerName)
+(commit_squasher : CtrlerName)
 : Except String Ctrler := do
   -- ====== controller description ======
   -- Stmts needed:
@@ -189,7 +220,7 @@ def CreateTableQueue -- CAM like table
   let when_remove_stmt := Statement.when
     [remove_from, remove_key].to_qual_name
     remove_args
-    (remove_actions ++ [complete await_insert_remove_state_name]).to_block
+    (remove_actions ++ [reset await_insert_remove_state_name]).to_block
   let await_when_remove_stmt := await none [when_insert_stmt, when_remove_stmt]
 
   -- a handle block to handle squashing
@@ -206,10 +237,14 @@ def CreateTableQueue -- CAM like table
   let reset_await := reset await_insert_remove_state_name
   -- if stmt
   let if_squash := conditional_stmt $ if_statement squash_cond [remove_entry, squash_commit_entry, reset_await].to_block
+  let user_commit_squash := conditional_stmt $ if_statement squash_cond [remove_entry, /- squash_commit_entry, -/ reset_await].to_block
 
   -- handle squash
-  let handle_squash := handle [squash_sender, squash].to_qual_name [violating_seq_num] [if_squash].to_block
-  let listen_handle_squash := listen await_when_remove_stmt.to_block [handle_squash]
+  let handle_squashes : List HandleBlock := [
+    (handle [squash_sender, squash].to_qual_name [violating_seq_num] [if_squash].to_block),
+    (handle [commit_squasher, squash].to_qual_name [violating_seq_num] [user_commit_squash].to_block)
+  ]
+  let listen_handle_squash := listen await_when_remove_stmt.to_block handle_squashes
 
   -- Create the state
   let await_insert_remove_state := state await_insert_remove_state_name listen_handle_squash.to_block
@@ -258,6 +293,7 @@ def CreateLoadAddressTableCtrler
 (perform_load_node_ctrler_name : CtrlerName)
 (commit_node_ctrler_name : CtrlerName)
 (squash_sender : CtrlerName)
+(commit_squasher : CtrlerName)
 : Except String (Ctrler × CtrlerName × VarName × VarName) := do
   let lat_address_var := "_".intercalate ["lat", address]
   let lat_seq_num_var := "_".intercalate ["lat", seq_num]
@@ -284,7 +320,7 @@ def CreateLoadAddressTableCtrler
     insert_args insert_actions insert_from
     remove_args remove_actions remove_from
     commit_node_ctrler_name
-    squash_sender
+    squash_sender commit_squasher
   
   pure (lat, lat_name, lat_seq_num_var, lat_address_var)
 
@@ -293,12 +329,14 @@ def Pipeline.Description.inject_state_stmts
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(var_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Description := do
   match (← state.state_name) == state_name with
-  | true => do UpdateState state inst_type stmts_to_inject InjectStmtsAt
-  | false => do pure state
+  | true => do UpdateState state inst_type stmts_to_inject var_to_insert_after? arg_in_when_stmt? InjectStmtsAt
+  | false => pure state
 
 def Pipeline.Statement.var_asgn_ordering : Pipeline.Statement → Except String (CtrlerType)
 | stmt => do
@@ -406,13 +444,15 @@ def Ctrler.inject_ctrler_state
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Ctrler := do
   match ctrler.name == ctrler_name with
   | true => do
     let states := ← ctrler.states
-    let updated_states := ← states.mapM (·.inject_state_stmts state_name inst_type stmts_to_inject UpdateState InjectStmtsAt)
+    let updated_states := ← states.mapM (·.inject_state_stmts state_name inst_type stmts_to_inject stmt_to_insert_after? arg_in_when_stmt? UpdateState InjectStmtsAt)
     ctrler.inject_states updated_states
   | false => do
     pure ctrler
@@ -425,11 +465,13 @@ def Ctrlers.inject_ctrler_state
 (state_name : StateName)
 (inst_type : InstType)
 (stmts_to_inject : List Statement)
-(UpdateState : Description → InstType → List Statement → InjectStmtsFunction → Except String Description)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(UpdateState : Description → InstType → List Statement → Option Statement → Option Identifier → InjectStmtsFunction → Except String Description)
 (InjectStmtsAt : InjectStmtsFunction)
 : Except String Ctrlers := do
   ctrlers.mapM (let ctrler : Ctrler := ·;
-    ctrler.inject_ctrler_state ctrler_name state_name inst_type stmts_to_inject UpdateState InjectStmtsAt)
+    ctrler.inject_ctrler_state ctrler_name state_name inst_type stmts_to_inject stmt_to_insert_after? arg_in_when_stmt? UpdateState InjectStmtsAt)
 
 open Pipeline in
 def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
@@ -439,6 +481,9 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
 (perform_load_state_name : StateName)
 (load_req_address : Expr)
 (load_req_seq_num : Expr)
+(stmt_to_insert_after? : Option Statement)
+(arg_in_when_stmt? : Option Identifier)
+(InjectStmtsFn : InjectStmtsFunction)
 : Except String Ctrlers := do
 
   -- Insert a stmt to insert_key(seq_num, address) into the LAT  
@@ -447,10 +492,25 @@ def Ctrlers.AddInsertToLATWhenPerform -- Load Address Table
   let insert_key_stmt : Statement := stray_expr $ some_term $
     -- function_call [lat_name, insert_key].to_qual_name [qual_var_expr [instruction, seq_num], var_expr load_req_address]
     function_call [lat_name, insert_key].to_qual_name [load_req_seq_num, load_req_address]
+  let inst_is_load :=
+    -- equal (qual_var_term [instruction, op]) (var_term load.toMurphiString)
+    IsInstructionAnyLoad
+  let if_load_then_insert_key :=
+    Statement.conditional_stmt $
+      Conditional.if_statement inst_is_load
+        insert_key_stmt
 
   let ctrlers_insert_key_into_lat :=
     ctrlers.inject_ctrler_state
-      perform_load_ctrler_name perform_load_state_name load [insert_key_stmt] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_perform
+      perform_load_ctrler_name perform_load_state_name
+      load
+      [if_load_then_insert_key]
+      stmt_to_insert_after?
+      arg_in_when_stmt?
+      Pipeline.Description.inject_stmts_at_stmt
+      -- List.inject_stmts_at_perform
+      -- List.inject_stmts_after_stmt_at_ctrler_state
+      InjectStmtsFn
   
   ctrlers_insert_key_into_lat
 
@@ -460,15 +520,156 @@ def Ctrlers.AddRemoveFromLATWhenCommit
 (lat_name : CtrlerName)
 (commit_ctrler_name : CtrlerName)
 (commit_state_name : StateName)
-: Except String Ctrlers :=
+(function_inject_stmts_at_point : List Statement → InstType → List Statement → Option Statement → Option Identifier → Except String (Bool × List Statement))
+(key_to_remove : List Identifier)
+: Except String Ctrlers := do
   -- Insert a stmt to remove_key(seq_num) from the LAT
   let remove_key_stmt : Statement := stray_expr $ some_term $
-    function_call [lat_name, remove_key].to_qual_name [var_expr seq_num]
-  let inst_is_type := VarCompare [instruction, op] equal [load.toString]
+    function_call [lat_name, remove_key].to_qual_name [← key_to_remove.to_dsl_var_expr]
+  let inst_is_type :=
+    -- VarCompare [instruction, op] equal [load.toMurphiString]
+    IsInstructionAnyLoad
   let if_inst_is_type := conditional_stmt <| if_statement inst_is_type remove_key_stmt
   
   let ctrlers_remove_key_from_lat :=
     ctrlers.inject_ctrler_state
-      commit_ctrler_name commit_state_name load [if_inst_is_type] Pipeline.Description.inject_stmts_at_stmt List.inject_stmts_at_commit
+      commit_ctrler_name commit_state_name load [if_inst_is_type] none none Pipeline.Description.inject_stmts_at_stmt function_inject_stmts_at_point
   
   ctrlers_remove_key_from_lat
+
+--/--
+--  Get A Ctrler's State Var that is of the "inst" type (i.e. the instruction).
+--  NOTE: Create an option version if it's needed.
+---/
+
+open Pipeline in
+def List.is_var_in_state_vars
+(typed_idents : List TypedIdentifier)
+(var_name : VarName)
+: Bool :=
+  typed_idents.any (let (/- type_name -/ _, ident) := ·.type_ident; ident == var_name)
+
+def Ctrler.is_a_state_var_of_ctrler
+(ctrler : Ctrler)
+(var_name : Identifier)
+: Except String Bool := do
+  let state_vars ← ctrler.get_state_vars
+  pure $ state_vars.is_var_in_state_vars var_name
+
+open Pipeline in
+def Ctrler.instruction_var
+(ctrler : Ctrler)
+: Except String Identifier := do
+  let state_vars ← ctrler.get_state_vars
+
+  match state_vars.filter (·.is_inst_type) with
+  | [] => throw s!"Error: Expected to find an inst type state var in Ctrler?: State Vars: ({state_vars})"
+  | [inst] => pure inst.var_name
+  | _::_ => throw s!"Error: Expected to find one inst type state var in Ctrler?: State Vars: ({state_vars})"
+
+-- Newer, better, version of get_ctrler_from_ctrlers_list
+def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
+: Except String Ctrler := do
+  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
+  match ctrler_match_list with
+  | [ctrler] => pure ctrler
+  | [] =>
+    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+  | _::_ =>
+    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
+    throw msg
+
+open Pipeline in
+def Ctrler.add_stmt_to_ctrler_descript
+(ctrler : Ctrler)
+(stmt : Statement)
+: Except String Ctrler := do
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler => pure {
+      name := ctrler.name
+      controller_descript := ← ctrler.controller_descript.add_stmt_to_ctrler stmt
+      entry_descript := none
+      init_trans := none
+      state_vars := none
+      transition_list := none
+      ctrler_init_trans := ctrler.ctrler_init_trans
+      ctrler_state_vars := ctrler.ctrler_state_vars
+      ctrler_trans_list := ctrler.ctrler_trans_list
+    }
+  | .Unordered
+  | .FIFO => do
+    let updated_entry ←
+      match ctrler.entry_descript with
+      | .some descript => do
+        descript.add_stmt_to_entry stmt
+      | .none => throw s!"Error: Queue ({ctrler_type}) has no entry_descript! Ctrler Name: ({ctrler.name})"
+
+    pure {
+      name := ctrler.name
+      controller_descript := ctrler.controller_descript
+      entry_descript := updated_entry
+      init_trans := ctrler.init_trans
+      state_vars := ctrler.state_vars
+      transition_list := ctrler.transition_list
+      ctrler_init_trans := none
+      ctrler_state_vars := none
+      ctrler_trans_list := none
+    }
+
+open Pipeline in
+def Ctrler.assign_state_vars
+(ctrler : Ctrler)
+(state_vars : List TypedIdentifier)
+: Except String Ctrler := do
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler => pure {
+      name := ctrler.name
+      controller_descript := ctrler.controller_descript
+      entry_descript := none
+      init_trans := none
+      state_vars := none
+      transition_list := none
+      ctrler_init_trans := ctrler.ctrler_init_trans
+      ctrler_state_vars := state_vars
+      ctrler_trans_list := ctrler.ctrler_trans_list
+    }
+  | .Unordered
+  | .FIFO => pure {
+    name := ctrler.name
+    controller_descript := ctrler.controller_descript
+    entry_descript := ctrler.entry_descript
+    init_trans := ctrler.init_trans
+    state_vars := state_vars
+    transition_list := ctrler.transition_list
+    ctrler_init_trans := none
+    ctrler_state_vars := none
+    ctrler_trans_list := none
+  }
+
+
+open Pipeline in
+def Ctrler.add_var_decl_to_ctrler
+(ctrler : Ctrler)
+(t_ident : TypedIdentifier)
+: Except String Ctrler := do
+  let state_vars ← ctrler.get_state_vars
+
+  let ctrler' ← ctrler.assign_state_vars (state_vars ++ [t_ident])
+  ctrler'.add_stmt_to_ctrler_descript (variable_declaration t_ident)
+
+open Pipeline in
+def Ctrlers.add_var_decl_to_ctrler
+(ctrlers : Ctrlers)
+(ctrler_name : CtrlerName)
+(var_decl : TypedIdentifier)
+: Except String Ctrlers :=
+  ctrlers.mapM (
+    let ctrler : Ctrler := ·;
+    if ctrler.name == ctrler_name then
+      ctrler.add_var_decl_to_ctrler var_decl
+    else
+      pure ctrler)
+

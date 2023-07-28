@@ -1439,7 +1439,7 @@ def get_dest_transition_names
   let lst_of_trans_dest_idents :=
     get_stmts_with_transitions trans_stmt
   let joined_names :=
-    String.intercalate " || " lst_of_trans_dest_idents
+    String.intercalate " || " lst_of_trans_dest_idents.eraseDups
   joined_names
 
 partial def check_if_transition_stmt_blk_has_an_await
@@ -3984,33 +3984,37 @@ lst_stmts_decls
           (dest_ctrler_name == "memory_interface"))
           then
 
-            let dsl_term_phys_addr : Pipeline.Term := Pipeline.Term.var ("phys_addr")
-            let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
+            if 2 == lst_expr.length then
+              let dsl_term_phys_addr : Pipeline.Expr := lst_expr[0]!
+              let dsl_term_inst_seq_num : Pipeline.Expr := lst_expr[1]!
 
-            let phys_addr_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
-            let inst_seq_num_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              let phys_addr_trans_expr : expr_translation_info :=
+                assn_stmt_to_expr_translation_info stmt_trans_info dsl_term_phys_addr
+              let inst_seq_num_trans_expr : expr_translation_info :=
+                assn_stmt_to_expr_translation_info stmt_trans_info dsl_term_inst_seq_num
 
-            let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
-            let murphi_inst_seq_num_trans_expr := ast_term_to_murphi_expr inst_seq_num_trans_term
+              let murphi_phys_addr_expr := ast_expr_to_murphi_expr phys_addr_trans_expr
+              let murphi_inst_seq_num_trans_expr := ast_expr_to_murphi_expr inst_seq_num_trans_expr
 
-            let assn_out_msg : List Murϕ.Statement := [murϕ|
-              next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
-              next_state .core_[ j ] .mem_interface_ .out_msg .r_w := read;
-              next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
-              next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
-              next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
-              next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
-              next_state .core_[ j ] .mem_interface_ .out_busy := true;
-            ]
-            dbg_trace s!"memory_interface->send_load_request() API: ({assn_out_msg})"
+              let assn_out_msg : List Murϕ.Statement := [murϕ|
+                next_state .core_[ j ] .mem_interface_ .out_msg .addr := £murphi_phys_addr_expr;
+                next_state .core_[ j ] .mem_interface_ .out_msg .r_w := read;
+                next_state .core_[ j ] .mem_interface_ .out_msg .valid := true;
+                next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
+                next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
+                next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+                next_state .core_[ j ] .mem_interface_ .out_busy := true;
+              ]
+              dbg_trace s!"memory_interface->send_load_request() API: ({assn_out_msg})"
 
-            let stmts_decls : lst_stmts_decls := {
-              stmts := assn_out_msg,
-              decls := []
-            }
-            stmts_decls
+              let stmts_decls : lst_stmts_decls := {
+                stmts := assn_out_msg,
+                decls := []
+              }
+              stmts_decls
+            else
+              dbg_trace s!"Error, send_load_request API expr args list is not = 2? Args: ({lst_expr})"
+              panic! s!"Error, send_load_request API expr args list is not = 2? Args: ({lst_expr})"
             
           else
           if (and (api_func_name == "send_store_request")
@@ -4032,12 +4036,78 @@ lst_stmts_decls
             let dsl_term_write_value : Pipeline.Term := Pipeline.Term.var ("write_value")
             let dsl_term_inst_seq_num : Pipeline.Term := Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"])
 
-            let phys_addr_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            -- let phys_addr_trans_term' : term_translation_info :=
+            --   assn_stmt_to_term_translation_info stmt_trans_info dsl_term_phys_addr
+            let phys_addr_trans_term : term_translation_info := {
+              term := dsl_term_phys_addr,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
             let write_value_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_write_value
+              -- assn_stmt_to_term_translation_info stmt_trans_info dsl_term_write_value
+              {
+              term := dsl_term_write_value,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
             let inst_seq_num_trans_term : term_translation_info :=
-              assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              -- assn_stmt_to_term_translation_info stmt_trans_info dsl_term_inst_seq_num
+              {
+              term := dsl_term_inst_seq_num,
+              lst_ctrlers := stmt_trans_info.lst_ctrlers
+              ctrler_name := stmt_trans_info.ctrler_name
+              -- when statement stuff
+              src_ctrler := stmt_trans_info.src_ctrler
+              lst_src_args := stmt_trans_info.lst_src_args
+              func := stmt_trans_info.func
+              is_await := stmt_trans_info.is_await
+              entry_keyword_dest := stmt_trans_info.entry_keyword_dest
+              trans_obj := stmt_trans_info.trans_obj
+              specific_murphi_dest_expr := stmt_trans_info.specific_murphi_dest_expr
+              lst_decls := stmt_trans_info.lst_decls
+              is_rhs := true
+              -- Do we use specific_murphi_dest_expr in sth
+              -- like LQ.entries[ <specific_murphi_dest_expr> ].state := state_
+              -- or just LQ.entries[ i ].state := state_
+              use_specific_dest_in_transition := stmt_trans_info.use_specific_dest_in_transition
+              curr_ctrler_designator_idx := stmt_trans_info.curr_ctrler_designator_idx
+              lhs_var_is_just_default := stmt_trans_info.lhs_var_is_just_default
+              translate_entry_or_ctrler := stmt_trans_info.translate_entry_or_ctrler
+            }
 
             let murphi_phys_addr_expr := ast_term_to_murphi_expr phys_addr_trans_term
             let murphi_write_value_expr := ast_term_to_murphi_expr write_value_trans_term
@@ -4051,6 +4121,11 @@ lst_stmts_decls
               next_state .core_[ j ] .mem_interface_ .out_msg .dest := mem;
               next_state .core_[ j ] .mem_interface_ .out_msg .dest_id := j;
               next_state .core_[ j ] .mem_interface_ .out_msg .seq_num := £murphi_inst_seq_num_trans_expr;
+              next_state .core_[j] .mem_interface_ .out_msg .store_state := await_handling;
+              for core_idx : cores_t do
+                next_state .core_[j] .mem_interface_ .out_msg .store_inval_sent[core_idx] := false;
+                next_state .core_[j] .mem_interface_ .out_msg .store_inval_ackd[core_idx] := false;
+              endfor;
               next_state .core_[ j ] .mem_interface_ .out_busy := true;
             ]
             dbg_trace s!"memory_interface->send_store_request() API: ({assn_out_msg})"
@@ -5200,14 +5275,14 @@ lst_stmts_decls
                 trans_obj := stmt_trans_info.trans_obj,
                 -- Swap curr ctrler designator & specific murphi desig
                 -- since we just call in the opposite order
-                specific_murphi_dest_expr := stmt_trans_info.curr_ctrler_designator_idx,
+                specific_murphi_dest_expr := remove_dest_key_murϕ_expr,
                 lst_decls := stmt_trans_info.lst_decls,
                 is_rhs := stmt_trans_info.is_rhs,
                 -- By setting these fields, I assume we'll specifically mean to use this with 
                 -- controllers with multiple elements, and thus we need to use 'tail_search'
                 -- which indexes the dest with 'curr_idx'
                 use_specific_dest_in_transition := true -- stmt_trans_info.use_specific_dest_in_transition
-                curr_ctrler_designator_idx := stmt_trans_info.specific_murphi_dest_expr -- murphi_dest_idx_expr
+                curr_ctrler_designator_idx := remove_dest_key_murϕ_expr, -- stmt_trans_info.specific_murphi_dest_expr
                 lhs_var_is_just_default := false
                 translate_entry_or_ctrler := entry_or_ctrler_translation
               }
@@ -5725,6 +5800,7 @@ lst_stmts_decls
             }
             stmts_decls
           else if (api_func_name == "squash") then
+            dbg_trace s!"DBG: translating squash api:({term})"
             -- Just get the handle code
             -- Murϕ.Expr.designator (Murϕ.Designator.mk "squash_ld_id" [])
             let expected_func := "squash"
@@ -7434,7 +7510,11 @@ lst_stmts_decls
     -- Well.. i kinda have the other func for this..
     -- but i still need the decl list for manually returning the 
     -- template func decls, so i can avoid doing type inference...
-    let lsts : lst_stmts_decls := { stmts := [], decls := []}
+
+    let (type_ident, var_ident) := typed_ident.type_ident
+    let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
+
+    let lsts : lst_stmts_decls := { stmts := [], decls := [Murϕ.Decl.var [var_ident] murphi_type_expr]}
     lsts
   | Statement.value_declaration typed_ident expr =>
     -- dbg_trace "$$$$$$$ CHECK FOR NULL $$$$$$$"
@@ -7456,10 +7536,9 @@ lst_stmts_decls
     -- also produce a Decl for this
 -- inductive Designator
 -- | mk : ID → List (ID ⊕ Expr) → Designator
-    let assned_var's_name :=
+    let ( type_ident, assned_var's_name ) :=
     match typed_ident with
-    | TypedIdentifier.mk tiden ident =>
-      ident
+    | TypedIdentifier.mk tident ident => (tident, ident)
 
     let designator :=
     Designator.mk assned_var's_name []
@@ -7509,15 +7588,16 @@ lst_stmts_decls
         | TypedIdentifier.mk tiden ident => tiden
       )
 
-      let murphi_type_expr := dsl_type_to_murphi_type_string dsl_type
-      let murphi_null := murphi_type_to_null murphi_type_expr
+      let murphi_type_expr_string := dsl_type_to_murphi_type_string dsl_type
+      let murphi_null := murphi_type_to_null murphi_type_expr_string
 
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_null
 
+      let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
       let lsts : lst_stmts_decls := {
         stmts := [murphi_assignment_stmt],
-        decls := []
+        decls := [Murϕ.Decl.var [assned_var's_name] murphi_type_expr]
       }
       dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts
@@ -7526,9 +7606,11 @@ lst_stmts_decls
       let murphi_assignment_stmt :=
       Murϕ.Statement.assignment designator murphi_expr
 
+      let murphi_type_expr : Murϕ.TypeExpr := dsl_type_to_murphi_type type_ident
+
       let lsts : lst_stmts_decls := {
         stmts := [murphi_assignment_stmt],
-        decls := []
+        decls := [Murϕ.Decl.var [assned_var's_name] murphi_type_expr]
       }
       dbg_trace s!"val decl translated: ({lsts.stmts})"
       lsts

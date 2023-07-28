@@ -165,6 +165,23 @@ def gen_murphi_file_decls
 
   (const_decls, ctrler_type_decl)
 
+def gen_murphi_init_ctrler_func
+(ctrler : Ctrler)
+: Except String Murϕ.ProcDecl := do
+  let c_type ← ctrler.type
+  let desig? : Option Murϕ.Expr :=
+    match c_type with
+    | .BasicCtrler => none
+    | .FIFO | .Unordered =>
+      some [murϕ_expr| c_iter]
+  -- prepare some translation info, to pass to translation..
+  default
+
+def gen_murphi_init_ctrler_funcs
+(ctrlers : Ctrlers)
+: Except String (List Murϕ.ProcDecl) :=
+  ctrlers.mapM gen_murphi_init_ctrler_func
+
 -- comment this out for now, to make the
 -- lean4 interpretation faster...
 def compose_murphi_file_components

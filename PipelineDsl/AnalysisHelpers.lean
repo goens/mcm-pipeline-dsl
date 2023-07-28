@@ -40,7 +40,7 @@ def get_val_decl_stmt_var
       default
     | _ => dbg_trace "Error: unexpected Expr"
       default
-  | _ => dbg_trace "Error: unexpected Stmt"
+  | _ => dbg_trace s!"Error: Expected value_declaration Stmt in get_var_decl_stmt_var. instead got ({stmt})"
     -- dbg_trace "BEGIN Stmt:\n"
     -- dbg_trace stmt
     -- dbg_trace "END Stmt:\n"
@@ -852,9 +852,6 @@ def get_ctrler_from_ctrlers_list (ctrler_name : CtrlerName) (ctrlers : List cont
     let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
     throw msg
 
-def Pipeline.QualifiedName.idents : Pipeline.QualifiedName → List Identifier
-| .mk idents => idents
-
 def Pipeline.QualifiedName.is_ident_ordering : Pipeline.QualifiedName → Except String Bool
 | qual_name =>
   match qual_name.idents with
@@ -893,9 +890,17 @@ partial def Pipeline.Expr.is_contains_instruction_not_eq_ld : Pipeline.Expr → 
   | .equal term1 term2 =>
     match term1, term2 with
     | .qualified_var qual_var, .var ident =>
-      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+      (qual_var == [instruction, op].to_qual_name) &&
+      (
+        (ident == load.toMurphiString) ||
+        (ident == ldar.toMurphiString)
+      )
     | .var ident, .qualified_var qual_var =>
-      (qual_var == [instruction, op].to_qual_name) && (ident == ld)
+      (qual_var == [instruction, op].to_qual_name) &&
+      (
+        (ident == load.toMurphiString) ||
+        (ident == ldar.toMurphiString)
+      )
     | _, _ => false
   | .binand term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld
   -- | .binor term1 term2 => term1.is_instruction_not_eq_ld || term2.is_instruction_not_eq_ld
@@ -1212,13 +1217,6 @@ def ExprsToAndTreeExpr (exprs : List Pipeline.Expr) : Except String Pipeline.Exp
   | h :: t =>
     -- use recursion
     pure $ Pipeline.Expr.binand (Pipeline.Term.expr h) (Pipeline.Term.expr (← ExprsToAndTreeExpr t))
-
-def Ctrlers.ctrler_matching_name : Ctrlers → CtrlerName → Except String controller_info 
-| ctrlers, ctrler_name => do
-  match ctrlers.filter (·.name == ctrler_name) with
-  | [ctrler] => pure ctrler
-  | [] => throw s!"No ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
-  | _::_ => throw s!"Multiple ctrlers matching name ({ctrler_name}) in ctrlers list ({ctrlers})"
 
 def convert_state_names_to_dsl_or_tree_state_check
 ( state_names : List StateName ) (ctrler_type : CtrlerType) (ctrler_name : CtrlerName)
@@ -1831,19 +1829,6 @@ def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β
 --   -- Should also check we only found 1 match.
 --   default
 
--- Newer, better, version of get_ctrler_from_ctrlers_list
-def Ctrlers.ctrler_from_name (ctrlers : Ctrlers) (ctrler_name : CtrlerName)
-: Except String Ctrler := do
-  let ctrler_match_list := ctrlers.filter (·.name = ctrler_name)
-  match ctrler_match_list with
-  | [ctrler] => pure ctrler
-  | [] =>
-    let msg : String := s!"Error: No ctrler with name ({ctrler_name}) found in list ({ctrlers})"
-    throw msg
-  | _::_ =>
-    let msg : String := s!"Error: Multiple ctrlers with name ({ctrler_name}) found in list ({ctrlers})"
-    throw msg
-
 -- abbrev IdentList := List Identifier
 
 def Pipeline.Statement.stmt_of_labelled_stmt (stmt : Pipeline.Statement) : Pipeline.Statement :=
@@ -1976,9 +1961,9 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       | .commit =>
         -- return the two stmt & t
         -- pure (stmts_to_inject, stmts) -- i.e. continue keeping the "commit" label by using 'stmts'
-        pure ( [Pipeline.Statement.labelled_statement label (stmts_to_inject.to_block)] , [stmt] ++ t)
+        pure ( [labelled_stmt label stmts_to_inject.to_block] , [stmt] ++ t)
       | _ =>
-        pure ([stmt] ++ tail_re_build_stmts, tail_commit_stmts)
+        pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .block stmts' =>
       let (re_build_stmts, commit_stmts) ← stmts'.split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
       pure ([re_build_stmts.to_block] ++ tail_re_build_stmts, commit_stmts ++ tail_commit_stmts) -- NOTE: don't touch commit_stmts
@@ -2003,12 +1988,23 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
       | .if_else_statement expr stmt stmt' =>
         let (re_build_stmts, commit_stmts) ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
         let (re_build_stmts', commit_stmts') ← [stmt'].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+        let ret_commit_stmts :=
+          match commit_stmts, commit_stmts' with
+          | _::_, _::_ =>
+            if commit_stmts == commit_stmts' then
+              commit_stmts
+            else
+              commit_stmts ++ commit_stmts'
+          | _::_, [] => commit_stmts
+          | [], _::_ => commit_stmts'
+          | [], [] => tail_commit_stmts
         pure (
           [
             Pipeline.Statement.conditional_stmt
             $ Pipeline.Conditional.if_else_statement expr re_build_stmts.to_block re_build_stmts'.to_block
-          ] ++ tail_re_build_stmts,
-          commit_stmts ++ commit_stmts' ++ tail_commit_stmts
+          ] ++ tail_re_build_stmts
+          ,
+          ret_commit_stmts
           )
     -- Non recursive cases, collect stmt, simply recurse on t
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
@@ -2048,7 +2044,9 @@ def List.has_listen_handle? (stmts : List Pipeline.Statement) : Option Pipeline.
 
 def Pipeline.Description.listen_handle_stmt? (state : Pipeline.Description) : Except String (Option Pipeline.Statement) := do
   let state_stmt_blk ← state.stmt
+  dbg_trace s!"<<< (listen-handle?) Get stmt block: ({state_stmt_blk})"
   let stmts ← state_stmt_blk.stmt_block
+  dbg_trace s!"<<< (listen-handle?) Get stmts: ({stmts})"
   pure stmts.has_listen_handle?
 
 def Pipeline.Description.wrap_stmt_with_node's_listen_handle_if_exists (state : Pipeline.Description) (stmt : Pipeline.Statement) : Except String Pipeline.Statement := do
@@ -2066,7 +2064,9 @@ def Pipeline.Description.split_off_stmts_at_commit_and_inject_stmts
   -- open up state, look through stmts
   match state with
   | .state state_name stmt => do
-    let (updated_stmt_with_injected, stmts_after_commit) : (List Pipeline.Statement × List Pipeline.Statement) := ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
+    let (updated_stmt_with_injected, stmts_after_commit)
+      : (List Pipeline.Statement × List Pipeline.Statement) :=
+        ← [stmt].split_off_stmts_at_commit_and_inject_stmts stmts_to_inject
     let updated_state := Pipeline.Description.state state_name updated_stmt_with_injected.to_block
 
     let original_state_name := original_commit_code_prefix.append "_" |>.append state_name
@@ -2382,7 +2382,7 @@ def CtrlerName.unordered_query_match
   let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] if_stmt.to_block
   let when_search_fail    := when_stmt [dest_ctrler_name, search_fail   ].to_qual_name [] else_stmt.to_block
 
-  let entry_var := ← dest_ctrler_var.to_qual_or_var_term
+  let entry_var := ← ([entry].append dest_ctrler_var).to_qual_or_var_term
   let search_var := ← searched_var.to_qual_or_var_term
   let entry_match := equal entry_var search_var
 
@@ -2413,6 +2413,7 @@ def SearchType.search_api
     | .Unordered => some search_all
     | .BasicCtrler => none
 
+open Pipeline in
 def CtrlerStates.query_older_insts
 (ctrler_states : CtrlerStates)
 (stall_on_inst_type : InstType)
@@ -2431,7 +2432,10 @@ def CtrlerStates.query_older_insts
     let stall_inst_type := stall_on_inst_type.to_const_term
     let entry_is_stall_type := equal entry_inst_type stall_inst_type
 
-    let entry_seq_num_valid := not_equal (qualified_var [ctrler_states.ctrler, instruction, seq_num].to_qual_name) (Pipeline.Term.const $ num_lit 0)
+    let entry_seq_num_valid :=
+      less_than
+        (qualified_var [ctrler_states.ctrler, instruction, seq_num].to_qual_name)
+        (qualified_var [instruction, seq_num].to_qual_name)
 
     let entry_is_stall_type_and_valid := binand entry_is_stall_type.to_term entry_seq_num_valid.to_term
   
@@ -2548,6 +2552,7 @@ def stall_state_querying_states
 (ctrler_states_to_query : List (List CtrlerStates × InstType))
 /- (stall_on_inst_type : InstType) -/
 (inst_to_stall_type : InstType)
+(orig_body_stmts : List Pipeline.Statement)
 (original_state's_handleblks : Option ( List HandleBlock ))
 (ctrlers : Ctrlers)
 : Except String Description
@@ -2562,40 +2567,54 @@ def stall_state_querying_states
 
   let stall_if_on_state_stmt : Pipeline.Statement :=
     conditional_stmt $
-      if_else_statement 
+      if_else_statement
         (var_expr query_result_var)
-        (reset new_stall_state_name)
-        (transition original_state_name)
+        (reset new_stall_state_name).to_block -- should be same as the original
+        (orig_body_stmts.to_block)
 
   -- make query if this inst is of the type to stall on
-  let if_inst_is_of_to_stall_type : Pipeline.Statement :=
+  let stall_if_inst_is_of_to_stall_type : Pipeline.Statement :=
     conditional_stmt $
-      if_else_statement 
+      if_else_statement
         (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
-        stall_if_on_state_stmt
-        (transition original_state_name)
-  
-  let stall_state_stmt : Pipeline.Statement :=
-    if original_state's_handleblks.isSome then
-      Statement.listen_handle (Statement.block [if_inst_is_of_to_stall_type]) original_state's_handleblks.get!
-    else
-      if_inst_is_of_to_stall_type
+        stall_if_on_state_stmt.to_block
+        (orig_body_stmts.to_block)
 
-  -- the decls are queries
+  -- the decls are query results
   let decls_queries : List (BoolDecl × SearchStatement) := query_stmts.map (let decl_query:= ·; (decl_query.1, decl_query.2.1))
+
+  let new_state_body_stmts :=
+    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_if_inst_is_of_to_stall_type])
+  let new_body_in_listen_handle :=
+    match original_state's_handleblks with
+    | some handle_blks =>
+      Statement.listen_handle (Statement.block new_state_body_stmts) handle_blks
+      |>.to_block
+    | none =>
+      new_state_body_stmts.to_block
 
   pure <| state
     new_stall_state_name
-    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_state_stmt]).to_block
+    new_body_in_listen_handle
 
-def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctrler_states_to_query : List (List CtrlerStates × InstType))
-(ctrlers : Ctrlers) /- (inst_type_to_stall_on : InstType) -/ (inst_to_stall_type : InstType) (new_stall_state_name : StateName)
+open Pipeline in
+def Ctrlers.StallNode
+(stall_state : StateName)
+(stall_ctrler : CtrlerName)
+(ctrler_states_to_query : List (List CtrlerStates × InstType))
+(ctrlers : Ctrlers)
+/- (inst_type_to_stall_on : InstType) -/
+(inst_to_stall_type : InstType)
+(new_stall_state_name : StateName)
 : Except String Pipeline.Description := do
   /- 3. Gen the new stall state's name -/
   -- let new_stall_state_name := String.join [stall_ctrler, "_stall_", stall_state]
 
   /- 5. Generate the new stall state -/
-  let stall_ctrler ← ctrlers.ctrler_matching_name stall_ctrler
+  let stall_ctrler : Ctrler ← ctrlers.ctrler_matching_name stall_ctrler
+  let state_to_stall ← stall_ctrler.state_of_name stall_state
+  let stall_state_body : List Pipeline.Statement ← state_to_stall.body_stmts
+
   /- Consider if original state has a listen-handle -/
   let handle_blks : Option (List HandleBlock) ←
     get_ctrler_state_handle_blocks stall_ctrler stall_state
@@ -2608,7 +2627,12 @@ def Ctrlers.StallNode (stall_state : StateName) (stall_ctrler : CtrlerName) (ctr
 -- (original_state's_handleblks : Option ( List HandleBlock ))
 -- (ctrlers : Ctrlers)
   let new_stall_state : Description ← stall_state_querying_states
-    new_stall_state_name stall_state ctrler_states_to_query /- inst_type_to_stall_on -/ inst_to_stall_type handle_blks ctrlers
+    new_stall_state_name stall_state
+    ctrler_states_to_query
+    /- inst_type_to_stall_on -/
+    inst_to_stall_type
+    stall_state_body handle_blks
+    ctrlers
 
   dbg_trace s!"=== New Stall State: ===\n({new_stall_state})\n=== End New Stall State ==="
   pure new_stall_state

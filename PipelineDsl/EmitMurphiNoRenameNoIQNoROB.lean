@@ -157,7 +157,7 @@ type ---- Type declarations ----
   -- IQ_MAX_INSTS : inst_idx_t;
 
   -- insts are either load or stores
-  INST_TYPE : enum {ld, st, inval};
+  INST_TYPE : enum {ld, st, inval, mfence, dmb_sy, dmb_ld, dmb_st, ldar, stlr};
   ADDR_TYPE : enum {addr_reg, addr_imm};
   VAL_TYPE : enum {val_reg, val_imm};
 
@@ -205,6 +205,8 @@ type ---- Type declarations ----
   £type_decls;
   -- just a 'dumb' copy of the state vars
 
+  -- NOTE: Store State for Write Invalidations in the test harness
+  STORE_STATE : enum {await_handling, await_invalidation_received, store_send_completion};
   --# Read or Write? enum
   R_W : enum {read, write};
 
@@ -223,6 +225,12 @@ type ---- Type declarations ----
 
   --# seq_num in core
   seq_num : inst_count_t;
+
+  -- NOTE: Store state in the Test Harness,
+  -- whether it has sent out all invalidations to all cores yet
+  store_state : STORE_STATE;
+  store_inval_sent : array [cores_t] of boolean;
+  store_inval_ackd : array [cores_t] of boolean;
   end;
 
   MEM_ARRAY : record
@@ -435,52 +443,59 @@ function associative_assign_ld(
   var lq_iter : LSQ_idx_t;
   var lq_count : LSQ_count_t;
   var curr_entry : LSQ_entry_values;
-  var curr_entry_id : LSQ_idx_t;
+  -- var curr_entry_id : LSQ_idx_t;
   var seq_num : inst_count_t;
+
+  var LQ_while_break : boolean;
+  var LQ_found_entry : boolean;
+  var LQ_entry_idx : LQ_idx_t;
+  var LQ_difference : LQ_count_t;
+  var LQ_offset : LQ_count_t;
+  var LQ_curr_idx : LQ_idx_t;
+  var LQ_squash_remove_count : LQ_count_t;
+
   begin
   --
   lq_new := lq;
   lq_iter := lq .head;
   lq_count := lq .num_entries;
   seq_num := msg .seq_num;
+  LQ_while_break := false;
+  LQ_found_entry := false;
+  if (lq.num_entries = 0) then
+    LQ_while_break := true;
+  end;
+  LQ_entry_idx := lq.head;
+  LQ_difference := lq.num_entries;
+  LQ_offset := 0;
+  LQ_squash_remove_count := 0;
+  -- for i : 0 .. LSQ_NUM_ENTRIES_ENUM_CONST do
+  while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+    LQ_curr_idx := ((LQ_entry_idx + LQ_offset) % LQ_NUM_ENTRIES_CONST);
 
-  -- for i:0 .. LQ_NUM_ENTRIES_ENUM_CONST do
-  for i:0 .. LSQ_NUM_ENTRIES_ENUM_CONST do
-    -- error "trace load schedule?";
-
-    -- curr_entry_id := ( lq_iter + i ) % ( LQ_NUM_ENTRIES_CONST);
-    curr_entry_id := ( lq_iter + i ) % ( LSQ_NUM_ENTRIES_CONST);
-    curr_entry := lq_new .entries[curr_entry_id];
-    if (curr_entry .instruction .seq_num = seq_num)
-      then
-      -- assert (( curr_entry .state = squashed_await_ld_mem_resp ) | ( curr_entry .state = await_mem_response ) ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      assert (( curr_entry .state = lsq_squashed_await_ld_mem_resp ) | ( curr_entry .state = lsq_await_load_mem_response ) ) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      -- if ( curr_entry .state = await_mem_response ) then
-      if ( curr_entry .state = lsq_await_load_mem_response ) then
-        -- curr_entry .state := write_result;
-        curr_entry .state := lsq_ld_write_result;
-      -- elsif (curr_entry .state = squashed_await_ld_mem_resp) then
-      elsif (curr_entry .state = lsq_squashed_await_ld_mem_resp) then
-        --# Complete the squash action
-        -- curr_entry .state := await_fwd_check;
-        curr_entry .state := lsq_ld_st_fwd_branch;
+    curr_entry := lq_new.entries[ LQ_curr_idx ];
+    if (curr_entry.instruction.seq_num = seq_num) then
+      -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+      assert (curr_entry.state = await_mem_response
+      -- | curr_entry.state = replay_generated_await_mem_response
+      ) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
+      if (curr_entry.state = await_mem_response) then
+        curr_entry.state := write_result;
+        curr_entry.read_value := msg.value;
+      -- elsif (curr_entry.state = replay_generated_await_mem_response) then
+      --   curr_entry.state := replay_compare_and_check_state;
+      --   curr_entry.replay_value := msg.value;
       end;
-
-
-      --# NOTE: For mem access stuff
-      curr_entry .read_value := msg .value;
-
-      lq_new .entries[curr_entry_id] := curr_entry;
-      -- error "trace load schedule?";
+      lq_new.entries[ LQ_curr_idx ] := curr_entry;
       return lq_new;
     end;
+
+    if (LQ_offset < LQ_difference) then
+      LQ_offset := (LQ_offset + 1);
+    end;
+  -- endfor;
   end;
-  --
-  --# NOTE: don't error, since if the LD was reset,
-  --# then this request is effectively floating
-  --# Maybe set a counter instead, to track
-  --# number of "unnecessary" LD Messages?
-  --#error "didn't find the Load to write the read val into?";
+
   return lq_new;
 end
 ],
@@ -560,6 +575,13 @@ begin
       ic .buffer[i] .dest_id := 0;
       ic .buffer[i] .seq_num := 0;
 
+      -- Init IC buffer store invalidation state
+      ic.buffer[i].store_state := await_handling; -- await_invalidation_received -- NOTE: remember to reset this state
+      -- For each cores_t...
+      for core_idx : cores_t do
+        ic.buffer[i].store_inval_sent[core_idx] := false;
+        ic.buffer[i].store_inval_ackd[core_idx] := false;
+      endfor;
       --# also have invalid for IC
       --# could combine with msg
       --# valid flag
@@ -661,10 +683,12 @@ begin
       rename .num_entries := 0;
     end;
     alias iq:init_state .core_[core] .IQ_ do
-      for i : 0 .. CORE_INST_NUM do
+      -- AZ TODO NOTE: Generate these controller state init "functions"..
+      for i : 0 .. IQ_NUM_ENTRIES_ENUM_CONST do
         iq .entries[i] .instruction .op := inval;
         iq .entries[i] .instruction .seq_num := 0;
         iq .entries[i] .state := iq_await_creation;
+        iq .entries[i] .valid := false;
       end;
       -- # iq .iq_head := 0;
       -- # iq .iq_tail := 0;
@@ -688,6 +712,10 @@ begin
       rob .head := 0;
       rob .tail := 0;
       rob .num_entries := 0;
+    end;
+    alias seqnumreg : init_state.core_[core].SeqNumReg_ do
+      seqnumreg.seq_num_counter := 1;
+      seqnumreg.state := seq_num_interface;
     end;
     -- alias sq:init_state .core_[core] .SQ_ do
     --   for i : SQ_idx_t do
@@ -871,6 +899,10 @@ rule "perform_ic_msg"
   var ic : IC;
   var mem : MEM_ARRAY;
   var addr : addr_idx_t;
+  -- AZ NOTE: for Store invalidation sent to cores
+  var mem_interface : MEM_INTERFACE;
+  var store_invals_sent : boolean;
+  var store_invals_ackd : boolean;
 begin
   --# setup
   next_state := Sta;
@@ -882,13 +914,100 @@ begin
   if ( ic .buffer[i] .r_w = read )
     then
     ic .buffer[i] .value := mem .arr[addr];
+    -- Set destination to core, when done with request..
+    ic.buffer[ i ].dest := core;
   elsif (ic .buffer[i] .r_w = write)
     then
-    mem .arr[addr] := ic .buffer[i] .value;
+    if (ic.buffer[i].store_state = await_handling) then
+      --put "Store awaiting handling\n";
+      --put Sta.ic_.buffer[i].store_state;
+
+      -- TODO AZ: maybe convert into a guard...
+      -- If there exists a core that's not the dest of this msg, send an invalidation
+      -- continue until all cores have been sent an "invalidation" msg
+      -- then progress to the next state...
+
+      -- i.e. For all cores that are not the dest of this core AND
+      -- haven't been sent to already AND
+      -- aren't busy with a message, send an invalidation
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) & (ic.buffer[i].store_inval_sent[core_idx] = false) & (Sta.core_[core_idx].mem_interface_.in_busy = false) then
+          -- Do the write to memory...
+          mem.arr[ addr ] := ic.buffer[ i ].value;
+
+          -- mem_interface := Sta.core_[ j ].mem_interface_;
+          next_state.core_[core_idx].mem_interface_.in_msg := ic.buffer[ i ];
+          next_state.core_[core_idx].mem_interface_.in_msg.dest := core;
+          next_state.core_[core_idx].mem_interface_.in_busy := true;
+
+          ic.buffer[i].store_inval_sent[core_idx] := true;
+          --put Sta.ic_.buffer[i].store_inval_sent[core_idx];
+          --put ic.buffer[i].store_inval_sent[core_idx];
+        end;
+      endfor;
+
+      store_invals_sent := true;
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) then
+          -- TODO: check if all core - dests have an invalidation sent already....
+          store_invals_sent := store_invals_sent & ic.buffer[i].store_inval_sent[core_idx];
+        end;
+      endfor;
+
+      if store_invals_sent then
+        ic.buffer[i].store_state := await_invalidation_received;
+      end;
+
+    elsif (ic.buffer[i].store_state = await_invalidation_received) then
+      --put "Store awaiting invalidations ack'd\n";
+      --put Sta.ic_.buffer[i].store_state;
+
+      store_invals_ackd := true;
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) then
+          --put ic.buffer[i].dest_id;
+          -- TODO: check if all core - dests have an invalidation sent already....
+          store_invals_ackd := store_invals_ackd & ic.buffer[i].store_inval_ackd[core_idx];
+        end;
+      endfor;
+
+      if store_invals_ackd then
+        ic.buffer[i].store_state := store_send_completion;
+      end;
+      --put store_invals_ackd;
+
+    elsif (ic.buffer[i].store_state = store_send_completion) then
+      --put "Store: send completion.. Store got invalidations ack'd\n";
+      --put Sta.ic_.buffer[i].store_state;
+      -- Set destination to core, when done with request..
+
+      -- NOTE: Don't have to do this below, since there's a rule to move msgs to cores
+      -- when dest is set to core..
+      -- next_state.core_[ ic.buffer[i].dest_id ].mem_interface_.in_msg := ic.buffer[ i ];
+
+      ic.buffer[i].store_state := store_send_completion;
+      ic.buffer[ i ].dest := core;
+
+      for core_idx : cores_t do
+        if (core_idx != ic.buffer[i].dest_id) then
+          -- Reset this state...
+          ic.buffer[i].store_inval_sent[core_idx] := false;
+          ic.buffer[i].store_inval_ackd[core_idx] := false;
+        end;
+      endfor;
+    -- elsif (ic.buffer[i].store_state = store_send_completion) then
+    --   put "Store completed\n";
+    --   put Sta.ic_.buffer[i].store_state;
+    --   -- NOTE: do nothing. another controler/rule will take the message and send it?
+    --   -- i could put the code here as well....
+    else
+      error "Unreachable or unhandled case of store state in the InterConnect.";
+    end;
   endif;
 
   --# Reverse direction for acknowledgement
-  ic .buffer[i] .dest := core;
+  -- AZ NOTE: Don't need to set dest if this is a store sending invalidations
+  -- ic .buffer[i] .dest := core;
 
   next_state .ic_ := ic;
   next_state .mem_ := mem;
@@ -961,6 +1080,7 @@ ruleset j : cores_t do
   -- var sb : SB;
   var sb : ROB;
   var mem_interface : MEM_INTERFACE;
+  var found_msg_in_ic : boolean;
 begin
   next_state := Sta;
   lq := Sta .core_[j] .LSQ_;
@@ -971,15 +1091,52 @@ begin
     then
     -- lq := associative_assign_lq(lq, mem_interface .in_msg);
     lq := associative_assign_ld(lq, mem_interface .in_msg);
+    mem_interface.in_busy := false;
   elsif ( mem_interface .in_msg .r_w = write )
     then
-    --# advance SB state to ack'd
-    --# basically clear'd
-    -- sb := associative_ack_sb(sb, mem_interface .in_msg);
-    sb := associative_ack_st(sb, mem_interface .in_msg);
+    if (mem_interface.in_msg.store_state = await_handling) then
+      -- Overview: Send back an ack for the invalidation sent..
+      -- match this message with it's copy in the IC, set it's ack bool to true.
+
+      -- next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
+      -- next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
+      -- next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
+
+      found_msg_in_ic := false;
+      for ic_idx : ic_idx_t do
+        -- if msg entry is valid & seq num matches, use this...
+        -- ..and ack the IC entry
+        if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
+          & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
+
+          -- (1) send ack
+          next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
+
+          -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
+
+          if found_msg_in_ic = true then
+            error "we found 2 matching ic entries? shouldn't happen...";
+          elsif found_msg_in_ic = false then
+            found_msg_in_ic := true;
+          endif;
+        endif;
+      endfor;
+
+      assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
+      assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
+      next_state.core_[j].mem_interface_.in_busy := false;
+
+      mem_interface.in_busy := false;
+
+    elsif (mem_interface.in_msg.store_state = store_send_completion) then
+      --# advance SB state to ack'd
+      --# basically clear'd
+      -- sb := associative_ack_sb(sb, mem_interface .in_msg);
+      sb := associative_ack_st(sb, mem_interface.in_msg);
+      mem_interface.in_busy := false;
+    end;
   endif;
 
-  mem_interface .in_busy := false;
 
   -- next_state .core_[j] .LQ_ := lq;
   -- next_state .core_[j] .SB_ := sb;
@@ -992,19 +1149,17 @@ end;
 endruleset
 ],
 
-[murϕ_rule|
-
-
-ruleset j : cores_t do
-invariant "test_invariant"
-  (Sta .core_[j] .LSQ_.num_entries = 1)
-  ->
-  ( Sta .core_[j] .LSQ_.tail
-    =
-    ( ( Sta .core_[j] .LSQ_.head + 1 ) % (LSQ_NUM_ENTRIES_CONST) )
-  )
-endruleset
-],
+-- [murϕ_rule|
+-- ruleset j : cores_t do
+-- invariant "test_invariant"
+--   (Sta .core_[j] .LSQ_.num_entries = 1)
+--   ->
+--   ( Sta .core_[j] .LSQ_.tail
+--     =
+--     ( ( Sta .core_[j] .LSQ_.head + 1 ) % (LSQ_NUM_ENTRIES_CONST) )
+--   )
+-- endruleset
+-- ],
 [murϕ_rule|
 
 rule "reset"
@@ -1042,7 +1197,11 @@ rule "reset"
 begin
   next_state := Sta;
 
-  --#Sta := next_state;
+  -- put "  === BEGIN Reached End, Reg File: ===\n";
+  -- put Sta.core_[ 0 ].rf_.rf[ 0 ];
+  -- put Sta.core_[ 0 ].rf_.rf[ 1 ];
+  -- put "  === END Reached End, Reg File: ===\n";
+
   Sta := init_state_fn();
 end
 ]
