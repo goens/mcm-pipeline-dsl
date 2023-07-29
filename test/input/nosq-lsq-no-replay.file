@@ -1,0 +1,592 @@
+
+# describe the controller / state machine for a LSQ
+# NoSQ
+
+# NOTE:
+# Store performed in-order @ Commit
+# @ Commit:
+# stores: commit, i.e. write to d-cache / memory interface
+# loads: re-play to verify, squash if necessary
+# But a question: Then the IQ (Issue Queue) can't drop entries until ROB Commit!
+# Unless we add a skid buffer!
+
+  # internal_function compare_phys_and_inval_addr(physical_address phys_addr,
+  #                                               physical_address cache_invalidate_address) {
+  #       bool address_overlap = addr_overlap(phys_addr,
+  #                                           cache_invalidate.address)
+  #       return address_overlap;
+  # }
+# interface LQ::insert() {
+# }
+# =============== ROB =================
+
+state_queue ROB {
+  element_ordering ordering = FIFO # orderings: FIFO, Hash, Stack
+
+  int num_entries = 2
+  entry_types = [load, store]
+}
+
+controller_entry ROB {
+  inst instruction;
+  seq_num seq_num;
+  bool is_executed;
+  u32 write_value;
+  u32 phys_addr;
+  u32 replay_value;
+
+  init_entry = init_rob_entry;
+}
+
+state init_rob_entry {
+  # inst instruction = NULL;
+  seq_num = NULL;
+  is_executed = false;
+  # write_value = NULL;
+  # phys_addr = NULL;
+  instruction.seq_num = 0;
+
+  transition rob_await_creation;
+}
+
+state rob_await_creation {
+  # listen {
+    await {
+      when insert_tail(seq_num, instruction) from RENAME {
+        instruction = instruction;
+        phys_addr = instruction.imm;
+        write_value = instruction.write_value;
+        if (instruction.op == mfence) {
+          transition rob_commit_if_head;
+        } else {
+          transition rob_await_is_executed;
+        }
+      }
+    }
+  # } handle invalidation_listener.squash(violating_seq_num) {
+  # }
+}
+
+state rob_await_is_executed {
+  listen {
+    await {
+      when executed() from IQ {
+        is_executed = true;
+        transition rob_commit_if_head;
+      }
+      when executed() from memory_unit_sender {
+        is_executed = true;
+        transition rob_commit_if_head;
+      }
+    }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      memory_unit_sender.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+state rob_commit_if_head {
+  listen {
+    if (is_head()) {
+      transition rob_commit_based_on_inst
+    } else {
+      reset rob_commit_if_head;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    # rob entry can stay on this state
+    # And just send the inst back to the IQ for issuing
+    if (instruction.seq_num >= violating_seq_num) {
+      if (is_executed) {
+        is_executed = false;
+        IQ.insert(instruction);
+        reset rob_await_is_executed;
+      }
+    }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      is_executed = false;
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+state rob_commit_based_on_inst {
+  # NoSQ: things to do:
+  # Load: Do a replay (we can skip this for now... or implement!)
+  # Then squash if necessary. If squash, then reset is_executed, go back to appropriate state
+  # Store: Do a store, store should send it's store to a pipeline,
+  # which is just a controller
+
+  # if (second_memory_stage.curr_state != second_mem_unit_get_inputs) {
+  #   reset rob_commit_if_head;
+  # } else
+
+  listen {
+    commit if (instruction.op == mfence) {
+      instruction.seq_num = 0;
+      ROB.remove_head();
+      complete rob_await_creation;
+    } else if (instruction.op == ld) {
+      # Do the load replay... as an exercise to make sure we can represent this..!
+      # second_memory_stage.pass_pipe_regs(instruction, phys_addr, NULL);
+      # transition rob_wait_load_replay;
+      ROB.remove_head();
+      complete rob_await_creation;
+    } else if (
+      (instruction.op == st) & (second_memory_stage.curr_state == second_mem_unit_get_inputs)
+      ) {
+      # Send the info to the store-to-mem-interface pipeline stage
+      # the pipeline stage should send a message to this stage
+      # and send this entry to the complete stage
+      # NOTE: Fill this in...
+      second_memory_stage.pass_pipe_regs(instruction, phys_addr, write_value);
+      transition rob_wait_store_completed;
+    }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      is_executed = false;
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+# state rob_wait_load_replay {
+#   # listen {
+#     await {
+#       when load_completed(load_value) from second_memory_stage {
+#         # finished
+#         replay_value = load_value;
+#         transition rob_received_load_replay;
+#       }
+#     }
+#   # } handle ROB.squash(violating_seq_num) {
+#   #   # rob entry can stay on this state
+#   #   # And just send the inst back to the IQ for issuing
+#   #   # NOTE: Should transition to a state that awaits when
+#   #   # IQ is not full..
+#   #   # But is not necessary with the simple model at the moment
+#   #   if (instruction.seq_num > violating_seq_num) {
+#   #     if (is_executed) {
+#   #       is_executed = false;
+#   #       IQ.insert(instruction);
+#   #       transition rob_commit_if_head;
+#   #     }
+#   #   }
+#   # }
+# }
+
+# state rob_received_load_replay {
+#   # Simplified Reg Write, just write!
+#   # TODO NOTE: Move this to ROB so it's auto-generated
+#   # and I don't need to think about this
+#   # TODO NOTE: Implement this reg_file.read() API
+#   u32 old_read = reg_file.read(instruction.dest_reg);
+
+#   if (old_read == replay_value) {
+#     # NOTE: implement this on the ROB's side
+#     # ROB.load_success(instruction.seq_num);
+#     ROB.remove_head();
+#     complete rob_await_creation;
+#   } else {
+#     reg_file.write(replay_value, instruction.dest_reg);
+#     # TODO NOTE: Implement this squash() API
+#     # NOTE: Squash probably isn't necessary, since we're just
+#     # implementing other loads and stores that don't use this
+#     # load's reg value
+
+#     seq_num violating_seq_num = instruction.seq_num;
+#     ROB.squash(instruction.seq_num); # squash based on this seq_num
+#     # NOTE: Implement this on the ROB's side
+#     # ROB.load_fail(instruction.seq_num);
+#     ROB.remove_head();
+#     complete rob_await_creation;
+#   }
+# }
+
+state rob_wait_store_completed {
+  await {
+    when store_completed() from second_memory_stage {
+      transition rob_complete_store;
+    }
+  }
+}
+
+state rob_complete_store {
+  ROB.remove_head();
+  complete rob_await_creation;
+}
+
+# ========== Stage =============
+# This stage should send a mem access
+# and await for a response.
+# Then communicate back to the ROB
+
+controller second_memory_stage {
+  # regs for getting the second stage of memory
+  inst instruction;
+  u32 write_value;
+  address phys_addr;
+  init_entry = secnd_mem_init;
+}
+
+state secnd_mem_init {
+  # instruction = NULL;
+  phys_addr = NULL;
+  write_value = NULL;
+  transition second_mem_unit_get_inputs;
+}
+
+state second_mem_unit_get_inputs {
+  # get input
+  await {
+    when pass_pipe_regs(instruction, phys_addr, write_value) from ROB {
+      # Get any pipe regs here..
+      instruction = instruction;
+      phys_addr = instruction.imm;
+      # if (instruction.op == st) {
+        write_value = instruction.write_value;
+      # }
+      transition second_mem_unit_send;
+    }
+  }
+}
+
+state second_mem_unit_send {
+  if
+    (~memory_interface.out_busy())
+    {
+    # if ( instruction.op == ld ) {
+    #   memory_interface.send_load_request(phys_addr,
+    #                                      instruction.seq_num);
+    #   transition second_mem_unit_receive;
+    # } else
+    if (instruction.op == st) {
+      memory_interface.send_store_request(phys_addr,
+                                          instruction.seq_num,
+                                          instruction.write_value);
+      transition second_mem_unit_receive;
+    }
+  }
+}
+
+state second_mem_unit_receive {
+  # Check if the unit is has the data
+  # if (memory_interface.in_busy())
+  await {
+    # when load_completed(read_value) from memory_interface {
+    #   # Pass ROB The start signal, we'll just re-use the is_executed signal
+    #   # NOTE: Remember to set as un-executed if it is executed...
+    #   # NOTE: Need to do search and then ROB.load_completed()
+    #   await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+    #     when search_success() from LSQ {
+    #       ROB.load_completed(read_value);
+    #       complete second_mem_unit_get_inputs;
+    #     }
+    #     when search_fail() from LSQ {
+    #       # Error? shouldn't happen?? No load??
+    #       # Should I allow throw error? assert?
+    #     }
+    #   }
+    # }
+    when store_completed(phys_addr, instruction, write_value) from memory_interface {
+      instruction.seq_num = 0;
+      # let rob complete
+      await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+        when search_success() from LSQ {
+          ROB.store_completed();
+          complete second_mem_unit_get_inputs;
+        }
+        when search_fail() from LSQ {
+          # Error? shouldn't happen?? No load??
+          # Should I allow throw error? assert?
+        }
+      }
+    }
+  }
+}
+
+# ============= IQ ===============
+
+state_queue IQ {
+  int num_entries = 2
+  entry_types = [load, store]
+  element_ordering ordering = Unordered
+}
+
+controller_entry IQ {
+  inst instruction;
+  # I'm just using the seq_num I'm modeling in INST in Murphi at the moment
+  seq_num seq_num;
+  # bool is_valid;
+
+  init_entry = init_iq_entry;
+}
+
+state init_iq_entry {
+  instruction.seq_num = NULL;
+  instruction.op = inval;
+  seq_num = NULL;
+  # is_valid = NULL; # false
+
+  transition iq_await_creation;
+}
+
+state iq_await_creation {
+  listen {
+    await {
+      when insert(instruction) from RENAME {
+        instruction = instruction;
+        transition iq_schedule_inst;
+      }
+      # Also handle the case when we get the msg from the ROB....
+      # But need to make sure this works in the translation!!!!
+      when insert(instruction) from ROB {
+        instruction = instruction;
+        transition iq_schedule_inst;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+  }
+}
+
+state iq_schedule_inst {
+  listen {
+    if (instruction.op == ld) {
+     if (memory_unit_sender.state == mem_unit_send_get_input) {
+        # send instruction to pipeline
+        memory_unit_sender.pass_pipe_regs(instruction, phys_addr);
+        instruction.seq_num = 0;
+        remove();
+        complete iq_await_creation;
+      }
+    } else if (instruction.op == st) {
+      # If store, then let rob perform store in order...
+      await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+        when search_fail() from SQ {
+          # error? rob should have the inst?
+        }
+        when search_success() from SQ {
+          ROB.executed();
+        }
+      }
+      remove();
+      instruction.seq_num = 0;
+      complete iq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      remove();
+      reset iq_await_creation;
+    }
+  }
+}
+
+# ======== pipeline: memory unit send msg ===========
+# TODO: Name these things "stages", but under another
+# inductive type, but ideally with a product type
+# Some thing for the future though, just want something
+# to work for now...
+controller memory_unit_sender {
+  #
+  # struct_type = structure;
+  inst instruction; # a reg
+  address phys_addr;
+  u32 read_value;
+
+  init_entry = memory_unit_send_init;
+}
+
+state memory_unit_send_init {
+  # instruction = NULL;
+  phys_addr = NULL;
+  read_value = 0;
+  transition mem_unit_send_get_input;
+}
+
+state mem_unit_send_get_input {
+# TODO NOTE: One thing to try is to just model another
+# unit to handle a <unit>.translate(register?) but this
+# also means I need to make changes to also create
+# Loads that will generate the address from the register
+# rather than just using immediates
+  listen {
+    await {
+      when pass_pipe_regs(instruction, phys_addr) from IQ {
+        # Get any pipe regs here..
+        instruction = instruction;
+        phys_addr = instruction.imm;
+        transition memory_unit_stage_send;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+  }
+}
+
+state memory_unit_stage_send {
+  listen {
+    if
+      (~memory_interface.out_busy())
+      {
+      if ( instruction.op == ld ) {
+        memory_interface.send_load_request(phys_addr,
+                                           instruction.seq_num);
+        transition memory_unit_receiver;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      reset mem_unit_send_get_input;
+    }
+  }
+}
+
+state memory_unit_receiver {
+  listen {
+    await {
+      when load_completed(read_value) from memory_interface {
+        transition memory_unit_load_result_write;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+    # greater than or equal for simple squash.
+    if (instruction.seq_num >= violating_seq_num) {
+      transition mem_unit_send_get_input;
+    }
+  }
+}
+
+# state squashed_memory_unit_receiver {
+#   listen {
+#     await {
+#       when load_completed(read_value) from memory_interface {
+#         reset memory_unit_stage_send;
+#       }
+#     }
+#   } handle ROB.squash(violating_seq_num) {
+#     # already going to reset. no need to do anything extra?
+#   }
+# }
+
+state memory_unit_load_result_write {
+  listen {
+    result_write reg_file.write(read_value, instruction.dest_reg);
+    await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+      when search_fail() from SQ {
+        # error? the inst should be in the ROB
+      }
+      when search_success() from SQ {
+        ROB.executed();
+        instruction.seq_num = 0;
+      }
+    }
+    complete mem_unit_send_get_input;
+  } handle ROB.squash(violating_seq_num) {
+    # greater than or equal for simple squash.
+    if (instruction.seq_num >= violating_seq_num) {
+      reset mem_unit_send_get_input;
+    }
+  }
+}
+
+# =========== RENAME ==============
+
+state_queue RENAME {
+  int num_entries = 2
+  entry_types = [load, store]
+  element_ordering ordering = FIFO
+}
+
+controller_entry RENAME {
+  inst instruction;
+
+  init_entry = init_rename_entry;
+}
+
+state init_rename_entry {
+  instruction.op = inval;
+  instruction.seq_num = NULL;
+
+  # Transition to this;
+  # Test harness sets insts
+  # in the right state to start execution
+  transition rename_await_creation;
+}
+
+state rename_await_creation {
+  # await insertion
+  # Only due to squash for the litmus test harness
+  await {
+    when insert_tail(instruction) from ROB {
+      instruction = instruction;
+      transition issue_if_head;
+    }
+  }
+}
+
+state issue_if_head {
+  # issue inst to all queues if required queues are not full.
+  if (is_head() & (~empty()) & (~ROB.full())) {
+    if (instruction.op == mfence) {
+      # Assign new seq_num,
+      # so squashed mem insts (load)
+      # can have their mem request's response
+      # safely ignored
+      instruction.seq_num = SeqNumReg.seq_num_counter;
+      SeqNumReg.increment();
+
+      ROB.insert_tail(instruction)
+      RENAME.remove_head()
+      complete rename_await_creation;
+    } else if (~IQ.full()) {
+      instruction.seq_num = SeqNumReg.seq_num_counter;
+      SeqNumReg.increment();
+
+      if (instruction.op == st) {
+        # transition store_prediction;
+      }
+      IQ.insert(instruction)
+      ROB.insert_tail(instruction)
+      # NOTE: Ignore self-message in analysis, depending on analysis
+      RENAME.remove_head()
+      # complete rename_await_creation;
+      complete rename_await_creation;
+    } else {
+      reset issue_if_head;
+    }
+  }
+}
+
+controller SeqNumReg {
+  seq_num seq_num_counter;
+
+  init_entry = init_seq_num_counter;
+}
+
+state init_seq_num_counter {
+  seq_num_counter = 0;
+
+  transition seq_num_interface;
+}
+
+state seq_num_interface {
+  await {
+    when increment() from RENAME {
+      # Could try this if we want to do both read & increment...
+      # adjust the translation for LHS assignment,
+      # if the variable assigned does not exist in the dest or "current" ctrler
+      # then use the msging ctrler or "src" ctrler's state vars...
+      seq_num_counter = seq_num_counter + 1;
+      complete seq_num_interface;
+    }
+  }
+}
+

@@ -1,0 +1,704 @@
+
+# describe the controller / state machine for a LSQ
+# LSQ
+# ===== LSQ =====
+
+state_queue LSQ {
+  int num_entries = 2
+  entry_types = [load, store]
+  element_ordering ordering = FIFO
+}
+
+controller_entry LSQ {
+  address virt_addr;
+  address phys_addr;
+  u32 read_value;
+  u32 write_value;
+  seq_num seq_num;
+  inst instruction;
+  # Not actually used in SM, just init
+  init_entry = init_default_state;
+}
+
+state init_default_state {
+  virt_addr = NULL;
+  phys_addr = NULL;
+  read_value = NULL;
+  write_value = NULL;
+  seq_num = NULL;
+  instruction.seq_num = NULL;
+  instruction.op = inval;
+
+  transition lsq_await_creation;
+}
+
+state lsq_await_creation {
+  # listen {
+    await {
+      when insert_tail(seq_num, instruction) from RENAME {
+        # await SQ.tail_search(entry.instruction.seq_num < instruction.seq_num) {
+        #   when search_fail() from SQ {
+        #     st_seq_num = NULL # 0
+        #   }
+        #   when search_success(instruction) from SQ {
+        #     st_seq_num = instruction.seq_num
+        #   }
+        # }
+        instruction = instruction
+        transition lsq_await_scheduled;
+      }
+    }
+  # } handle LSQ.squash(violating_seq_num) {
+  #   #nothing
+  # }
+}
+
+state lsq_await_scheduled {
+  listen {
+    await {
+      when lsq_schedule_imm() from IQ {
+        if (instruction.op == st) {
+          write_value = instruction.write_value;
+        }
+        virt_addr = instruction.imm;
+        transition lsq_await_translation;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+    # reset lsq_await_scheduled;
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle LSQ.squash(violating_seq_num) {
+    # reset lsq_await_scheduled;
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+state lsq_await_translation {
+  listen {
+    phys_addr = virt_addr;
+    transition lsq_ld_st_fwd_branch;
+  } handle ROB.squash(violating_seq_num) {
+    # reset lsq_await_translation;
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle LSQ.squash(violating_seq_num) {
+    # reset lsq_await_scheduled;
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+
+state lsq_ld_st_fwd_branch {
+listen {
+  if (instruction.op == ld) {
+    await LSQ.tail_search(
+      (entry.instruction.op == st) &
+      (entry.phys_addr == phys_addr) &
+      (entry.instruction.seq_num < instruction.seq_num) &
+      (entry.state != lsq_await_creation) &
+      (entry.state != lsq_await_scheduled) &
+      (entry.state != lsq_await_translation)
+      ) {
+      when search_fail() from LSQ {
+        transition lsq_build_packet_send_mem_request;
+      }
+      when search_success(write_value) from LSQ {
+        read_value = write_value;
+        transition lsq_ld_write_result;
+      }
+    }
+  } else if (instruction.op == st) {
+    # store, await commit, and have
+    # commit do the send store mem req
+    await LSQ.head_search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num > instruction.seq_num) & (entry.instruction.op == ld)) {
+      when search_success() from LSQ {
+        seq_num violating_seq_num = entry.instruction.seq_num;
+        ROB.squash(violating_seq_num);
+        LSQ.squash(violating_seq_num);
+      }
+      when search_fail() from LSQ {
+        
+      }
+    }
+
+    # LSQ.head_search_squash(
+    #   (entry.instruction.op == ld) &
+    #   (entry.phys_addr == phys_addr) &
+    #   (entry.instruction.seq_num > instruction.seq_num)
+    #   );
+    await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+      when search_fail() from SQ {
+        # error? rob should have the inst?
+      }
+      when search_success() from SQ {
+        ROB.st_executed();
+      }
+    }
+    transition lsq_st_await_committed;
+  }
+} handle LSQ.squash(violating_seq_num) {
+  # nothing
+  if (instruction.seq_num >= violating_seq_num) {
+    squash_remove();
+    reset lsq_await_creation;
+  }
+} handle ROB.squash(violating_seq_num) {
+  if (instruction.seq_num >= violating_seq_num) {
+    squash_remove();
+    reset lsq_await_creation;
+  }
+}
+}
+
+state lsq_st_await_committed {
+  listen {
+    await {
+      when store_committed() from ROB {
+
+        LSQ.remove_head()
+
+        complete lsq_await_creation;
+      }
+    }
+  # } handle ROB.squash(violating_seq_num) {
+  #   if (instruction.seq_num >= violating_seq_num) {
+  #     # transient
+  #     reset lsq_ld_st_fwd_branch;
+  #     # go back to appropriate previous state
+  #   }
+  } handle LSQ.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+
+state lsq_build_packet_send_mem_request {
+  listen {
+    memory_interface.send_load_request(phys_addr, instruction.seq_num);
+    transition lsq_await_load_mem_response;
+  # } handle ROB.squash(violating_seq_num) {
+  #   if (instruction.seq_num >= violating_seq_num) {
+  #     # transient
+  #     reset lsq_ld_st_fwd_branch;
+  #     # go back to appropriate previous state
+  #   }
+  } handle LSQ.squash(violating_seq_num) {
+  # nothing
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+
+# Using the test harness, it's simpler if the
+# receive mem response states are simple & small
+state lsq_await_load_mem_response {
+  # listen for squashing
+  listen {
+    await {
+      when load_completed(value) from memory_interface {
+        read_value = value;
+        transition lsq_ld_write_result;
+      }
+    }
+  # } handle ROB.squash(violating_seq_num) {
+  #   if (instruction.seq_num >= violating_seq_num) {
+  #     # transient
+  #     transition lsq_squashed_await_ld_mem_resp;
+  #     # go back to appropriate previous state
+  #   } else {
+  #     # nothing
+  #   }
+  } handle LSQ.squash(violating_seq_num) {
+    # nothing
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+
+# state lsq_squashed_await_ld_mem_resp {
+#   await {
+#     when load_completed(invalid_value) from memory_interface {
+#       reset lsq_ld_st_fwd_branch;
+#     }
+#   }
+# }
+
+state lsq_ld_write_result {
+  listen {
+    result_write reg_file.write(read_value, instruction.dest_reg);
+    await ROB.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+      when search_fail() from ROB {
+        # error? rob should have the inst?
+      }
+      when search_success() from ROB {
+        ROB.ld_executed();
+      }
+    }
+    transition lsq_ld_await_committed;
+
+  # } handle ROB.squash(violating_seq_num) {
+  #   if (instruction.seq_num >= violating_seq_num) {
+  #     # transient
+  #     reset lsq_ld_st_fwd_branch;
+  #     # go back to appropriate previous state
+  #   }
+  } handle LSQ.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+
+state lsq_ld_await_committed {
+  listen {
+    await {
+      when load_committed() from ROB {
+
+        LSQ.remove_head()
+
+        complete lsq_await_creation;
+      }
+    }
+  # } handle ROB.squash(violating_seq_num) {
+  #   # so this is the SSP...
+  #   # Describe the behaviour here...
+  #   if (instruction.seq_num >= violating_seq_num) {
+  #     # transient
+  #     # ROB.unexecuted(instruction.seq_num);
+  #     reset lsq_ld_st_fwd_branch;
+  #     # go back to appropriate previous state
+  #   }
+  } handle LSQ.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      squash_remove();
+      reset lsq_await_creation;
+    }
+  }
+}
+  # internal_function compare_phys_and_inval_addr(physical_address phys_addr,
+  #                                               physical_address cache_invalidate_address) {
+  #       bool address_overlap = addr_overlap(phys_addr,
+  #                                           cache_invalidate.address)
+  #       return address_overlap;
+  # }
+# interface LQ::insert() {
+# }
+# =============== ROB =================
+
+state_queue ROB {
+  element_ordering ordering = FIFO # orderings: FIFO, Hash, Stack
+
+  int num_entries = 2
+  entry_types = [load, store]
+}
+
+controller_entry ROB {
+  inst instruction;
+  seq_num seq_num;
+  bool is_executed;
+  u32 write_value;
+  u32 phys_addr;
+
+  init_entry = init_rob_entry;
+}
+
+state init_rob_entry {
+  # inst instruction = NULL;
+  seq_num = NULL;
+  is_executed = false;
+  write_value = NULL;
+  phys_addr = NULL;
+  instruction.seq_num = 0;
+
+  transition rob_await_creation;
+}
+
+state rob_await_creation {
+listen {
+  await {
+    when insert_tail(seq_num, instruction) from RENAME {
+      instruction = instruction;
+      if (instruction.op == mfence) {
+        transition rob_commit_if_head;
+      } else {
+        transition rob_await_executed;
+      }
+    }
+  }
+} handle LSQ.squash() {
+  # nothing
+}
+}
+
+state rob_await_executed {
+listen {
+  await {
+    when st_executed() from LSQ {
+      is_executed = true;
+      transition rob_commit_if_head;
+    }
+    when ld_executed() from LSQ {
+      is_executed = true;
+      transition rob_commit_if_head;
+    }
+  }
+} handle LSQ.squash(violating_seq_num) {
+  if (instruction.seq_num >= violating_seq_num) {
+    # LSQ.squash(violating_seq_num);
+    IQ.squash(violating_seq_num);
+    squash_remove();
+    RENAME.insert_tail(instruction);
+    reset rob_await_creation;
+  }
+} handle load_address_table.squash(violating_seq_num) {
+  if (instruction.seq_num >= violating_seq_num) {
+    LSQ.squash(violating_seq_num);
+    IQ.squash(violating_seq_num);
+    squash_remove();
+    RENAME.insert_tail(instruction);
+    reset rob_await_creation;
+  }
+}
+}
+
+state rob_commit_if_head {
+  listen {
+    # Add this is_head() check,
+    # maybe translate as is_head_<ctrler>(idx,<ctrler)
+    # or "idx == <ctrler>.head"
+    if (is_head()) {
+      transition rob_commit_po;
+    } else {
+      reset rob_commit_if_head;
+    }
+  } handle LSQ.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      # LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+    # if ((instruction.op == ld) & (instruction.seq_num > violating_seq_num)) {
+    #   is_executed = false;
+    #   reset rob_await_executed;
+    # }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+state rob_commit_po {
+    # Adjust the translation to also translate the exprs in If Stmts
+    # with the ctrler next_state.core[j].<Ctrler>. designator
+  listen {
+    commit if (instruction.op == mfence) {
+      ROB.remove_head();
+      complete rob_await_creation;
+    } else {
+      await LSQ.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+        when search_success(write_value, phys_addr) from LSQ {
+          if (instruction.op == ld) {
+            # LSQ.remove_head()
+            LSQ.load_committed()
+            is_executed = false;
+            ROB.remove_head()
+            complete rob_await_creation;
+          } else if (instruction.op == st) {
+            # send mem request
+            phys_addr = phys_addr;
+            write_value = write_value;
+            memory_interface.send_store_request();
+            transition rob_commit_time_await_st_mem_resp;
+          }
+        }
+        when search_fail() from LSQ {
+          # Error? shouldn't happen?? No load??
+          # Should I allow throw error? assert?
+        }
+      }
+    }
+  } handle LSQ.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      # LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+    # if (( instruction.op == ld ) & ( instruction.seq_num > violating_seq_num )) {
+    #   is_executed = false;
+    #   reset rob_await_executed;
+    # }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+# state rob_handle_ld {
+#   # LSQ.remove_head()
+#   commit LSQ.ROB_committed()
+#   is_executed = false;
+#   ROB.remove_head()
+#   complete rob_await_creation;
+# }
+
+state rob_commit_time_await_st_mem_resp {
+  listen {
+    await {
+      when store_completed() from memory_interface {
+        # complete rob_await_creation;
+        transition rob_clear_lsq_store_head;
+      }
+    }
+  } handle LSQ.squash(violating_seq_num) {
+    # nothing
+    if (instruction.seq_num >= violating_seq_num) {
+      # LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+state rob_clear_lsq_store_head {
+  listen {
+    # if (true) {
+      await LSQ.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+        when search_success() from LSQ {
+          # LSQ.remove_head()
+          LSQ.store_committed()
+          is_executed = false;
+          ROB.remove_head()
+          complete rob_await_creation;
+        }
+        when search_fail() from LSQ {
+          # Error? shouldn't happen?? No load??
+          # Should I allow throw error? assert?
+        }
+      }
+    # }
+  } handle LSQ.squash(violating_seq_num) {
+  # nothing
+    if (instruction.seq_num >= violating_seq_num) {
+      # LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  } handle load_address_table.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      LSQ.squash(violating_seq_num);
+      IQ.squash(violating_seq_num);
+      squash_remove();
+      RENAME.insert_tail(instruction);
+      reset rob_await_creation;
+    }
+  }
+}
+
+# ============= IQ ===============
+
+state_queue IQ {
+  int num_entries = 2
+  entry_types = [load, store]
+  element_ordering ordering = Unordered
+}
+
+controller_entry IQ {
+  inst instruction;
+  # I'm just using the seq_num I'm modeling in INST in Murphi at the moment
+  seq_num seq_num;
+  # bool is_valid;
+
+  init_entry = init_iq_entry;
+}
+
+state init_iq_entry {
+  instruction.seq_num = NULL;
+  instruction.op = inval;
+  seq_num = NULL;
+  # is_valid = NULL; # false
+
+  transition iq_await_creation;
+}
+
+state iq_await_creation {
+  listen {
+    await {
+      when insert(instruction) from RENAME {
+        instruction = instruction;
+        transition iq_schedule_inst;
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+  }
+}
+
+state iq_schedule_inst {
+  listen {
+    await LSQ.tail_search(entry.instruction.seq_num == instruction.seq_num) {
+      when search_success(instruction) from LSQ {
+        # want to send a message to the entry
+        LSQ.lsq_schedule_imm();
+        instruction.seq_num = 0;
+        remove();
+        complete iq_await_creation;
+      }
+      when search_fail() from LQ {
+        # Should error here.
+      }
+    }
+  } handle ROB.squash(violating_seq_num) {
+    if (instruction.seq_num >= violating_seq_num) {
+      # squash();
+      remove();
+      reset iq_await_creation;
+    }
+  }
+}
+
+# =========== RENAME ==============
+
+state_queue RENAME {
+  int num_entries = 2
+  entry_types = [load, store]
+  element_ordering ordering = FIFO
+}
+
+controller_entry RENAME {
+  inst instruction;
+
+  init_entry = init_rename_entry;
+}
+
+state init_rename_entry {
+  instruction.op = inval;
+  instruction.seq_num = NULL;
+
+  # transition rename_await_creation;
+  transition rename_await_creation;
+}
+
+state rename_await_creation {
+  # await insertion
+  await {
+    when insert_tail(instruction) from ROB {
+      instruction = instruction;
+      transition issue_if_head;
+    }
+  }
+}
+
+state issue_if_head {
+  # issue inst to all queues if required queues are not full.
+  if (is_head() & (~empty()) & (~ROB.full())) {
+    if (instruction.op == mfence) {
+      instruction.seq_num = SeqNumReg.seq_num_counter;
+      SeqNumReg.increment();
+
+      ROB.insert_tail(instruction)
+      RENAME.remove_head()
+      complete rename_await_creation;
+    } else if ((~IQ.full()) & (~LSQ.full())) {
+      instruction.seq_num = SeqNumReg.seq_num_counter;
+      SeqNumReg.increment();
+
+      IQ.insert(instruction)
+      ROB.insert_tail(instruction)
+      LSQ.insert_tail(instruction)
+      RENAME.remove_head()
+      complete rename_await_creation;
+    } else {
+      reset issue_if_head;
+    }
+  }
+}
+
+controller SeqNumReg {
+  seq_num seq_num_counter;
+
+  init_entry = init_seq_num_counter;
+}
+
+state init_seq_num_counter {
+  seq_num_counter = 0;
+
+  transition seq_num_interface;
+}
+
+state seq_num_interface {
+  await {
+    when increment() from RENAME {
+      # Could try this if we want to do both read & increment...
+      # adjust the translation for LHS assignment,
+      # if the variable assigned does not exist in the dest or "current" ctrler
+      # then use the msging ctrler or "src" ctrler's state vars...
+      seq_num_counter = seq_num_counter + 1;
+      complete seq_num_interface;
+    }
+  }
+}
