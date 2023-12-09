@@ -22,6 +22,10 @@ lean_exe aqlc {
   root := `Main
 }
 
+-- require Murphi from git "https://github.com/goens/lean-murphi.git"@"main"
+-- require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "5a858c32963b6b19be0d477a30a1f4b6c120be7e"
+-- require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "38dbcd8285bc4b1391619c12f158a7409f3dfc12"
+
 require Murphi from git "https://github.com/goens/lean-murphi.git"@"main"
-require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "nightly"
-require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "master"
+require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "5a858c32963b6b19be0d477a30a1f4b6c120be7e"
+require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "38dbcd8285bc4b1391619c12f158a7409f3dfc12"
