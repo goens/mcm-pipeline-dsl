@@ -8420,6 +8420,15 @@ end;
 end;
 
 invariant "dekker-fence"
-((((Sta.core_[ 0 ].RENAME_.num_entries = 0) & (Sta.core_[ 0 ].ROB_.num_entries = 0)) & ((Sta.core_[ 1 ].RENAME_.num_entries = 0) & (Sta.core_[ 1 ].ROB_.num_entries = 0))
-& (Sta.core_[ 0 ].SB_.num_entries = 0) & (Sta.core_[ 1 ].SB_.num_entries = 0)) -> !((((Sta.core_[ 0 ].rf_.rf[ 0 ] = 0) & (Sta.core_[ 0 ].rf_.rf[ 1 ] = 0)) & ((Sta.core_[ 1 ].rf_.rf[ 0 ] = 0) & (Sta.core_[ 1 ].rf_.rf[ 1 ] = 0)))));
+((((Sta.core_[ 0 ].RENAME_.num_entries = 0) &
+(Sta.core_[ 0 ].ROB_.num_entries = 0)) &
+((Sta.core_[ 1 ].RENAME_.num_entries = 0) &
+(Sta.core_[ 1 ].ROB_.num_entries = 0))
+& (Sta.core_[ 0 ].SB_.num_entries = 0) &
+(Sta.core_[ 1 ].SB_.num_entries = 0))
+->
+!((((Sta.core_[ 0 ].rf_.rf[ 0 ] = 0) &
+(Sta.core_[ 0 ].rf_.rf[ 1 ] = 0)) &
+((Sta.core_[ 1 ].rf_.rf[ 0 ] = 0) &
+(Sta.core_[ 1 ].rf_.rf[ 1 ] = 0)))));
 
