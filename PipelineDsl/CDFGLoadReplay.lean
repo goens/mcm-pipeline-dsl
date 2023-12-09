@@ -53,7 +53,7 @@ def CreateReplayIssueLoadState
   -- dependent stmts
   -- This would also then be a list of statments
 
-  let (transition_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ← 
+  let (transition_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ←
     if is_issue_ctrler_and_await_response_ctrler_same then
       -- transition to the generated replay_await_response
       let replay_await_state_name := ReplayAwaitStateName four_nodes.global_complete_load_node
@@ -86,7 +86,7 @@ def CreateReplayIssueLoadState
         let complete_to_first_state := Pipeline.Statement.complete issue_ctrler_first_state
 
         pure (complete_to_first_state, [search_api_to_send_start_replay_await_msg])
-   
+
   -- TODO:
   -- Make the replay load stmt use:
   -- 1. The LAT's address
@@ -112,7 +112,7 @@ def CreateReplayIssueLoadState
   let replay_issue_in_listen_handle ←
     four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists
       search_for_load_seq_num ctrlers
-  
+
   let replay_issue_name := replay_issue_load_to_mem
   let replay_state := Pipeline.Description.state replay_issue_name replay_issue_in_listen_handle.to_block
 
@@ -206,7 +206,7 @@ def CreateReplayAwaitLoadState
       let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
 
       pure (compl_to_first_state, additional_stmts)
-      
+
   -- 4. signal to ROB that replay is complete
   let replay_complete_func_call_msg := CreateDSLMsgCall four_nodes.commit_node.ctrler_name replay_complete_msg_to_commit []
   let commit_ctrler ← ctrlers.ctrler_from_name four_nodes.commit_node.ctrler_name
@@ -240,16 +240,16 @@ def CreateReplayAwaitLoadState
     if is_issue_ctrler_and_await_response_ctrler_same then do
       -- match issue_ctrler_node_pred_on_commit? with
       -- | .some /- issue_ctrler_node_pred_on_commit -/ _ => do
-        four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
+        four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers
       -- | .none =>
-        -- four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers 
+        -- four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers
     else do
       let await_load_ctrler_node := four_nodes.global_perform_load_node
-      let await_load_ctrler ← ctrlers.ctrler_from_name await_load_ctrler_node.ctrler_name 
+      let await_load_ctrler ← ctrlers.ctrler_from_name await_load_ctrler_node.ctrler_name
       let await_load_ctrler_first_state ← await_load_ctrler.init_trans_dest_state
 
       await_load_ctrler_first_state.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block
-      
+
   let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" compare_and_check_wrapped_stmts.to_block
 
   dbg_trace "##Sanity 2"
@@ -443,7 +443,7 @@ def UpdateCommitCtrlerToStartReplayLoad
   -- Use a helper function to search up to the commit label
   -- At the commit label:
   -- 1. Add the start replay msg there
-  -- 2. Take the <commit>'s <stmt> and the <remaining stmts> 
+  -- 2. Take the <commit>'s <stmt> and the <remaining stmts>
   --    to place in a new state called "original_commit_" + state_name
   -- i.e.
   --   if (cond) {}
@@ -548,6 +548,49 @@ def CreateCommitAwaitReplayCompleteState
 -- TODO: not for the 3 LSQs, but for future designs...
 -- def UpdateAwaitCtrlerFirstStateToAwaitReplay
 
+-- Check for a post-commit store controller
+def CDFG.Graph.exists_post_commit_store_ctrler?
+: Graph → Except String (Option CtrlerName)
+| uarch_graph => do
+  -- (1) Get post commit states
+  let commit_node ← uarch_graph.commit_state_ctrler
+  -- these are post-commit states of a store
+  let pc_store_ns_ts ← uarch_graph.reachable_nodes_from_node_up_to_option_node 0 commit_node none store [] none
+  let pc_store_ns := pc_store_ns_ts.1.nodes_to_graph
+
+  -- (2) Check if there are post-commit store states
+  let pc_store_send_n? ← pc_store_ns.store_global_perform_state_ctrler?
+  -- NOTE: May exist a case where we should check the uarch_graph
+  --   for the store-receive node; may not get it from if in separate ctrler, but what design would do this?
+  let pc_store_receive_n? ← pc_store_ns.store_receive_perform_state_ctrler?
+
+  match pc_store_send_n? with
+  | none => pure none -- Return false, if there is no post-commit store send request node
+  | some _ /- pc store send request node -/ =>
+    match pc_store_receive_n? with
+    | none => throw s!"Post Commit Store Check: There's a post-commit store send node, but no post-commit store receive?"
+    | some pc_store_receive_n =>
+      -- (3) Get post-commit store states
+      -- these are post-commit states just within the commit controller
+
+      let post_pc_store_receive_ns_ts ← uarch_graph.reachable_nodes_from_node_up_to_option_node 0 pc_store_receive_n none store [] none
+
+      -- (4) Check if post-commit nodes are predicated on post-commit store post-receive response nodes
+
+      -- (4.a) Could check if post-commit nodes in the commit structure are predicated by the post-commit store
+      let pc_ctrler_ns := (uarch_graph.transitioned_to_states commit_node |>.append [commit_node] |>.eraseDups )
+      -- if pc_ctrler_ns.is_states_pred_by_msg_from_other_states post_pc_store_receive_ns_ts.1 then
+      --   pure pc_store_receive_n.ctrler_name
+      -- else pure none
+
+      -- (4.b) Could also just check if the receive node ctrler's reaching set of states
+      -- reaches back to the commit controller
+      let pc_commit_ctrler_store_receive_ns := post_pc_store_receive_ns_ts.1.filter (pc_ctrler_ns.contains ·)
+      match pc_commit_ctrler_store_receive_ns.filter (·.ctrler_name == commit_node.ctrler_name) with
+      | [] => pure none
+      | _ => pure pc_store_receive_n.ctrler_name
+
+
 open Pipeline in
 def CDFG.Graph.AddLoadReplayToCtrlers
 (graph : Graph) (ctrlers : Ctrlers)
@@ -570,7 +613,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 
   dbg_trace s!"%%LR Get Load Issue Ctrler"
   -- Issue Ctrler / State info
-  let issue_ctrler ← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name 
+  let issue_ctrler ← ctrlers.ctrler_from_name global_perform_load_node.ctrler_name
   let issue_ctrler_type ← issue_ctrler.type
   -- Particularly if the Issue Ctrler's state(s) are predicated on Commit
   dbg_trace s!"%%LR Check if Issue Ctrler is pred by post commit nodes"
@@ -594,7 +637,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   dbg_trace s!"is_issue_ctrler_and_await_response_ctrler_same: ({is_issue_ctrler_and_await_response_ctrler_same})"
 
   /- =================== Await Commit "Start Replay" Msg State ===================== -/
-  -- 
+  --
   dbg_trace s!"$$sanity1"
   let await_replay_start_state : Pipeline.Description := ←
     if is_issue_ctrler_pred_on_commit then do -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
@@ -615,9 +658,9 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   /- =================== New Issue Replay State ===================== -/
   -- Issue the Replay Memory Request
   let new_issue_replay_state ← CreateReplayIssueLoadState is_issue_ctrler_and_await_response_ctrler_same
-    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩  
+    is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
     issue_ctrler_node_pred_on_commit? ctrlers lat_name lat_seq_num_var lat_address_var
-  
+
   dbg_trace s!"new_issue_replay_state: ({new_issue_replay_state})"
 
   dbg_trace s!"$$sanity3"
@@ -671,7 +714,7 @@ def CDFG.Graph.AddLoadReplayToCtrlers
   let ctrlers_with_issue_replay_state : Ctrlers := ←
     if is_issue_ctrler_pred_on_commit then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       -- if issue is pred on commit make the states pointing to commit, to point to the await-replay-start state
-      let states_added_to_ctrler_in_ctrlers := ← 
+      let states_added_to_ctrler_in_ctrlers := ←
         ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
       let ctrler_with_states_trans_to_given_state_updated :=
         states_added_to_ctrler_in_ctrlers.update_ctrler_states_trans_to_specific_state
@@ -750,7 +793,7 @@ def Ctrlers.CDFGLoadReplayTfsm (ctrlers : Ctrlers) (mcm_ordering? : Option MCMOr
 
   dbg_trace s!"$$LR Add LAT"
   let ctrlers' := ctrlers_with_load_replay ++ [lat]
-  
+
   -- (3) Add insert_key(seq_num, address) into LAT
   let (load_req_address, load_req_seq_num) ← perform_load_node.load_req_address_seq_num
 
