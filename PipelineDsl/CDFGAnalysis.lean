@@ -2488,6 +2488,26 @@ def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except St
   global_perform_node!.throw_exception_nesting_msg "Error while finding where the Load Global Perform State is"
 
 -- Added for Load-Replay store fwding check.
+def CDFG.Node.get_perform_store_msg_value_addr_vars (node : Node) : Except String (Identifier × Identifier) := do
+  -- let global_perform_nodes! : Except String (List Node) := do
+    let send_store_msgs ← node.transitions.mapM (do ·.messages.filterM (do ·.is_global_perform_of_type store))
+
+    let send_store_msg ←
+      match send_store_msgs.join.eraseDups with
+      | [msg] => pure msg
+      | _ :: _ =>
+        throw s!"Error when finding the send-store message: found multiple send store msgs."
+      | [] =>
+        throw s!"Error when finding the send-store message: Didn't find any send store msgs."
+
+    let write_var ← send_store_msg.store_req_write_val!?
+    let write_addr ← send_store_msg.store_req_address!?
+
+    match write_var, write_addr with
+    | some w_val, some w_addr => pure (← w_val.var's_identifier, ← w_addr.var's_identifier)
+    | _, _ => do throw s!"Error when getting store msg from node ({node})"
+    -- get the msg's write value, and the phys_addr
+
 def CDFG.Graph.global_perform_node_of_memory_access? (graph : Graph) (inst_type : InstType) : Except String (Option Node) := do
   let global_perform_nodes! : Except String (List Node) := do
     graph.nodes.filterM (do ·.transitions.anyM (do ·.messages.anyM (do ·.is_global_perform_of_type inst_type)))
