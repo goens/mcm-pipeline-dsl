@@ -19,9 +19,9 @@ inductive InEqRel
 deriving Inhabited, BEq
 def InEqRel.toString : InEqRel → String
 | .LT => "<"
-| .LEq => "<="  
+| .LEq => "<="
 | .GT => "<"
-| .GEq => "<="  
+| .GEq => "<="
 | .Eq => "=="
 instance : ToString InEqRel where toString := InEqRel.toString
 
@@ -183,11 +183,38 @@ def Message.args! : Message → Except String (List Expr)
   | _ => do throw "(get args) Message is not a function call"
 
 open Pipeline in
+def Message.store_req_write_val!? : Message → Except String (Option Expr)
+| msg => do
+  match ← msg.is_global_perform_of_type store with
+  | true => do
+    let args ← msg.args!
+    pure args[0]?
+  | false => do throw "Can't get store msg's write val. Message is not a store request"
+
+open Pipeline in
+def Message.store_req_address!? : Message → Except String (Option Expr)
+| msg => do
+  match ← msg.is_global_perform_of_type store with
+  | true => do
+    let args ← msg.args!
+    pure args[1]?
+  | false => do throw "Can't get store msg's addr. Message is not a store request"
+
+open Pipeline in
+def Message.store_req_seq_num!? : Message → Except String (Option Expr)
+| msg => do
+  match ← msg.is_global_perform_of_type store with
+  | true => do
+    let args ← msg.args!
+    pure args[2]?
+  | false => do throw "Can't get store msg's seq_num. Message is not a store request"
+
+open Pipeline in
 def Message.load_req_address!? : Message → Except String (Option Expr)
 | msg => do
   match ← msg.is_global_perform_of_type load with
   | true => do
-    let args ← msg.args! 
+    let args ← msg.args!
     pure args[0]?
   | false => do throw "Message is not a load request"
 
@@ -196,7 +223,7 @@ def Message.load_req_seq_num!? : Message → Except String (Option Expr)
 | msg => do
   match ← msg.is_global_perform_of_type load with
   | true => do
-    let args ← msg.args! 
+    let args ← msg.args!
     pure args[1]?
   | false => do throw "Message is not a load request"
 
@@ -205,7 +232,7 @@ def Message.load_req_address_seq_num!? : Message → Except String (Option (Expr
 | msg => do
   match ← msg.is_global_perform_of_type load with
   | true => do
-    let args ← msg.args! 
+    let args ← msg.args!
     match args[0]?, args[1]? with
     | some addr, some seq_num => do pure (addr, seq_num)
     | _, _ => do pure none
@@ -357,7 +384,7 @@ def Transition.prepend_constraints : Transition → List ConstraintInfo → Tran
 --> finding it each time in a search..
 - Any queue (FIFO) info of this entry
 --> This has a type; set based on
---> 
+-->
 - ctrler this belongs to
 --> get from a func?
 -/
