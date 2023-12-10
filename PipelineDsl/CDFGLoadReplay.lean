@@ -47,6 +47,7 @@ def CreateReplayIssueLoadState
 (ctrlers : Ctrlers)
 (lat_name : CtrlerName)
 (lat_seq_num_var lat_address_var : VarName)
+(post_commit_store_send_node? : Option CDFG.Node)
 : Except String (Pipeline.Description) := do
   -- NOTE: Temporary way to get a "replay" load stmt
   -- Proper way should read the load API usage, and copy any
@@ -105,13 +106,45 @@ def CreateReplayIssueLoadState
   -- NOTE: Must think of way to reset the LAT upon mis-match
   -- Generate some handle block to listen to squash... from the commit node
   -- NOTE: let lat_not_found_error := Statement.error "Couldn't find the lat entry!"
-  let search_for_load_seq_num ← lat_name.unordered_query_match
+  let search_for_load_seq_num : SearchStatement ← lat_name.unordered_query_match
     replay_issue_stmts_blk [].to_block
     [ lat_seq_num_var ] [instruction, seq_num]
 
+  -- ====== Now create the post-commit store ctrler search if one exists ======
+  -- and use search_for_load_seq_num if we find no fwding store.
+  let fwd_check_pc_store :=
+    match post_commit_store_send_node? with
+    | none => search_for_load_seq_num
+    | some pc_st_ctrler_n =>
+      -- TODO load-replay fwding search: -- Try to finish this on Sunday...
+      -- a helper function to search the pc_st_ctrler
+      -- Get the post-commit store send node's write (1) val & (2) addr
+      -- >>> Use this fn to get (1) and (2): get_perform_store_msg_value_addr_vars from CDFGAnalysis.lean
+      -- >>> Generalize the search fun: store_req_address!? in AnalysisHelpers.lean
+      -- Search for:
+      --   (a) an older store (instruction.seq_num > entry.instruction.seq_num)
+      --   (b) with a matching addr..
+      --      (i) need both the Store Ctrler's addr, and the Load Ctrler's addr.
+      --          Must first search the LAT for the load address ( create an addr var to hold this )
+      --          AND then the store controller (check this created local addr var == entry.addr)
+      --   (c) (depending on if the ctrler is unordered) min the constraint
+      -- If there's a matching entry:
+      --   Already got the post-commit store send node's write (1) val & (2) addr
+      --   Use the (1) val to do the replay-verification:
+      --     Will need to take the existing replay-verification code
+      --     and generalize it to accept a value var name as something to compare against..?
+
+      -- >>> The replay-verification code is probably here: CreateReplayAwaitLoadState in this file
+
+      -- If there's no fwding store:
+      --   just use the search_for_load_seq_num statement.
+
+      -- sorry
+      search_for_load_seq_num
+
   let replay_issue_in_listen_handle ←
     four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists
-      search_for_load_seq_num ctrlers
+      fwd_check_pc_store ctrlers
 
   let replay_issue_name := replay_issue_load_to_mem
   let replay_state := Pipeline.Description.state replay_issue_name replay_issue_in_listen_handle.to_block
@@ -550,7 +583,7 @@ def CreateCommitAwaitReplayCompleteState
 
 -- Check for a post-commit store controller
 def CDFG.Graph.exists_post_commit_store_ctrler?
-: Graph → Except String (Option CtrlerName)
+: Graph → Except String (Option Node)
 | uarch_graph => do
   -- (1) Get post commit states
   let commit_node ← uarch_graph.commit_state_ctrler
@@ -588,7 +621,7 @@ def CDFG.Graph.exists_post_commit_store_ctrler?
       let pc_commit_ctrler_store_receive_ns := post_pc_store_receive_ns_ts.1.filter (pc_ctrler_ns.contains ·)
       match pc_commit_ctrler_store_receive_ns.filter (·.ctrler_name == commit_node.ctrler_name) with
       | [] => pure none
-      | _ => pure pc_store_receive_n.ctrler_name
+      | _ => pure pc_store_receive_n
 
 
 open Pipeline in
@@ -656,10 +689,12 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 
   dbg_trace s!"$$sanity2"
   /- =================== New Issue Replay State ===================== -/
+  let post_commit_store_ctrler_name? ← graph.exists_post_commit_store_ctrler?
   -- Issue the Replay Memory Request
   let new_issue_replay_state ← CreateReplayIssueLoadState is_issue_ctrler_and_await_response_ctrler_same
     is_issue_ctrler_pred_on_commit ⟨commit_node, global_perform_load_node, global_complete_load_node, old_load_value_node⟩
     issue_ctrler_node_pred_on_commit? ctrlers lat_name lat_seq_num_var lat_address_var
+    post_commit_store_ctrler_name?
 
   dbg_trace s!"new_issue_replay_state: ({new_issue_replay_state})"
 
