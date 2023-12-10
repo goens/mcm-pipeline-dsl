@@ -73,7 +73,9 @@ def Pipeline.Expr.var's_identifier
     match term with
     | .var ident => pure ident
     | .qualified_var qual_name =>
-      qual_name.idents.first!
+      match qual_name.idents.get? 0 with
+      | some ident => pure ident
+      | none => throw s!"Error: Tried to access qualified var's first element, got nothing?"
     | _ => throw s!"Error: Expected term to be a var or qualified var?"
   | _ => throw s!"Error: Expected expr to be some_term, and that term to be a var or qualified var?"
 
@@ -169,15 +171,15 @@ def Pipeline.Expr.match_expr_from_to_list_upon_match
 (src_exprs : List Expr)
 (dest_exprs : List Expr)
 : Except String (Option Expr) := do
-  let src_dest_translation := ← 
+  let src_dest_translation := ←
     match src_exprs.length == dest_exprs.length with
     | true => do pure $ src_exprs.zip dest_exprs
     | false => do
       throw s!"Error: src_exprs and dest_exprs are not the same length. src_exprs: ({src_exprs}), dest_exprs: ({dest_exprs})"
-  
+
   let dest_translations :=
     src_dest_translation.filter (·.1 == expr)
-  
+
   match dest_translations with
   | [dest_expr] => do pure $ some dest_expr.2
   | [] => do pure none
@@ -309,7 +311,7 @@ def Pipeline.Term.map_var_term_to_dest_var_term
   let expr' := match expr? with
     | some translated_expr => translated_expr
     | none => expr
-  
+
   expr'.term
 
 partial def Pipeline.Expr.map_var_expr_to_dest_var
@@ -317,7 +319,7 @@ partial def Pipeline.Expr.map_var_expr_to_dest_var
 (src_vars : List Expr)
 (dest_vars : List Expr)
 : Except String Expr := do
-  match expr with 
+  match expr with
   | .some_term /- term -/ _ => do
     let mapped? := ← expr.match_expr_from_to_list_upon_match src_vars dest_vars
     match mapped? with
@@ -529,7 +531,7 @@ def filter_lst_of_stmts_for_ordering_asn
 (lst_stmts : List Pipeline.Statement)
 :=
   List.filter (
-    λ stmt => 
+    λ stmt =>
       match stmt with
       -- | Statement.variable_assignment qual_name expr =>
       --   match qual_name with
@@ -548,7 +550,7 @@ def filter_lst_of_stmts_for_ordering_asn
           then true
           else false
       | _ => false
-        
+
   )
   lst_stmts
 
@@ -760,5 +762,3 @@ partial def Pipeline.Statement.get_messages (stmt : Statement) : List Term :=
   | .return_stmt _
   | .stall _
     => []
-
-
