@@ -248,6 +248,13 @@ def NodeTransition.not_complete_transition : NodeTransition → Bool
   | .Reset
   | .Transition => true
 
+def NodeTransition.complete_transition : NodeTransition → Bool
+| (_, transition) =>
+  match transition.trans_type with
+  | .Completion => true
+  | .Reset
+  | .Transition => false
+
 instance : ToString NodeTransition := ⟨NodeTransition.toString⟩
 
 def CDFG.Transitions.not_visited_transitions (transitions : Transitions) (visited_taken : List NodeTransition) /- (src_ctrler_name : CtrlerName) -/ : List Transition :=
@@ -906,7 +913,10 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     let transitions_to_consider : Transitions :=
       match msg'd_trans with
       | none => trans_for_this_inst_type
-      | some transitions => transitions.trans_not_pred_against_inst_type inst_type |>.not_visited_transitions visited_taken
+      | some transitions =>
+        -- dbg_trace s!"Depth ({depth}) msg'd_trans specified; transitions_to_consider: ({transitions})"
+        transitions.trans_not_pred_against_inst_type inst_type |>.not_visited_transitions visited_taken
+    -- dbg_trace s!"Depth ({depth}) transitions_to_consider: ({transitions_to_consider})"
 
     dbg_trace s!"Depth ({depth}) test2"
     let transitions_to_traverse : Transitions :=
@@ -987,35 +997,56 @@ partial def CDFG.Graph.reachable_nodes_from_node_up_to_option_node
     dbg_trace s!"Depth ({depth}) msg'd_nodes: ({msg'd_nodes_unfiltered})"
 
     dbg_trace s!"Depth ({depth}) test6"
+    -- Change for st-fwd load-replay
     let msg'd_non_complete_transitions := msg'd_nodes_unfiltered.filter (·.not_complete_transition)
-    let msg'd_nodes := msg'd_non_complete_transitions.filter (! trans'd_to_visited_taken.contains ·)
+    let msg'd_non_complete_nodes := msg'd_non_complete_transitions.filter (! trans'd_to_visited_taken.contains ·)
+
+    let msg'd_complete_transitions := msg'd_nodes_unfiltered.filter (·.complete_transition)
+    let msg'd_complete_nodes := msg'd_complete_transitions.filter (! trans'd_to_visited_taken.contains ·)
     -- dbg_trace s!"Depth ({depth}) Messaged Nodes: ({msg'd_nodes})"
 
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: visited_taken node/trans: ({visited_taken})"
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans'd visited_taken node/trans: ({trans'd_to_visited_taken})"
 
     let msg'd_trans_visited_taken : List NodeTransition := -- List.eraseDups $
-      trans'd_to_visited_taken ++ msg'd_nodes ++ visited_taken
+      trans'd_to_visited_taken ++ msg'd_non_complete_nodes ++ visited_taken -- Do not add the msg'd_complete_nodes yet, since we will visit them in
+      -- the msg'd_complete_trans var assign below
+
     let msg'd_nodes_after_trans : List Node := List.eraseDups $
-      ← msg'd_nodes.mapM (graph.node_from_name! ·.2.dest_state )
+      ← msg'd_non_complete_nodes.mapM (graph.node_from_name! ·.2.dest_state )
+
+    -- let msg'd_complete_trans_nodes : List NodeTransition := List.eraseDups $
+    --   ← msg'd_non_complete_nodes.mapM (graph.node_from_name! ·.1.dest_state )
+
     -- AZ NOTE: won't carry the visited_taken between ctrlers, leaves the option of re-using ctrlers ope for later
     let msg'd_and_visited : List (List Node × List NodeTransition) :=
       ← msg'd_nodes_after_trans.mapM (do
         graph.reachable_nodes_from_node_up_to_option_node (depth + 1)
           · avoid_node? inst_type msg'd_trans_visited_taken (none) )
+
+    let msg'd_complete_trans : List (List Node × List NodeTransition) :=
+      ← msg'd_complete_nodes.mapM (do
+          let (complete_msg'd_n, complete_msg'd_t) := ·;
+          graph.reachable_nodes_from_node_up_to_option_node (depth + 1)
+            complete_msg'd_n avoid_node? inst_type msg'd_trans_visited_taken (some [complete_msg'd_t]) )
+
     let reachable_nodes_from_msgs : List Node := /- List.eraseDups $ -/ List.join $ msg'd_and_visited.map (·.1)
     let msg'd_visited : List NodeTransition := /- List.eraseDups $ -/ List.join $ msg'd_and_visited.map (·.2)
+
+    let reachable_nodes_from_msg'd_complete_trans : List Node := /- List.eraseDups $ -/ List.join $ msg'd_complete_trans.map (·.1)
+    let msg'd_visited_from_complete_trans: List NodeTransition := /- List.eraseDups $ -/ List.join $ msg'd_complete_trans.map (·.2)
     dbg_trace s!"Depth ({depth}) test7"
 
     dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: trans & compl transitions, inst_type ({inst_type}): ({trans_compls_for_this_inst_type.map (·.if_expr_src_dest)})"
-    dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: msg'd nodes, inst_type ({inst_type}): (current node: ({node.current_state})) msg'd_nodes: ({msg'd_nodes.map (·.toString)})"
+    dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: msg'd nodes, inst_type ({inst_type}): (current node: ({node.current_state})) \n  msg'd_non_complete_nodes: ({msg'd_non_complete_nodes.map (·.toString)}) \n  msg'd_complete_nodes: ({msg'd_complete_nodes.map (·.toString)})"
 
     -- dbg_trace s!"Depth ({depth}) REACHABLE COMPUTATION: msg'd visited_taken node/trans: ({msg'd_visited})"
 
     return (
-      /-List.eraseDups $-/ [node] ++ transition_reachable_nodes ++ reachable_nodes_from_msgs
+      /-List.eraseDups $-/ [node] ++ transition_reachable_nodes ++ reachable_nodes_from_msgs ++ reachable_nodes_from_msg'd_complete_trans
       ,
-      /-List.eraseDups $-/ msg'd_visited ++ msg'd_trans_visited_taken)
+      /-List.eraseDups $-/ msg'd_visited ++ msg'd_visited_from_complete_trans ++ msg'd_trans_visited_taken)
+      -- not necessary to add (msg'd_complete_nodes), they'll be visited in the call that assigns to var msg'd_complete_trans
 
     -- NOTE: If we want to prove termination, show that the graph is a DAG, and that we only visit each node once, so we will eventually terminate
     -- Or show that the transition type doesn't have any cycles
@@ -2487,8 +2518,11 @@ def CDFG.Graph.load_global_perform_state_ctrler (graph : CDFG.Graph) : Except St
 
   global_perform_node!.throw_exception_nesting_msg "Error while finding where the Load Global Perform State is"
 
+abbrev WriteVarIdentifier := Identifier
+abbrev AddrVarIdentifier := Identifier
 -- Added for Load-Replay store fwding check.
-def CDFG.Node.get_perform_store_msg_value_addr_vars (node : Node) : Except String (Identifier × Identifier) := do
+def CDFG.Node.get_perform_store_msg_value_addr_vars (node : Node)
+: Except String (WriteVarIdentifier × AddrVarIdentifier) := do
   -- let global_perform_nodes! : Except String (List Node) := do
     let send_store_msgs ← node.transitions.mapM (do ·.messages.filterM (do ·.is_global_perform_of_type store))
 
