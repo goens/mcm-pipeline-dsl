@@ -27,7 +27,7 @@ open Murϕ
 
 def get_val_decl_stmt_var
 (stmt : Pipeline.Statement)
-:= 
+:=
   match stmt with
   | Statement.value_declaration typed_ident expr =>
   -- | Statement.variable_assignment qual_name expr =>
@@ -48,7 +48,7 @@ def get_val_decl_stmt_var
 
 def get_ordering_from_ctrler_descript
 (ctrler_descript : Description)
-:= 
+:=
   match ctrler_descript with
   | Description.controller ident stmt =>
     match stmt with
@@ -94,7 +94,7 @@ structure ctrler_decl_entry_decl_const_decl where
 ctrler_decl : Decl
 entry_decl : Option Decl -- Decl.type, ID/String TypeExpr.record
 const_decl_lst : List Decl -- Decl.const, ID/String Expr.integerConst
-range_enum_decl : List Decl -- 
+range_enum_decl : List Decl --
 entry_state_decl : Decl
 
 open Murϕ in
@@ -208,7 +208,7 @@ def ast0048_generate_controller_murphi_record
     let murphi_ctrler_record : Murϕ.Decl :=
       Decl.var [ctrl.name] (TypeExpr.record murphi_decls_list)
 
-    -- ===== Gen the ctrler's states     
+    -- ===== Gen the ctrler's states
     let list_of_transition_names : List String :=
       transitions.map λ trans => match trans with
       | Pipeline.Description.state ident _ => ident
@@ -251,7 +251,7 @@ def ast0048_generate_controller_murphi_record
     let ctrler_type :=
       match ctrl.type with
       | .ok c_type => c_type
-      | .error msg => 
+      | .error msg =>
         dbg_trace s!"ERROR getting c_type: {msg}"
         panic! msg
     dbg_trace s!"Getting Ctrler Type in Murphi Translation: Ctrler: ({ctrl.name}), Type: ({ctrler_type})"
@@ -350,7 +350,7 @@ def ast0048_generate_controller_murphi_record
     -- ========== Ctrler Entries Enum =============
     let ctrler_num_entries_range_enum_const_name := (String.join [ctrl.name, "_NUM_ENTRIES_ENUM_CONST"])
     let ctrler_num_entries_range_enum_const :=
-      Decl.const 
+      Decl.const
       ctrler_num_entries_range_enum_const_name
       (Expr.integerConst num_entries_range_enum)
 
@@ -491,7 +491,7 @@ partial def get_only_transitions_recursively
   | Statement.block lst_stmt => List.join (lst_stmt.map get_only_transitions_recursively)
   | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_only_transitions_recursively)
   | Statement.when qname list_idens stmt => get_only_transitions_recursively stmt
-  -- | Statement.listen_handle  => 
+  -- | Statement.listen_handle  =>
   | _ => default
 
 partial def get_complete_transition
@@ -527,10 +527,10 @@ partial def get_complete_transition
   | Statement.block lst_stmt => List.join (lst_stmt.map get_complete_transition)
   | Statement.await _ lst_stmt1 => List.join (lst_stmt1.map get_complete_transition)
   | Statement.when qname list_idens stmt => get_complete_transition stmt
-  -- | Statement.listen_handle  => 
+  -- | Statement.listen_handle  =>
   | _ => default
-    
-def get_init_state_stmts -- use this to get the init state, & translate to 
+
+def get_init_state_stmts -- use this to get the init state, & translate to
 (init_state : String)
 (state_list : List Pipeline.Description)
 : Except String Pipeline.Statement
@@ -598,7 +598,7 @@ def get_init_stmts_without_transition
 
   let init_stmt_without_transition_except : Except String Pipeline.Statement :=
     return_blk_without_transitions init_stmt
-  let init_stmt_without_transition : Pipeline.Statement ← 
+  let init_stmt_without_transition : Pipeline.Statement ←
   match init_stmt_without_transition_except with
   | .ok stmt => pure stmt
   | .error msg =>
@@ -691,7 +691,7 @@ partial def recursive_await_when_stmt_search
             []
       -- AZ NOTE:
       -- just a thought...
-      -- is there any case where there are multiple 
+      -- is there any case where there are multiple
       -- await-when statments for one function call from
       -- another structure?
       -- Maybe if there's an if statement,
@@ -705,17 +705,17 @@ partial def recursive_await_when_stmt_search
         let ret_val :=
         recursive_await_when_stmt_search lst func_name curr_ctrler_name
         ret_val
-      | Statement.conditional_stmt cond => 
+      | Statement.conditional_stmt cond =>
         match cond with
         | Conditional.if_else_statement expr stmt1 stmt2 =>
           let ret_val :=
-          recursive_await_when_stmt_search [stmt1, stmt2] func_name curr_ctrler_name 
+          recursive_await_when_stmt_search [stmt1, stmt2] func_name curr_ctrler_name
           ret_val
         | Conditional.if_statement expr stmt =>
           let ret_val :=
-          recursive_await_when_stmt_search [stmt] func_name curr_ctrler_name 
+          recursive_await_when_stmt_search [stmt] func_name curr_ctrler_name
           ret_val
-      | Statement.listen_handle stmt lst => 
+      | Statement.listen_handle stmt lst =>
         let ret_val :=
         recursive_await_when_stmt_search [stmt] func_name curr_ctrler_name
         ret_val
@@ -734,7 +734,7 @@ partial def find_when_stmt_from_transition
   trans_list.map (
     λ trans =>
       -- get the transition stmts, find stmts
-      -- which 
+      -- which
       match trans with
       | Description.state ident stmt =>
         match stmt with
@@ -993,7 +993,7 @@ end
 --     | h::_ => h
 --     let first_arg_is_older_seq_num_inst :=
 --       match h with
---       | 
+--       |
 --     (qual_name.idents == [ctrler_name,"search"]) &&
 --     (entry.instruction.seq_num < instruction.seq_num)
 --   | _ => false
@@ -1045,7 +1045,7 @@ def Pipeline.Description.stmts_without_transition : Pipeline.Description → Exc
 
 -- def controller_info.init_trans_descript_without_trans (ctrler : controller_info) : Except String Pipeline.Description
 -- := do
---   let 
+--   let
 
 def Pipeline.Statement.init_trans_dest (stmt : Pipeline.Statement) : List Identifier
 := match stmt with
@@ -1064,7 +1064,7 @@ def Pipeline.Description.top_level_dest_name : Pipeline.Description → Except S
 | .state /- ident -/ _ stmt => do
   stmt.block_init_trans_dest
 | _ => throw "Error: Description is not a state"
-  
+
 
 def controller_info.init_trans_dest (ctrler : controller_info)
 : Except String StateName
@@ -1072,7 +1072,7 @@ def controller_info.init_trans_dest (ctrler : controller_info)
   let state_list ← ctrler.state_list
   let init_trans_name ← ctrler.init_trans_name
   let init_trans ← state_list.filterM (λ state => do pure $ (← state.state_name) == init_trans_name)
-  let state ← 
+  let state ←
     match init_trans with
     | [state] => pure state
     | _ => throw s!"Error: Couldn't find matching init state? ({state_list})"
@@ -1171,7 +1171,7 @@ def get_ctrler_state_handle_blocks
   | _ =>
     let msg : String := "Shouldn't have something besides .state type ..."
     throw msg
-  
+
   let state_stmts : List Pipeline.Statement ←
   match state_stmt_blk with
   | .block stmts => pure stmts
@@ -1180,7 +1180,7 @@ def get_ctrler_state_handle_blocks
       "Error opening stmt from state: state should have had a block statement?\n" ++
       s!"State stmt: ({state_stmt_blk})"
     throw msg
-  
+
   let handle_blks : List HandleBlock ←
     get_listen_handle_blks_from_stmts state_stmts
 
@@ -1261,7 +1261,7 @@ def StateOrConstraintToStallOn.stall_condition_expr_from_post_receive_state : St
 | states_or_constraints, ctrler_type, ctrler_name => do
   let no_longer_stall_cond ←
     match states_or_constraints with
-    | Sum.inl ctrler_states => do 
+    | Sum.inl ctrler_states => do
       convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_name
     | Sum.inr ctrler_states_constraint_expr => do
       pure $ ← ExprsToAndTreeExpr ctrler_states_constraint_expr.constraints
@@ -1321,7 +1321,7 @@ def gen_stall_dsl_state
     --  min(instruction.seq_num - entry.instruction.seq_num)
     let search_min : Pipeline.Expr :=
       Pipeline.Expr.some_term (
-        Pipeline.Term.function_call 
+        Pipeline.Term.function_call
         (QualifiedName.mk ["min"])
         [(Pipeline.Expr.sub
           (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "seq_num"]))
@@ -1378,12 +1378,12 @@ def gen_stall_dsl_state
 
     let if_inst_is_of_to_stall_type : Pipeline.Statement :=
       Pipeline.Statement.conditional_stmt $
-        Pipeline.Conditional.if_else_statement 
+        Pipeline.Conditional.if_else_statement
           (Pipeline.Expr.equal (Pipeline.Term.qualified_var (QualifiedName.mk ["instruction", "op"]))
             (Pipeline.Term.const (Const.str_lit (inst_to_stall_type.toMurphiString))))
           await_stmt
           $ Pipeline.Statement.transition original_state_name
-    
+
     let stall_state_stmt : Pipeline.Statement :=
       if original_state's_handleblks.isSome then
         Statement.listen_handle (Statement.block [if_inst_is_of_to_stall_type]) original_state's_handleblks.get!
@@ -1446,28 +1446,28 @@ partial def recursively_find_stmt_with_transition_to_arg
   | Statement.block list_statment =>
     let stmts_with_state_name : List (String × Pipeline.Statement) :=
       list_statment.map (λ stmt => (state, stmt))
-    
+
     let bool_list : List Bool :=
     List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
-    
+
     bool_list
   | Statement.stray_expr _ => []
   | Statement.when _ _ stmt => recursively_find_stmt_with_transition_to_arg (state, stmt)
   | Statement.await (some _) list_stmt =>
     let stmts_with_state_name : List (String × Pipeline.Statement) :=
       list_stmt.map (λ stmt => (state, stmt))
-    
+
     let bool_list : List Bool :=
     List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
-    
+
     bool_list
   | Statement.await none list_stmt =>
     let stmts_with_state_name : List (String × Pipeline.Statement) :=
       list_stmt.map (λ stmt => (state, stmt))
-    
+
     let bool_list : List Bool :=
     List.join ( stmts_with_state_name.map recursively_find_stmt_with_transition_to_arg )
-    
+
     bool_list
   | Statement.listen_handle stmt list_handles =>
     List.join
@@ -1524,7 +1524,7 @@ def get_states_directly_leading_to_given_state
       -- | _ => throw state_descript
       | _ => false
     )
-  
+
   let state_names : List String :=
     List.join (
     states_that_transition_to_state.map ( λ state_descript =>
@@ -1575,7 +1575,7 @@ partial def recursively_find_stmt_and_update_transitions
     else stmt
   -- TODO NOTE: Should count both "reset" & "transition"
   -- but ignore "completion...?"
-  | Statement.reset ident => 
+  | Statement.reset ident =>
     dbg_trace s!"--== BEGIN OLD TRANS NAME: {stmt}"
     dbg_trace s!"--== THE OLD TRANS NAME: {old_name}"
     dbg_trace s!"--== END REPLACEMENT TRANS NAME: {new_name}"
@@ -1588,10 +1588,10 @@ partial def recursively_find_stmt_and_update_transitions
   | Statement.block list_statment =>
     let stmts_with_name_info : List (String × String × Pipeline.Statement) :=
       list_statment.map (λ stmt' => (old_name, new_name, stmt'))
-    
+
     let blk_stmt : Pipeline.Statement :=
     Statement.block ( stmts_with_name_info.map ( recursively_find_stmt_and_update_transitions · inst_type? ) )
-    
+
     blk_stmt
   | Statement.stray_expr _ => stmt
   | Statement.when q_name list_ident stmt' =>
@@ -1601,18 +1601,18 @@ partial def recursively_find_stmt_and_update_transitions
   | Statement.await term' list_stmt =>
     let stmts_with_name_info : List (String × String × Pipeline.Statement) :=
       list_stmt.map (λ stmt' => (old_name, new_name, stmt'))
-    
+
     let await_stmt : Pipeline.Statement :=
     Statement.await term' ( stmts_with_name_info.map ( recursively_find_stmt_and_update_transitions · inst_type? ) )
-    
+
     await_stmt
   -- | Statement.await none list_stmt =>
   --   let stmts_with_name_info : List (String × String × Statement) :=
   --     list_stmt.map (λ stmt' => (old_name, new_name, stmt'))
-    
+
   --   let await_stmt : Statement :=
   --   Statement.await none ( stmts_with_name_info.map recursively_find_stmt_and_update_transitions )
-    
+
   --   await_stmt
   | Statement.listen_handle stmt' list_handles =>
     Statement.listen_handle (recursively_find_stmt_and_update_transitions (old_name, new_name, stmt') inst_type?)
@@ -1751,7 +1751,7 @@ def AddNodeAndUpdateCtrler
 
   let new_state_machine_with_stall_state : List Description :=
     updated_state_list_transition_to_stall_state ++ [new_state]
-  
+
   let new_ctrler : controller_info := ctrler.update_my_state_list new_state_machine_with_stall_state
 
   pure new_ctrler
@@ -1761,9 +1761,9 @@ def UpdateCtrlerWithNode
 : Except String (List controller_info) := do
   ctrlers.mapM (λ ctrler => do
     if ctrler.name == ctrler_name then (AddNodeAndUpdateCtrler ctrler new_state_name new_state old_state_name inst_type?)
-    else pure ctrler) 
+    else pure ctrler)
 
-def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Identifier × List Pipeline.Expr) 
+def Pipeline.Term.func_idents_args : Pipeline.Term → Except String (List Identifier × List Pipeline.Expr)
 | term => do
   match term with
   | .function_call qual_name arg_exprs => do
@@ -1824,7 +1824,7 @@ def ZipWithList (list : List (α : Type)) (thing : (β : Type)) : List (α × β
 --   let states ← ctrler.state_list
 --   -- get states with await stmt with when stmt
 --   -- check if when stmt awaits a msg of msg_name from ctrler_name
---   let states_awaiting_msg ← states.filter (·.when_stmt_awaiting_msg_ctrler_name msg_name ctrler_name) 
+--   let states_awaiting_msg ← states.filter (·.when_stmt_awaiting_msg_ctrler_name msg_name ctrler_name)
 --   -- if so, return state name
 --   -- Should also check we only found 1 match.
 --   default
@@ -1909,22 +1909,22 @@ def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Descr
     if H : stmts.length = 1 then
       have hyp : 0 < stmts.length := by simp[H]
       let stmt := stmts[0]'hyp
-  
+
       match stmt with
       | .await none await_stmts =>
         pure
-        $ Pipeline.Description.state state_name 
+        $ Pipeline.Description.state state_name
         $ (Pipeline.Statement.await none $ await_stmts ++ [stmt_to_append]).to_block
       | .listen_handle listen_stmt handle_blks =>
         let stmts' ← listen_stmt.stmt_block
         if H' : stmts'.length = 1 then
           have hyp' : 0 < stmts'.length := by simp[H']
           let stmt' := stmts'[0]
-          
+
           match stmt' with
           | .await none await_stmts' =>
             pure
-            $ Pipeline.Description.state state_name 
+            $ Pipeline.Description.state state_name
             $ (Pipeline.Statement.listen_handle (Pipeline.Statement.await none $ await_stmts' ++ [stmt_to_append]) handle_blks).to_block
           | _ => throw "Error: Expected to find 'await' stmt within a listen_handle ({stmt'})"
         else
@@ -1936,7 +1936,7 @@ def Pipeline.Description.append_when_case_to_state's_await_stmt : Pipeline.Descr
       let msg : String := s!"Error: State's stmt block has more than one stmt ({stmts}), expected only 1, await or listen_handle"
       throw msg
   | _ => throw "Error: Pipeline Description is not a 'state'"
-  
+
 def controller_info.state_from_name : Ctrler → StateName → Except String Pipeline.Description
 | ctrler, match_state_name => do
   let states : List Pipeline.Description := ← ctrler.state_list;
@@ -2033,7 +2033,7 @@ def Pipeline.Statement.replace_listen_handle_stmts (stmt : Pipeline.Statement) (
   match stmt with
   | .listen_handle /-stmt-/ _ handle_blks => pure $ Pipeline.Statement.listen_handle replacement_stmts.to_block handle_blks
   | _ => throw "Error while replacing a listen handle stmt's block: input stmt is not a listen statement"
-  
+
 def List.has_listen_handle? (stmts : List Pipeline.Statement) : Option Pipeline.Statement := do
   match stmts with
   | [stmt] => do
@@ -2050,7 +2050,7 @@ def Pipeline.Description.listen_handle_stmt? (state : Pipeline.Description) : Ex
   pure stmts.has_listen_handle?
 
 def Pipeline.Description.wrap_stmt_with_node's_listen_handle_if_exists (state : Pipeline.Description) (stmt : Pipeline.Statement) : Except String Pipeline.Statement := do
-  let listen_handle? ← state.listen_handle_stmt? 
+  let listen_handle? ← state.listen_handle_stmt?
   match listen_handle? with
   | none => do pure stmt
   | some listen_handle => do listen_handle.replace_listen_handle_stmts [stmt]
@@ -2232,7 +2232,7 @@ def Pipeline.Statement.labelled_stmt's_stmt (labelled_stmt : Pipeline.Statement)
 def Ctrler.update_ctrler_basic_and_reset_transitions
 (ctrler : Ctrler) (prev_trans_to_state : StateName) (replacement_state_name : StateName) (inst_type? : Option InstType)
 : Except String Ctrler := do
-  let all_states : List Description ← ctrler.state_list 
+  let all_states : List Description ← ctrler.state_list
   let states_transitioning_to_state_to_stall : List StateName :=
     get_states_directly_leading_to_given_state (prev_trans_to_state, all_states)
   let new_states_trans_to_new_state_name := update_state_transitions_matching_name_to_replacement_name prev_trans_to_state replacement_state_name states_transitioning_to_state_to_stall all_states inst_type?
@@ -2246,12 +2246,12 @@ def Ctrlers.update_ctrler_states_trans_to_specific_state (ctrlers : Ctrlers) (ct
   let ctrler ← ctrlers.ctrler_from_name ctrler_name
   let updated_ctrler ← ctrler.update_ctrler_basic_and_reset_transitions prev_trans_to_state replacement_state_name inst_type?
   ctrlers.update_ctrler updated_ctrler
-  
+
 def controller_info.init_trans_dest_state (ctrler : controller_info)
 : Except String Pipeline.Description
 := do
-  let init_trans_dest : StateName ← ctrler.init_trans_dest 
-  ctrler.state_from_name init_trans_dest   
+  let init_trans_dest : StateName ← ctrler.init_trans_dest
+  ctrler.state_from_name init_trans_dest
 
 def List.isNotEmpty (list : List α) : Bool :=
   match list with
@@ -2267,7 +2267,7 @@ def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state :
   let not_completed_false := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
 
   let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
-  let ctrler_type ← ctrler.type 
+  let ctrler_type ← ctrler.type
   let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_states.ctrler
   let if_not_completed := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr not_completed_true not_completed_false)
 
@@ -2277,15 +2277,16 @@ def CtrlerStates.to_if_state_check (ctrler_states : CtrlerStates) (if_at_state :
 def CtrlerStates.to_if_state_then_do
 (ctrler_states : CtrlerStates)
 (when_success_stmts : List Pipeline.Statement)
+(when_fail_stmts : List Pipeline.Statement)
 (ctrlers : Ctrlers)
 : Except String (Pipeline.Statement) := do
   -- let not_completed_true := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "true" )))
   -- let not_completed_false := Pipeline.Statement.variable_assignment [if_at_state].to_qual_name (Pipeline.Expr.some_term (Pipeline.Term.const (Pipeline.Const.str_lit "false" )))
 
   let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
-  let ctrler_type ← ctrler.type 
+  let ctrler_type ← ctrler.type
   let state_check_expr := ← convert_state_names_to_dsl_or_tree_state_check ctrler_states.states ctrler_type ctrler_states.ctrler
-  let if_on_state := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr when_success_stmts.to_block [].to_block)
+  let if_on_state := Pipeline.Statement.conditional_stmt (Pipeline.Conditional.if_else_statement state_check_expr when_success_stmts.to_block when_fail_stmts.to_block)
 
   pure if_on_state
 
@@ -2302,6 +2303,7 @@ def CtrlerName.FIFOOlderInstSearch
 (dest_ctrler_name : CtrlerName)
 (stall_on_inst_type : InstType)
 (success_case_stmts : List Pipeline.Statement)
+(fail_case_stmts : List Pipeline.Statement)
 (search_api : MsgName)
 : Pipeline.Statement :=
   -- await LQ.tail_search(entry.instruction.seq_num < instruction.seq_num) {
@@ -2312,7 +2314,7 @@ def CtrlerName.FIFOOlderInstSearch
   --     ld_seq_num = instruction.seq_num
   --   }
   -- }
-  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] fail_case_stmts.to_block
   let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
 
   let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
@@ -2333,13 +2335,14 @@ def CtrlerName.UnorderedOlderInstSearch
 (dest_ctrler_name : CtrlerName)
 (stall_on_inst_type : InstType)
 (success_case_stmts : List Pipeline.Statement)
+(fail_case_stmts : List Pipeline.Statement)
 (search_api : MsgName)
 (current_ctrler_seq_num : List Identifier)
 : Pipeline.Statement :=
   -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
   -- when search_fail() from SB
   -- when search_success(write_value) from SB
-  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] [].to_block
+  let when_search_fail := when_stmt [dest_ctrler_name, search_fail].to_qual_name [] fail_case_stmts.to_block
   let when_search_success := when_stmt [dest_ctrler_name, search_success].to_qual_name [] success_case_stmts.to_block
 
   let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
@@ -2438,7 +2441,7 @@ def CtrlerStates.query_older_insts
         (qualified_var [instruction, seq_num].to_qual_name)
 
     let entry_is_stall_type_and_valid := binand entry_is_stall_type.to_term entry_seq_num_valid.to_term
-  
+
     pure $ conditional_stmt $
       if_else_statement
         entry_is_stall_type_and_valid
@@ -2447,12 +2450,187 @@ def CtrlerStates.query_older_insts
   | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
   -- TODO: replace default. add helper to create search API with stmts in it
     if let some search_api := search_type.search_api ctrler_type then
-      pure $ ctrler_states.ctrler.FIFOOlderInstSearch stall_on_inst_type [if_stmt] search_api
+      pure $ ctrler_states.ctrler.FIFOOlderInstSearch stall_on_inst_type [if_stmt] [] search_api
     else
       throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
   | .Unordered =>
     if let some search_api := search_type.search_api ctrler_type then
-      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] search_api current_ctrler_seq_num
+      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] [] search_api current_ctrler_seq_num
+    else
+      throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
+
+open Pipeline in
+def InstructionEntryIsOlder
+(ctrler_name : Identifier)
+(ct : CtrlerType)
+: Pipeline.Expr :=
+  let dest_ctrler_ref : Identifier :=
+    match ct with
+    | .BasicCtrler => ctrler_name
+    | .FIFO | .Unordered => entry
+  less_than
+    (qualified_var [dest_ctrler_ref, instruction, seq_num].to_qual_name)
+    (qualified_var [instruction, seq_num].to_qual_name)
+
+open Pipeline in
+def CtrlerEntryFieldMatches
+(ctrler_name : Identifier)
+(ct : CtrlerType)
+(this_field : List Identifier) -- can be single id too.
+(ctrler_field : List Identifier) -- ensure single id is translated properly
+: Except String Pipeline.Expr := do
+  let dest_ctrler_ref : Identifier :=
+    match ct with
+    | .BasicCtrler => ctrler_name
+    | .FIFO | .Unordered => entry
+  pure $
+    equal
+      (← ids_to_var_term this_field)
+      (← (ids_to_var_term <| [dest_ctrler_ref] ++ ctrler_field))
+
+open Pipeline in
+def CtrlerEntryIsStore
+(ctrler_name : Identifier)
+(ct : CtrlerType)
+-- (this_field : List Identifier) -- can be single id too.
+-- (ctrler_field : List Identifier) -- ensure single id is translated properly
+: Except String Pipeline.Expr := do
+  let dest_ctrler_ref : Identifier :=
+    match ct with
+    | .BasicCtrler => ctrler_name
+    | .FIFO | .Unordered => entry
+  pure $
+    or_expr
+      (expr_term $ equal
+        (← ids_to_var_term [dest_ctrler_ref, instruction, op])
+        (← ids_to_var_term [store.toMurphiString]))
+      (expr_term $ equal
+        (← ids_to_var_term [dest_ctrler_ref, instruction, op])
+        (← ids_to_var_term [stlr.toMurphiString]))
+
+def MinDifferenceBetween
+-- (ctrler_name : Identifier)
+-- (ct : CtrlerType)
+(larger_num_field : List Identifier) -- can be single id too.
+(smaller_num_field : List Identifier) -- ensure single id is translated properly
+(larger_or_smaller_is_entry : Bool)
+: Except String Pipeline.Expr := do
+  let larger_prefix : List Identifier :=
+    if larger_or_smaller_is_entry then [entry]
+    else []
+  let larger_field_term ← ids_to_var_term (larger_prefix ++ larger_num_field)
+
+  let smaller_prefix : List Identifier :=
+    if !larger_or_smaller_is_entry then [entry]
+    else []
+  let smaller_field_term ← ids_to_var_term (smaller_prefix ++ smaller_num_field)
+
+  -- let entry_inst := (qualified_var [entry, instruction, seq_num].to_qual_name)
+  -- let curr_ctrler_inst := (qualified_var current_ctrler_seq_num.to_qual_name)
+
+  let inst_and_entry_inst_seq_num_diff := sub larger_field_term smaller_field_term
+  let min_of_diff : Pipeline.Expr := some_term $ function_call [(min : Identifier)].to_qual_name [inst_and_entry_inst_seq_num_diff]
+  pure min_of_diff
+
+def AndExprs (exprs : List Pipeline.Expr) : Except String Pipeline.Expr := do
+  match exprs with
+  | [] => throw "AndExprs: empty list"
+  | [one] => pure one
+  | exp :: rest_exp => pure $ rest_exp.foldl ( λ acc an_expr => binand (expr_term acc) (expr_term an_expr) ) exp
+
+def UnorderedSearch
+(dest_c_name : CtrlerName)
+(cond_e : Pipeline.Expr)
+(min_constraint? : Option Pipeline.Expr)
+(success_case_stmts : Pipeline.Statement)
+(fail_case_stmts : Pipeline.Statement)
+-- (search_api : MsgName)
+-- (current_ctrler_seq_num : List Identifier)
+: Pipeline.Statement :=
+  -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
+  -- when search_fail() from SB
+  -- when search_success(write_value) from SB
+  let when_search_fail := when_stmt [dest_c_name, search_fail].to_qual_name [] fail_case_stmts.to_block
+  let when_search_success := when_stmt [dest_c_name, search_success].to_qual_name [] success_case_stmts.to_block
+
+  let min_constraint :=
+    match min_constraint? with
+    | none => []
+    | some min_constraint => [min_constraint]
+  -- let min_of_diff : Pipeline.Expr := some_term $ function_call [(min : Identifier)].to_qual_name [inst_and_entry_inst_seq_num_diff]
+
+  -- AZ NOTE: min_of_diff may not be necessary...
+  let search_api_term : Pipeline.Term :=
+    function_call [dest_c_name, search /- search_api -/].to_qual_name ([cond_e] ++ min_constraint)
+  let search_api := await (some search_api_term) [when_search_success, when_search_fail]
+  search_api
+
+open Pipeline in
+def QueryCtrlerWithConstraints
+(cond_e : Pipeline.Expr)
+(unordered_constraint_e? : Option Pipeline.Expr)
+(if_found_stmt : Pipeline.Statement)
+(else_nfound_stmt : Pipeline.Statement)
+-- (ctrlers : Ctrlers)
+(dest_c_type : CtrlerType)
+(dest_c_name : CtrlerName)
+: Except String SearchStatement := do
+  -- let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error (gen query for ctrler/states) trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
+  -- let ctrler_type ← ctrler.type
+  match dest_c_type with
+  | .BasicCtrler =>
+
+    pure $ conditional_stmt $
+      if_else_statement
+        cond_e
+        if_found_stmt
+        else_nfound_stmt
+  | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
+    -- FIFOSearch cond_e if_found_stmt else_nfound_stmt
+    pure $ UnorderedSearch dest_c_name cond_e unordered_constraint_e? if_found_stmt else_nfound_stmt
+  | .Unordered =>
+    pure $ UnorderedSearch dest_c_name cond_e unordered_constraint_e? if_found_stmt else_nfound_stmt
+
+open Pipeline in
+def CtrlerStates.query_insts_with_constraints
+(ctrler_states : CtrlerStates)
+(stall_on_inst_type : InstType)
+-- (original_state_name : StateName)
+(if_stmt : Pipeline.Statement)
+(else_stmt : Pipeline.Statement)
+(ctrlers : Ctrlers)
+(search_type : SearchType)
+(current_ctrler_seq_num : List Identifier)
+: Except String SearchStatement := do
+  let ctrler ← ctrlers.ctrler_from_name ctrler_states.ctrler |>.throw_exception_nesting_msg s!"Error (gen query for ctrler/states) trying to get ctrler: ({ctrler_states.ctrler}) from Ctrlers ({ctrlers.map (·.name)})"
+  let ctrler_type ← ctrler.type
+  match ctrler_type with
+  | .BasicCtrler =>
+    let entry_inst_type := (qualified_var [ctrler_states.ctrler, instruction, op].to_qual_name)
+    let stall_inst_type := stall_on_inst_type.to_const_term
+    let entry_is_stall_type := equal entry_inst_type stall_inst_type
+
+    let entry_seq_num_valid :=
+      less_than
+        (qualified_var [ctrler_states.ctrler, instruction, seq_num].to_qual_name)
+        (qualified_var [instruction, seq_num].to_qual_name)
+
+    let entry_is_stall_type_and_valid := binand entry_is_stall_type.to_term entry_seq_num_valid.to_term
+
+    pure $ conditional_stmt $
+      if_else_statement
+        entry_is_stall_type_and_valid
+        if_stmt
+        else_stmt
+  | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
+  -- TODO: replace default. add helper to create search API with stmts in it
+    if let some search_api := search_type.search_api ctrler_type then
+      pure $ ctrler_states.ctrler.FIFOOlderInstSearch stall_on_inst_type [if_stmt] [] search_api
+    else
+      throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
+  | .Unordered =>
+    if let some search_api := search_type.search_api ctrler_type then
+      pure $ ctrler_states.ctrler.UnorderedOlderInstSearch stall_on_inst_type [if_stmt] [] search_api current_ctrler_seq_num
     else
       throw s!"Error (gen query for ctrler/states) trying to get search API for ctrler type: ({ctrler_type})"
 
@@ -2496,7 +2674,7 @@ def List.to_expr (var_names : List VarName) : Except String Pipeline.Expr :=
     let tail_term := expr_term tail_expr
 
     -- OR the two terms
-    let var_or_tree := or_expr var_term' tail_term 
+    let var_or_tree := or_expr var_term' tail_term
     pure var_or_tree
   | [] => throw s!"Error converting list of var names to expr: Empty list passed"
 
@@ -2517,7 +2695,7 @@ def List.to_queries
       |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
     gen_checks
     )
-  pure decl_search_var 
+  pure decl_search_var
 
 def List.to_query_result (vars : List VarName) : Except String (BoolDecl × Pipeline.Statement) := do
   -- logic OR the results
@@ -2672,7 +2850,7 @@ def List.to_query_match_do
       let states := ·;
 
       let if_on_state_do := ←
-        CtrlerStates.to_if_state_then_do states when_success_stmts ctrlers
+        CtrlerStates.to_if_state_then_do states when_success_stmts [] ctrlers
 
       CtrlerStates.query_older_insts
         states
@@ -2686,7 +2864,7 @@ def List.to_query_match_do
       |>.throw_exception_nesting_msg s!"Error converting ctrlerstates to queries"
     gen_checks
     )
-  pure decl_search_var 
+  pure decl_search_var
 
 def QueryAll
 (ctrler_states_list : List (List CtrlerStates × InstType))
@@ -2729,4 +2907,3 @@ def Pipeline.Statement.when_stmt_arguments
 (when_stmt : Pipeline.Statement)
 : Except String (List Identifier) := do
   (get_when_stmt_src_args when_stmt)
-  
