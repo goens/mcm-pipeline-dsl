@@ -152,6 +152,12 @@ def qual_var_expr (var_name : List Identifier) : Pipeline.Expr :=
 def qual_var_term (var_name : List Identifier) : Pipeline.Term :=
  Pipeline.Term.qualified_var var_name.to_qual_name
 
+def ids_to_var_term (var_name : List Identifier) : Except String Pipeline.Term :=
+  match var_name with
+  | [one] => pure $ Pipeline.Term.var one
+  | _ :: _ => pure $ qual_var_term var_name
+  | [] => throw s!"Error: passed empty list of Idenifiers to convert to DSL Expr."
+
 def var_asn_var (var1 : List String) (var2 : String) : Statement :=
   variable_assignment var1.to_qual_name <| var_expr var2
 
