@@ -38,6 +38,155 @@ def StartReplayAwaitMsgName (await_ctrler_name : CtrlerName) : String :=
 
 def replay_issue_load_to_mem := "replay_issue_load_to_mem"
 
+def GenAwaitReplayLoadStmts (ctrlers : Ctrlers) (four_nodes : CommitIssueAwaitValueStmtNodes)
+: Except String (List Pipeline.Statement) := do
+  let await_load_resp_ctrler : Ctrler ← ctrlers.ctrler_from_name four_nodes.global_perform_load_node.ctrler_name
+  let await_ctrler_type ← await_load_resp_ctrler.type
+  let additional_stmts ← match await_ctrler_type with
+    | .Unordered => pure [CreateDSLFuncCallStmt remove []]
+    | .BasicCtrler => pure []
+    | .FIFO => throw "Error while adding await Replay response: FIFO not supported. Due to head & tail ptrs"
+  pure additional_stmts
+
+open Pipeline in
+def CreateReplayVerifyCheckAndSquash
+(is_issue_ctrler_and_await_response_ctrler_same : Bool)
+(is_issue_ctrler_pred_on_commit : Bool)
+(four_nodes : CommitIssueAwaitValueStmtNodes)
+(issue_ctrler_node_pred_on_commit? : Option CDFG.Node)
+(ctrlers : Ctrlers)
+(lat_name : CtrlerName)
+(replay_value_var : VarName) -- from replay or fwding store
+: Except String (List Statement) := do
+  -- ===== required stmts: =====
+  -- 1. await the load response
+  -- Just simply use an await stmt for now
+  -- Should try to copy the original await stmt and handling code
+
+  -- 2. read the old value that was marked
+  -- look at the old value stmt, if it's from the reg file, then read from the reg file
+  -- if it's from a state var, then this is hard to say... maybe we read from the start var
+  let old_load_value_decl : Statement := Statement.variable_declaration (TypedIdentifier.mk u32 old_load_value)
+  let old_load_value_stmt : Statement ←
+    four_nodes.old_load_value_node.stmts_to_read_the_old_value old_load_value
+
+  -- 3. compare, handle 2 cases
+  --   a. old val == new val: no extra stmts
+  --   b. old val != new val: write to where the value is stored
+  --   NOTE: This may be more complicated, if the user marks a state var assignment, but
+  --   the real place to write to is the register file...
+
+  -- Stmts to
+  -- (a) write the correct replay value to the result write location
+  -- (b) send squash msg to the commit ctrler
+
+  -- 3.(a)
+  let write_correct_replay_value ←
+    four_nodes.old_load_value_node.stmts_to_write_replay_value_to_result_write_location replay_value_var
+
+  let violating_seq_num_decl_assign := CreateDSLDeclAssignExpr seq_num violating_seq_num $ ← inst_seq_num_expr
+  -- 3.(b)
+  -- let commit_ctrler_squash := CreateDSLMsgCall four_nodes.commit_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
+  let squash_lat_msg := CreateDSLMsgCall lat_name squash [violating_seq_num.to_dsl_var_expr]
+  -- AZ NOTE: Need some kind of fix here, make the load controller squash the load without too much human intervention
+  -- let load_ctrler_squash := CreateDSLMsgCall four_nodes.global_complete_load_node.ctrler_name squash [violating_seq_num.to_dsl_var_expr]
+
+  -- the if cond: old_val != replay_val
+  let old_val_not_equal_replay_val_expr : Pipeline.Expr := CreateDSLBoolNotEqualExpr old_load_value replay_value_var
+  -- the stmts
+  let if_old_not_equal_replay_stmts :=
+    Pipeline.Statement.block [write_correct_replay_value, violating_seq_num_decl_assign, squash_lat_msg /-, commit_ctrler_squash, load_ctrler_squash-/ ]
+
+  -- the if stmt to handle the mispeculated case
+  let if_old_not_equal_replay_expr := CreateDSLIfStmt old_val_not_equal_replay_val_expr if_old_not_equal_replay_stmts
+
+  -- 5. ===== Then handle the transition at the end =====
+  dbg_trace s!"%%St-Fwd LR transition 0"
+  let (complete_stmt, additional_stmts) : Pipeline.Statement × (List Pipeline.Statement) := ←
+    if is_issue_ctrler_and_await_response_ctrler_same && is_issue_ctrler_pred_on_commit then do
+      -- transition to the issue load's state that's pred on commit
+      if let some issue_ctrler_node_pred_on_commit := issue_ctrler_node_pred_on_commit? then do
+        let issue_ctrler_state_that's_pred_on_commit := issue_ctrler_node_pred_on_commit.current_state
+        let transition_to_issue_ctrler_state := Pipeline.Statement.transition issue_ctrler_state_that's_pred_on_commit
+
+        dbg_trace s!"%%St-Fwd LR transition 1: transition_to_issue_ctrler_state: ({transition_to_issue_ctrler_state})"
+        pure (transition_to_issue_ctrler_state, [])
+      else do
+        throw "Error, issue ctrler node should be available.."
+    else if is_issue_ctrler_and_await_response_ctrler_same then do
+      -- transition to the (issue load / await response) ctrler's first state
+      let compl_to_first_state ← ctrlers.complete_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+
+      -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
+      let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
+
+      dbg_trace s!"%%St-Fwd LR transition 2: compl_to_first_state: ({compl_to_first_state})"
+      pure (compl_to_first_state, additional_stmts)
+    else do
+      -- TODO: handle case of issue ctrler != await response ctrler; should msg the ctrler?
+
+      throw s!"Error: not handling the case of 'issue ctrler' != 'await response ctrler' yet, in Replay St-Fwding check."
+      -- -- transition to the await load ctrler's first state
+      -- let compl_to_first_state ← ctrlers.complete_to_ctrler's_first_state_stmt four_nodes.global_perform_load_node.ctrler_name
+
+      -- -- add a remove() func_call if the ctrler is a queue, don't for basic ctrlers, error for FIFOs
+      -- let additional_stmts ← GenAwaitReplayLoadStmts ctrlers four_nodes
+
+      -- pure (compl_to_first_state, additional_stmts)
+
+  -- 4. signal to ROB that replay is complete
+  let replay_complete_func_call_msg := CreateDSLMsgCall four_nodes.commit_node.ctrler_name replay_complete_msg_to_commit []
+  let commit_ctrler ← ctrlers.ctrler_from_name four_nodes.commit_node.ctrler_name
+  let replay_complete_msg ← commit_ctrler.queue_search_api_to_send_msg replay_complete_func_call_msg (additional_stmts ++ [complete_stmt])
+
+
+  -- Combined from 2. 3. & 4.
+  -- NOTE: We add 2. here, but if the ctrler with the old value isn't a "reg_file.read(dest_reg)"
+  -- then it's a queue, and we access a queue with a search API where we need to be in scope
+  -- But that case is not handled yet..
+
+  let check_mispeculation_and_replay_complete_stmts := -- Pipeline.Statement.block $
+    [old_load_value_decl, old_load_value_stmt, if_old_not_equal_replay_expr, replay_complete_msg]
+
+  pure check_mispeculation_and_replay_complete_stmts
+
+  -- -- from 1.
+  -- -- let when_load_response_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name [] check_mispeculation_and_replay_complete_stmts
+  -- let trans_to_compare_and_squash := Pipeline.Statement.transition "replay_compare_and_check_state"
+  -- let when_load_response_stmt := Pipeline.Statement.when [memory_interface, load_completed].to_qual_name [] trans_to_compare_and_squash.to_block
+  -- -- All of the await-replay-load stmts
+  -- let await_load_response := Pipeline.Statement.await none [when_load_response_stmt]
+
+  -- -- The name of the new await replay state
+  -- let await_replay_state_name := ReplayAwaitStateName four_nodes.global_complete_load_node
+
+  -- let listen_handle_wrapped_await_replay ← four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists await_load_response.to_block ctrlers
+
+  -- -- Return: The await replay state.
+  -- let await_replay_state := Pipeline.Description.state await_replay_state_name listen_handle_wrapped_await_replay.to_block
+
+  -- let compare_and_check_wrapped_stmts : Pipeline.Statement ←
+  --   if is_issue_ctrler_and_await_response_ctrler_same then do
+  --     -- match issue_ctrler_node_pred_on_commit? with
+  --     -- | .some /- issue_ctrler_node_pred_on_commit -/ _ => do
+  --       four_nodes.global_complete_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers
+  --     -- | .none =>
+  --       -- four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block ctrlers
+  --   else do
+  --     let await_load_ctrler_node := four_nodes.global_perform_load_node
+  --     let await_load_ctrler ← ctrlers.ctrler_from_name await_load_ctrler_node.ctrler_name
+  --     let await_load_ctrler_first_state ← await_load_ctrler.init_trans_dest_state
+
+  --     await_load_ctrler_first_state.wrap_stmt_with_node's_listen_handle_if_exists check_mispeculation_and_replay_complete_stmts.to_block
+
+  -- let compare_and_check_state := Pipeline.Description.state "replay_compare_and_check_state" compare_and_check_wrapped_stmts.to_block
+
+  -- dbg_trace "##Sanity 2"
+  -- return (await_replay_state, compare_and_check_state)
+  -- default
+  -- sorry
+
+open Pipeline in
 def CreateReplayIssueLoadState
 (is_issue_ctrler_and_await_response_ctrler_same : Bool)
 (is_issue_ctrler_pred_on_commit : Bool)
@@ -101,26 +250,22 @@ def CreateReplayIssueLoadState
 
   -- TODO: Generate the seq_num, either check if this ctrler has an instruction state_var, if it does, use it!
   -- Or make an assumption that the commit ctrler has the instruction
-  let replay_issue_stmts_blk := Pipeline.Statement.block ([replay_load_stmt] ++ additional_stmts ++ [transition_stmt])
-  -- then replace replay_issue_stmts_blk with search_for_load_seq_num
-  -- NOTE: Must think of way to reset the LAT upon mis-match
-  -- Generate some handle block to listen to squash... from the commit node
-  -- NOTE: let lat_not_found_error := Statement.error "Couldn't find the lat entry!"
-  let search_for_load_seq_num : SearchStatement ← lat_name.unordered_query_match
-    replay_issue_stmts_blk [].to_block
-    [ lat_seq_num_var ] [instruction, seq_num]
+  let replay_issue_stmts_blk := ([replay_load_stmt] ++ additional_stmts ++ [transition_stmt])
 
   -- ====== Now create the post-commit store ctrler search if one exists ======
   -- and use search_for_load_seq_num if we find no fwding store.
-  let fwd_check_pc_store :=
+  let fwd_check_pc_store_or_replay : Statement ←
     match post_commit_store_send_node? with
-    | none => search_for_load_seq_num
-    | some pc_st_ctrler_n =>
+    | none => pure replay_issue_stmts_blk.to_block -- no post-commit st ctrler? then just replay the load
+    | some pc_st_ctrler_n => do -- there's a post-commit store ctrler. Check if there's a fwding store
+      dbg_trace s!"%%St-Fwd LR 5: going to add the fwding check, pc_st_ctrler_n: ({pc_st_ctrler_n})"
       -- TODO load-replay fwding search: -- Try to finish this on Sunday...
       -- a helper function to search the pc_st_ctrler
-      -- Get the post-commit store send node's write (1) val & (2) addr
+      -- Get the post-commit store send node's write (1) val & (2) addr, variable Identifiers
       -- >>> Use this fn to get (1) and (2): get_perform_store_msg_value_addr_vars from CDFGAnalysis.lean
-      -- >>> Generalize the search fun: store_req_address!? in AnalysisHelpers.lean
+      let (w_val_id, addr_val_id) ← pc_st_ctrler_n.get_perform_store_msg_value_addr_vars
+      -- >>> Generalize the search fun: CtrlerStates.query_older_insts in AnalysisHelpers.lean
+
       -- Search for:
       --   (a) an older store (instruction.seq_num > entry.instruction.seq_num)
       --   (b) with a matching addr..
@@ -128,38 +273,100 @@ def CreateReplayIssueLoadState
       --          Must first search the LAT for the load address ( create an addr var to hold this )
       --          AND then the store controller (check this created local addr var == entry.addr)
       --   (c) (depending on if the ctrler is unordered) min the constraint
+      let def_load_addr_name := "replay_load_addr_var"
+      -- Stmt.1
+      let def_lat_addr_var_stmt := Statement.variable_declaration (TypedIdentifier.mk address def_load_addr_name)
+      -- Stmt.2
+      let get_lat_load_addr_stmt := AssignSrcToDestVar def_load_addr_name entry's_lat_addr_var -- NOTE: This is the load's addr
+
+      let pc_st_c_type ← ctrlers.ctrler_from_name pc_st_ctrler_n.ctrler_name >>= (·.type)
+      -- pc-st-ctrler.Cond.1 -- store is older
+      let older_store_cond_e := InstructionEntryIsOlder pc_st_ctrler_n.ctrler_name pc_st_c_type
+      -- pc-st-ctrler.Cond.2 -- store addr matches load addr
+      let store_with_matching_addr_cond_e ← CtrlerEntryFieldMatches pc_st_ctrler_n.ctrler_name pc_st_c_type [def_load_addr_name] [addr_val_id]
+      -- pc-st-ctrler.Cond.3 (Optional) -- youngest older store
+      let youngest_older_store_cond_e ← MinDifferenceBetween [instruction, seq_num] [instruction, seq_num] false
+      let youngest_older_store_cond_e? := match pc_st_c_type with
+        | .Unordered => some youngest_older_store_cond_e
+        | .FIFO | .BasicCtrler => none
+      -- pc-st-ctrler.Cond.4 -- Check that it's a store!
+      let entry_is_a_store_cond_e ← CtrlerEntryIsStore pc_st_ctrler_n.ctrler_name pc_st_c_type
+
+      -- pc-st-ctrler Condition.
+      let fwding_store_search_cond ← AndExprs
+        [older_store_cond_e, store_with_matching_addr_cond_e, entry_is_a_store_cond_e]
+
+      -- >>> The replay-verification code is probably here: CreateReplayAwaitLoadState in this file
+      let fwding_replay_verif_stmts ← CreateReplayVerifyCheckAndSquash
+        is_issue_ctrler_and_await_response_ctrler_same
+        is_issue_ctrler_pred_on_commit
+        four_nodes
+        issue_ctrler_node_pred_on_commit?
+        ctrlers
+        lat_name
+        w_val_id
+
+      let no_fwding_st_found_bool__ := "no_fwding_st_found_bool__"
+      -- Stmt.3.a
+      let no_fwding_st_found_bool___decl_stmt :=
+        Statement.value_declaration
+          (TypedIdentifier.mk "bool" no_fwding_st_found_bool__)
+          (term_expr $ Term.const $ str_lit "false")
+      -- Stmt.3.b
+      let set_no_fwding_st_found_bool__stmt := AssignSrcToDestVar no_fwding_st_found_bool__ (term_expr $ Term.const $ str_lit "true") -- NOTE: This is the load's addr
+
       -- If there's a matching entry:
       --   Already got the post-commit store send node's write (1) val & (2) addr
       --   Use the (1) val to do the replay-verification:
       --     Will need to take the existing replay-verification code
       --     and generalize it to accept a value var name as something to compare against..?
 
-      -- >>> The replay-verification code is probably here: CreateReplayAwaitLoadState in this file
-
       -- If there's no fwding store:
       --   just use the search_for_load_seq_num statement.
 
-      -- sorry
-      search_for_load_seq_num
+      -- Stmt.3
+      let query_pc_st_c_stmt ←
+        QueryCtrlerWithConstraints
+          -- Query Search Conditions
+          fwding_store_search_cond youngest_older_store_cond_e?
+            -- If found or not found case stmt blks
+            fwding_replay_verif_stmts.to_block
+            [set_no_fwding_st_found_bool__stmt].to_block
+            -- NOTE: don't place the replay_issue_stmts_block here!
+            -- place it after this block instead...?
+            -- replay_issue_stmts_blk -- already a block
+          -- Queried Ctrler's Type
+          pc_st_c_type
+          -- Queried Ctrler's Name
+          pc_st_ctrler_n.ctrler_name
+
+      -- Stmt.3.c
+      let only_replay_if_no_fwding_found_stmt : Statement :=
+        Pipeline.Statement.conditional_stmt $ if_statement
+          (var_expr no_fwding_st_found_bool__)
+          (Pipeline.Statement.block replay_issue_stmts_blk)
+
+      let set_lat_addr_and_query_pc_st_c_stmts : Statement :=
+        Pipeline.Statement.block $
+          [def_lat_addr_var_stmt, get_lat_load_addr_stmt, no_fwding_st_found_bool___decl_stmt, query_pc_st_c_stmt, only_replay_if_no_fwding_found_stmt]
+      pure set_lat_addr_and_query_pc_st_c_stmts
+
+  -- then replace replay_issue_stmts_blk with search_for_load_seq_num
+  -- NOTE: Must think of way to reset the LAT upon mis-match
+  -- Generate some handle block to listen to squash... from the commit node
+  -- NOTE: let lat_not_found_error := Statement.error "Couldn't find the lat entry!"
+  let search_for_load_seq_num : SearchStatement ← lat_name.unordered_query_match
+    fwd_check_pc_store_or_replay [].to_block
+    [ lat_seq_num_var ] [instruction, seq_num]
 
   let replay_issue_in_listen_handle ←
     four_nodes.global_perform_load_node.wrap_stmt_with_node's_listen_handle_if_exists
-      fwd_check_pc_store ctrlers
+      search_for_load_seq_num ctrlers
 
   let replay_issue_name := replay_issue_load_to_mem
   let replay_state := Pipeline.Description.state replay_issue_name replay_issue_in_listen_handle.to_block
 
   pure replay_state
-
-def GenAwaitReplayLoadStmts (ctrlers : Ctrlers) (four_nodes : CommitIssueAwaitValueStmtNodes)
-: Except String (List Pipeline.Statement) := do
-  let await_load_resp_ctrler : Ctrler ← ctrlers.ctrler_from_name four_nodes.global_perform_load_node.ctrler_name
-  let await_ctrler_type ← await_load_resp_ctrler.type
-  let additional_stmts ← match await_ctrler_type with
-    | .Unordered => pure [CreateDSLFuncCallStmt remove []]
-    | .BasicCtrler => pure []
-    | .FIFO => throw "Error while adding await Replay response: FIFO not supported. Due to head & tail ptrs"
-  pure additional_stmts
 
 open Pipeline in
 def CreateReplayAwaitLoadState
@@ -588,8 +795,10 @@ def CDFG.Graph.exists_post_commit_store_ctrler?
   -- (1) Get post commit states
   let commit_node ← uarch_graph.commit_state_ctrler
   -- these are post-commit states of a store
+  dbg_trace s!"%%St-Fwd LR 0: find pc store states"
   let pc_store_ns_ts ← uarch_graph.reachable_nodes_from_node_up_to_option_node 0 commit_node none store [] none
   let pc_store_ns := pc_store_ns_ts.1.nodes_to_graph
+  dbg_trace s!"%%St-Fwd LR 1: pc_store_ns: ({pc_store_ns})"
 
   -- (2) Check if there are post-commit store states
   let pc_store_send_n? ← pc_store_ns.store_global_perform_state_ctrler?
@@ -597,9 +806,11 @@ def CDFG.Graph.exists_post_commit_store_ctrler?
   --   for the store-receive node; may not get it from if in separate ctrler, but what design would do this?
   let pc_store_receive_n? ← pc_store_ns.store_receive_perform_state_ctrler?
 
+  dbg_trace s!"%%St-Fwd LR 2: pc_store_send_n?: ({pc_store_send_n?})"
+  dbg_trace s!"%%St-Fwd LR 3: pc_store_receive_n?: ({pc_store_receive_n?})"
   match pc_store_send_n? with
   | none => pure none -- Return false, if there is no post-commit store send request node
-  | some _ /- pc store send request node -/ =>
+  | some pc_store_send_n /- pc store send request node -/ =>
     match pc_store_receive_n? with
     | none => throw s!"Post Commit Store Check: There's a post-commit store send node, but no post-commit store receive?"
     | some pc_store_receive_n =>
@@ -620,8 +831,11 @@ def CDFG.Graph.exists_post_commit_store_ctrler?
       -- reaches back to the commit controller
       let pc_commit_ctrler_store_receive_ns := post_pc_store_receive_ns_ts.1.filter (pc_ctrler_ns.contains ·)
       match pc_commit_ctrler_store_receive_ns.filter (·.ctrler_name == commit_node.ctrler_name) with
-      | [] => pure none
-      | _ => pure pc_store_receive_n
+      | _ :: _ => pure none -- If the post-commit-store messages back the commit controller before it completes
+      | [] =>
+        dbg_trace s!"%%St-Fwd LR 4: pc_commit_ctrler_store_receive_ns: ({pc_commit_ctrler_store_receive_ns})"
+        pure pc_store_send_n -- If the post-commit-store doesn't message the commit controller
+        -- Would we want to return the receive node as well?
 
 
 open Pipeline in
@@ -747,15 +961,17 @@ def CDFG.Graph.AddLoadReplayToCtrlers
 
   /- ===== Add issue replay states ===== -/
   let ctrlers_with_issue_replay_state : Ctrlers := ←
-    if is_issue_ctrler_pred_on_commit then -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
+    if is_issue_ctrler_pred_on_commit then do -- NOTE: Case where we add this state to the issue ctrler, and make other states transition to this one
       -- if issue is pred on commit make the states pointing to commit, to point to the await-replay-start state
-      let states_added_to_ctrler_in_ctrlers := ←
-        ctrlers_with_commit_start_and_finish_replay_state.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
-      let ctrler_with_states_trans_to_given_state_updated :=
-        states_added_to_ctrler_in_ctrlers.update_ctrler_states_trans_to_specific_state
+      -- AZ NOTE: TODO: this should first update the transition destinations,
+      -- and then add the new states. Fixed. Oddly was correct in the other if branches...
+      let ctrler_with_states_trans_to_given_state_updated := ←
+        ctrlers_with_commit_start_and_finish_replay_state.update_ctrler_states_trans_to_specific_state
           global_perform_load_node.ctrler_name issue_ctrler_node_pred_on_commit?.get!.current_state (← await_replay_start_state.state_name)
           (some load) -- should be for transitions taken by a load
-      ctrler_with_states_trans_to_given_state_updated
+      let states_added_to_ctrler_in_ctrlers := ←
+        ctrler_with_states_trans_to_given_state_updated.add_ctrler_states global_perform_load_node.ctrler_name [await_replay_start_state, new_issue_replay_state]
+      pure states_added_to_ctrler_in_ctrlers
     else
       match issue_ctrler_type with
       | .BasicCtrler => do -- NOTE: Case where we update the issue ctrler's first state to this returned msg
