@@ -321,7 +321,9 @@ partial def List.inject_stmts_at_perform
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+    | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+      pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .complete _ =>
       pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .reset (String.mk _) =>
@@ -412,7 +414,9 @@ partial def List.inject_stmts_after_stmt_at_ctrler_state
       | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
       | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+        pure (found_in_tail, [h] ++ tail_re_build_stmts)
       | .complete _ =>
         pure (found_in_tail, [h] ++ tail_re_build_stmts)
       | .reset (String.mk _) =>
@@ -471,24 +475,32 @@ partial def List.inject_stmts_at_commit
 (stmt_to_insert_after? : Option Statement)
 (when_stmt_has_this_arg? : Option Identifier)
 : Except String (Bool × List Pipeline.Statement /- × List Pipeline.Statement-/) := do
+  --dbg_trace s!"@@!! Trying to search for commit stmt in stmts: ({stmts})"
   -- try tail recursion
   match stmts with
   | h :: t =>
     let (found_in_tail, tail_re_build_stmts) ← t.inject_stmts_at_commit inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
+
+    --dbg_trace s!"@@## Head stmt: ({h})"
 
     match h with
     -- The case of interest...
     | .labelled_statement label stmt =>
       match label with
       | .commit =>
+        --dbg_trace s!"@@$$ Found Commit Label"
         let (found_it, inject_stmts) ← [stmt].inject_stmts_at_commit inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
         let rebuilt_stmt := Statement.labelled_statement label $ (
             stmts_to_inject ++
             inject_stmts).to_block
-        if found_it then
-          pure $ (true, [rebuilt_stmt] ++ t)
-        else
-          pure $ (true, [h] ++ tail_re_build_stmts)
+
+        pure $ (true, [rebuilt_stmt] ++ t)
+
+        --if found_it then
+        --  dbg_trace s!"@@!! Inject Stmts at commit. Found it: ({found_it})"
+        --  pure $ (true, [rebuilt_stmt] ++ t)
+        --else
+        --  pure $ (true, [h] ++ tail_re_build_stmts)
       | _ =>
         pure $ (false, [h] ++ tail_re_build_stmts)
     | .block stmts' =>
@@ -541,7 +553,9 @@ partial def List.inject_stmts_at_commit
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+    | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+      pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .complete _ =>
       pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .reset (String.mk _) =>
@@ -667,7 +681,10 @@ partial def List.inject_stmts_in_when_matching_arg_at_ctrler_state
       | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
         -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
       | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
         -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+        let (found_in_tail, tail_re_build_stmts) ← t.inject_stmts_in_when_matching_arg_at_ctrler_state inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
+        pure (found_in_tail, [h] ++ tail_re_build_stmts)
       | .complete _ =>
         let (found_in_tail, tail_re_build_stmts) ← t.inject_stmts_in_when_matching_arg_at_ctrler_state inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
         pure (found_in_tail, [h] ++ tail_re_build_stmts)

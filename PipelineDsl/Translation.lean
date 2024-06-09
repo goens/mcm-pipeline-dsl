@@ -7630,6 +7630,16 @@ lst_stmts_decls
     }
     lsts
 
+  | Statement.return_empty =>
+    let murphi_return_stmt :=
+    Murϕ.Statement.returnstmt (none)
+
+    let lsts : lst_stmts_decls := {
+      stmts := [murphi_return_stmt],
+      decls := []
+    }
+    lsts
+
   | Statement.block lst_stmts =>
     -- let num_stmts := lst_stmts.length
     -- let num_stmts_of_ctrlers_lst :=

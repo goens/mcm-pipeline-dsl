@@ -226,8 +226,10 @@ def Ctrlers.AddInvalidationBasedLoadOrdering
 
     dbg_trace s!"Add Inval Listener: Adding remove_key() to LAT API call."
     -- (4) Add a stmt to remove_key from the invalidation listener to commit load
+    dbg_trace s!"@@!! Commit Node Ctrler: ({commit_node.ctrler_name})"
+    dbg_trace s!"@@!! Commit Node State: ({commit_node.current_state})"
     let ctrlers'''' ← AddRemoveFromLATWhenCommit
-      ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [seq_num]
+      ctrlers''' lat_name commit_node.ctrler_name commit_node.current_state List.inject_stmts_at_commit [instruction, seq_num]
 
     dbg_trace s!"Add Inval Listener: Finished Adding Inval Listener."
     pure ctrlers''''

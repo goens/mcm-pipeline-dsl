@@ -1443,6 +1443,7 @@ partial def recursively_find_stmt_with_transition_to_arg
   | Statement.complete _ => []
   | Statement.stall _ => []
   | Statement.return_stmt _ => []
+  | Statement.return_empty => []
   | Statement.block list_statment =>
     let stmts_with_state_name : List (String × Pipeline.Statement) :=
       list_statment.map (λ stmt => (state, stmt))
@@ -1585,6 +1586,7 @@ partial def recursively_find_stmt_and_update_transitions
   | Statement.complete _ => stmt
   | Statement.stall _ => stmt
   | Statement.return_stmt _ => stmt
+  | Statement.return_empty => stmt
   | Statement.block list_statment =>
     let stmts_with_name_info : List (String × String × Pipeline.Statement) :=
       list_statment.map (λ stmt' => (old_name, new_name, stmt'))
@@ -2010,6 +2012,7 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+    | .return_empty => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .stray_expr _ =>
       pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
@@ -2743,26 +2746,37 @@ def stall_state_querying_states
 
   let query_result_var := ← is_instruction_on_any_state_decl.decl_name |>.throw_exception_nesting_msg s!"Error (gen stall state) getting var name from decl, decl: ({is_instruction_on_any_state_decl})"
 
-  let stall_if_on_state_stmt : Pipeline.Statement :=
-    conditional_stmt $
-      if_else_statement
-        (var_expr query_result_var)
-        (reset new_stall_state_name).to_block -- should be same as the original
-        (orig_body_stmts.to_block)
+  --##let stall_if_on_state_stmt : Pipeline.Statement :=
+  --##  conditional_stmt $
+  --##    if_else_statement
+  --##      (var_expr query_result_var)
+  --##      (reset new_stall_state_name).to_block -- should be same as the original
+  --##      (orig_body_stmts.to_block)
 
-  -- make query if this inst is of the type to stall on
-  let stall_if_inst_is_of_to_stall_type : Pipeline.Statement :=
+  --##-- make query if this inst is of the type to stall on
+  --##let stall_if_inst_is_of_to_stall_type : Pipeline.Statement :=
+  --##  conditional_stmt $
+  --##    if_else_statement
+  --##      (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
+  --##      stall_if_on_state_stmt.to_block
+  --##      (orig_body_stmts.to_block)
+
+  let stall_if_inst_type_matches_and_query_succeeds : Pipeline.Statement :=
     conditional_stmt $
       if_else_statement
-        (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term)
-        stall_if_on_state_stmt.to_block
+        (Pipeline.Expr.binand
+          (Pipeline.Term.expr (equal [instruction, op].to_qual_name.to_term inst_to_stall_type.to_const_term))
+          (Pipeline.Term.expr (var_expr query_result_var))
+        ) -- Inst op matches, and query succeeded
+        ([reset new_stall_state_name,
+          Pipeline.Statement.return_empty]).to_block -- should be same as the original
         (orig_body_stmts.to_block)
 
   -- the decls are query results
   let decls_queries : List (BoolDecl × SearchStatement) := query_stmts.map (let decl_query:= ·; (decl_query.1, decl_query.2.1))
 
   let new_state_body_stmts :=
-    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_if_inst_is_of_to_stall_type])
+    (decls_queries.tuple_to_list ++ [is_instruction_on_any_state_decl, is_inst_on_any_state_stmt] ++ [stall_if_inst_type_matches_and_query_succeeds])
   let new_body_in_listen_handle :=
     match original_state's_handleblks with
     | some handle_blks =>

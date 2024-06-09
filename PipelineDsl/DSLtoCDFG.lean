@@ -612,6 +612,8 @@ partial def StmtsToTransitions
           transitions_lists
         | .return_stmt _ =>
           transitions_lists
+        | .return_empty =>
+          transitions_lists
 
       transition_after_stmt
     )

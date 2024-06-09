@@ -514,6 +514,7 @@ partial def Pipeline.Statement.map_rhs_vars_src_to_dest
   | .labelled_statement label stmt' => do
     let stmt'' := ← stmt'.map_rhs_vars_src_to_dest src_vars dest_vars
     pure $ Statement.labelled_statement label stmt''
+  | .return_empty => do throw s!"return_empty not supported, for expr translation"
 end
 
 def Pipeline.TypedIdentifier.is_ident_ordering : TypedIdentifier → Bool
@@ -641,6 +642,7 @@ partial def Pipeline.Statement.is_contains_transition
   | .variable_assignment _ _
   | .stray_expr _
   | .return_stmt _
+  | .return_empty
   | .stall _
     => false
 
@@ -657,6 +659,7 @@ partial def Pipeline.Statement.get_all_child_stmts
   | .variable_assignment _ _
   | .stray_expr _
   | .return_stmt _
+  | .return_empty
   | .stall _
     => [stmt]
   | .block stmts =>
@@ -713,6 +716,7 @@ partial def Pipeline.Statement.is_commit_labelled (stmt : Pipeline.Statement) : 
   | .variable_assignment _ _
   | .stray_expr _
   | .return_stmt _
+  | .return_empty
   | .stall _
     => false
 
@@ -766,5 +770,6 @@ partial def Pipeline.Statement.get_messages (stmt : Statement) : List Term :=
   | .value_declaration _ _
   | .variable_assignment _ _
   | .return_stmt _
+  | .return_empty
   | .stall _
     => []

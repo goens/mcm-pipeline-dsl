@@ -111,6 +111,7 @@ inductive Statement
 | stray_expr : Expr → Statement
 | block : /- { -/ List Statement /- } -/ → Statement
 | return_stmt : Expr → Statement
+| return_empty : Statement
 | stall : Expr → Statement
 deriving BEq
 -- what about function call?
@@ -230,6 +231,7 @@ private partial def statementToString (indentationLevel := 0) (inputStatement : 
   | .stall e => (indent') ++ "stall ( " ++ exprToString e ++ " )"
   | .block stmts => "{\n" ++ String.join (stmts.map (λ stmt => String.join [indent_nested_statementToString stmt, ";\n"]))  ++ (indent') ++ "}\n"
   | .return_stmt e => (indent') ++ "return " ++ exprToString e
+  | .return_empty => (indent') ++ "return"
 
 end -- mutual
 
