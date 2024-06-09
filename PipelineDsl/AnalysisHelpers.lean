@@ -2011,9 +2011,10 @@ partial def List.split_off_stmts_at_commit_and_inject_stmts
     -- Non recursive cases, collect stmt, simply recurse on t
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
-    | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
-    | .return_empty => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
-      -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .return_stmt _ => --throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
+    | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .stray_expr _ =>
       pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
     | .complete _ =>

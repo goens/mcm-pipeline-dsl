@@ -2539,7 +2539,7 @@ def CDFG.Node.get_perform_store_msg_value_addr_vars (node : Node)
 
     match write_var, write_addr with
     | some w_val, some w_addr => pure (← w_val.var's_identifier, ← w_addr.var's_identifier)
-    | _, _ => do throw s!"Error when getting store msg from node ({node})"
+    | _, _ => do throw s!"Error when getting store msg from node, missing send_store_request arguments: ({node})"
     -- get the msg's write value, and the phys_addr
 
 def CDFG.Graph.global_perform_node_of_memory_access? (graph : Graph) (inst_type : InstType) : Except String (Option Node) := do

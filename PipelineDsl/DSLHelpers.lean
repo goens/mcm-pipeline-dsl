@@ -320,7 +320,9 @@ partial def List.inject_stmts_at_perform
     -- Non recursive cases, collect stmt, simply recurse on t
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
-    | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+    | .return_stmt _ =>
+      --throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
       pure (found_in_tail, [h] ++ tail_re_build_stmts)
@@ -413,7 +415,8 @@ partial def List.inject_stmts_after_stmt_at_ctrler_state
             pure $ (found_in_tail, [h] ++ tail_re_build_stmts)
       | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
-      | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      | .return_stmt _ => --throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+        pure (found_in_tail, [h] ++ tail_re_build_stmts)
       | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
         pure (found_in_tail, [h] ++ tail_re_build_stmts)
@@ -552,7 +555,8 @@ partial def List.inject_stmts_at_commit
     -- Non recursive cases, collect stmt, simply recurse on t
     | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
-    | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+    | .return_stmt _ => -- throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      pure (found_in_tail, [h] ++ tail_re_build_stmts)
     | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
       -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
       pure (found_in_tail, [h] ++ tail_re_build_stmts)
@@ -680,7 +684,9 @@ partial def List.inject_stmts_in_when_matching_arg_at_ctrler_state
       -- Non recursive cases, collect stmt, simply recurse on t
       | .stall _ => throw "Error while injecting stmts to replace commit stmts: Stall stmts not supported"
         -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
-      | .return_stmt _ => throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+      | .return_stmt _ => --throw "Error while injecting stmts to replace commit stmts: Return stmts not supported"
+        let (found_in_tail, tail_re_build_stmts) ← t.inject_stmts_in_when_matching_arg_at_ctrler_state inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
+        pure (found_in_tail, [h] ++ tail_re_build_stmts)
       | .return_empty => --throw "Error while injecting stmts to replace commit stmts: Return empty stmts not supported"
         -- pure ([h] ++ tail_re_build_stmts, tail_commit_stmts)
         let (found_in_tail, tail_re_build_stmts) ← t.inject_stmts_in_when_matching_arg_at_ctrler_state inst_type stmts_to_inject stmt_to_insert_after? when_stmt_has_this_arg?
