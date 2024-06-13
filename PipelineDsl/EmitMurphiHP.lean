@@ -10,6 +10,9 @@ import PipelineDsl.Translation
 
 import PipelineDsl.EmitMurphi
 
+import PipelineDsl.LSQTfsm
+import PipelineDsl.MurphiTestHarnessInterfaces
+
 set_option maxHeartbeats 500000
 open Pipeline
 open Murϕ
@@ -43,9 +46,90 @@ Just Sta (the state variable)
 /- NOTE: Idea: Write individual blocks, for each part -/
 /- of a program, so it's faster to interpret... -/
 
+def GenMemResponseFunctions
+(lsq? : Option LSQ)
+(tfsm? : Option TFSM)
+:=
+  match lsq?, tfsm? with
+  | some lsq, some tfsm =>
+    match lsq with
+    | .HP =>
+      match tfsm with
+      | .IO =>
+        hp_in_order_await_load_mem_resp_function ++
+        hp_await_store_mem_response_fn
+      | .LR =>
+        hp_load_replay_await_load_mem_resp_function ++
+        hp_await_store_mem_response_fn
+      | .IT =>
+        hp_in_order_await_load_mem_resp_function ++
+        hp_await_store_mem_response_fn
+    | .LB =>
+      [] -- For the test, the actions are in the Rule
+    | .Unified =>
+      match tfsm with
+      | .IO =>
+        lsq_store_await_mem_resp_function ++
+        lsq_await_load_mem_resp_function
+      | .LR =>
+        lsq_replay_await_load_mem_resp_function ++
+        lsq_await_load_mem_resp_function
+      | .IT =>
+        lsq_store_await_mem_resp_function ++
+        lsq_await_load_mem_resp_function
+  | _, _ =>
+    hp_in_order_await_load_mem_resp_function ++
+    hp_await_store_mem_response_fn
+
+def GenCoreReceiveMemResponseRule
+(lsq? : Option LSQ)
+(tfsm? : Option TFSM)
+:=
+  match lsq?, tfsm? with
+  | some lsq, some tfsm =>
+    match lsq with
+    | .HP =>
+      match tfsm with
+      | .IO => core_gets_msg_not_inval_rule
+      | .LR => core_gets_msg_not_inval_rule
+      | .IT => core_gets_msg_including_inval_rule
+    | .LB =>
+      match tfsm with
+      | .IO => load_buffer_core_gets_msg_rule
+      | .LR => load_buffer_core_gets_msg_including_load_replay_rule
+      | .IT => load_buffer_core_gets_msg_including_inval_rule
+    | .Unified =>
+      match tfsm with
+      | .IO => lsq_core_gets_msg_rule
+      | .LR => lsq_core_gets_msg_rule
+      | .IT => lsq_core_gets_inv_msg_rule
+  | _, _ => core_gets_msg_not_inval_rule
+
+def GenInvalTrackerInit
+(tfsm? : Option TFSM)
+:=
+  match tfsm? with
+  | some tfsm =>
+    match tfsm with
+    | .IT => [listen_handler_init]
+    | .IO | .LR => []
+  | none =>
+    []
+
+def GenLATInit
+(tfsm? : Option TFSM)
+:=
+  match tfsm? with
+  | some tfsm =>
+    match tfsm with
+    | .IT | .LR => [lat_alias_init]
+    | .IO => []
+  | none =>
+    []
+
 -- comment this out for now, to make the
 -- lean4 interpretation faster...
-def compose_murphi_file_components_but_no_RENAME_no_IQ_no_ROB
+def compose_murphi_file_components_with_lsq_tfsm
 -- Consts, like num entries per buffer-type ctrler
 ( const_decls : List Murϕ.Decl)
 -- Types, like ctrler defns
@@ -54,8 +138,11 @@ def compose_murphi_file_components_but_no_RENAME_no_IQ_no_ROB
 ( rules : List Murϕ.Rule)
 ( ctrler_list : List controller_info )
 ( litmus_test : LitmusTest )
+( lsq? : Option LSQ )
+( tfsm? : Option TFSM )
 : Murϕ.Program
 :=
+
   let core_count : String := toString ( litmus_test.insts_in_cores.length - 1 ) --1
   let max_insts : String := toString ( ( litmus_test.insts_in_cores.map (fun core => core.insts.length) ).maximum?.get! - 1)
   let max_regs : String := max_insts;
@@ -335,9 +422,19 @@ type ---- Type declarations ----
   /- condition. Add them in based on which LSQ & Transforms -/
   /- are used. -/
 
+  let inval_tracker_init :=
+    GenInvalTrackerInit tfsm?
+
+  let lat_init :=
+    GenLATInit tfsm?
+
+  let mem_response_funcs :=
+   GenMemResponseFunctions lsq? tfsm?
 
 -- # ------------ HELPER FUNCTIONS --------------------
-  let list_func_decls := List.join ([
+  let list_func_decls :=
+    mem_response_funcs ++ List.join (
+  [
 -- [murϕ_proc_decl|
 -- function sb_clear_entry (
 --   sb : SB;
@@ -430,117 +527,117 @@ begin
   end;
 end
 ],
-[murϕ_proc_decl|
--- Version for the LSQ
-function associative_assign_ld(
-            --  lq : LQ;
-             lq : LSQ;
-             msg : MEM_REQ; --#seq_num_t;--inst_count_t;
-           ) : LSQ;
-  var lq_new : LSQ;
-  var lq_iter : LSQ_idx_t;
-  var lq_count : LSQ_count_t;
-  var curr_entry : LSQ_entry_values;
-  -- var curr_entry_id : LSQ_idx_t;
-  var seq_num : inst_count_t;
-
-  var LQ_while_break : boolean;
-  var LQ_found_entry : boolean;
-  var LQ_entry_idx : LQ_idx_t;
-  var LQ_difference : LQ_count_t;
-  var LQ_offset : LQ_count_t;
-  var LQ_curr_idx : LQ_idx_t;
-  var LQ_squash_remove_count : LQ_count_t;
-
-  begin
-  --
-  lq_new := lq;
-  lq_iter := lq .head;
-  lq_count := lq .num_entries;
-  seq_num := msg .seq_num;
-  LQ_while_break := false;
-  LQ_found_entry := false;
-  if (lq.num_entries = 0) then
-    LQ_while_break := true;
-  end;
-  LQ_entry_idx := lq.head;
-  LQ_difference := lq.num_entries;
-  LQ_offset := 0;
-  LQ_squash_remove_count := 0;
-  -- for i : 0 .. LSQ_NUM_ENTRIES_ENUM_CONST do
-  while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
-    LQ_curr_idx := ((LQ_entry_idx + LQ_offset) % LQ_NUM_ENTRIES_CONST);
-
-    curr_entry := lq_new.entries[ LQ_curr_idx ];
-    if (curr_entry.instruction.seq_num = seq_num) then
-      -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      assert (curr_entry.state = await_mem_response
-      -- | curr_entry.state = replay_generated_await_mem_response
-      ) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
-      if (curr_entry.state = await_mem_response) then
-        curr_entry.state := write_result;
-        curr_entry.read_value := msg.value;
-      -- elsif (curr_entry.state = replay_generated_await_mem_response) then
-      --   curr_entry.state := replay_compare_and_check_state;
-      --   curr_entry.replay_value := msg.value;
-      end;
-      lq_new.entries[ LQ_curr_idx ] := curr_entry;
-      return lq_new;
-    end;
-
-    if (LQ_offset < LQ_difference) then
-      LQ_offset := (LQ_offset + 1);
-    end;
-  -- endfor;
-  end;
-
-  return lq_new;
-end
-],
-[murϕ_proc_decl|
-
-function associative_ack_st(
---version for the LSQ
-            --  sb : SB;
-             sb : ROB;
-             msg : MEM_REQ; --#seq_num_t;--inst_count_t;
-           ) : ROB;
-  var sb_new : ROB;
-  var sb_iter : ROB_idx_t;
-  var sb_count : ROB_count_t;
-  var curr_entry : ROB_entry_values;
-  var curr_entry_id : ROB_idx_t;
-  var seq_num : inst_count_t;
-  begin
-  --
-  sb_new := sb;
-  sb_iter := 0;
-  sb_count := sb .num_entries;
-  seq_num := msg .seq_num;
-
-  -- for i:0 .. SB_NUM_ENTRIES_ENUM_CONST do
-  for i:0 .. ROB_NUM_ENTRIES_ENUM_CONST do
-    -- curr_entry_id := ( sb_iter + i ) % ( SB_NUM_ENTRIES_CONST);
-    curr_entry_id := ( sb_iter + i ) % ( ROB_NUM_ENTRIES_CONST);
-    curr_entry := sb_new .entries[curr_entry_id];
-    if (curr_entry .instruction .seq_num = seq_num)
-      then
-      -- assert ( curr_entry .state = sb_await_mem_response ) "ACK SB: Should be in await mem resp?";
-      assert ( curr_entry .state = rob_commit_time_await_st_mem_resp ) "ACK ROB: Should be in await mem resp?";
-      --# curr_entry .state := sb_await_creation;
-      -- sb_new := sb_clear_entry(sb_new, seq_num);
-      curr_entry.state := rob_clear_lsq_store_head;
-      sb_new.entries[ curr_entry_id ] := curr_entry;
-
-      -- error "trace load schedule?";
-      return sb_new;
-    end;
-  end;
-  --
-  error "didn't find the Load to write the read val into?";
-  return sb_new;
-end
-],
+--##[murϕ_proc_decl|
+--##-- Version for the LSQ
+--##function associative_assign_ld(
+--##            --  lq : LQ;
+--##             lq : LSQ;
+--##             msg : MEM_REQ; --#seq_num_t;--inst_count_t;
+--##           ) : LSQ;
+--##  var lq_new : LSQ;
+--##  var lq_iter : LSQ_idx_t;
+--##  var lq_count : LSQ_count_t;
+--##  var curr_entry : LSQ_entry_values;
+--##  -- var curr_entry_id : LSQ_idx_t;
+--##  var seq_num : inst_count_t;
+--##
+--##  var LQ_while_break : boolean;
+--##  var LQ_found_entry : boolean;
+--##  var LQ_entry_idx : LQ_idx_t;
+--##  var LQ_difference : LQ_count_t;
+--##  var LQ_offset : LQ_count_t;
+--##  var LQ_curr_idx : LQ_idx_t;
+--##  var LQ_squash_remove_count : LQ_count_t;
+--##
+--##  begin
+--##  --
+--##  lq_new := lq;
+--##  lq_iter := lq .head;
+--##  lq_count := lq .num_entries;
+--##  seq_num := msg .seq_num;
+--##  LQ_while_break := false;
+--##  LQ_found_entry := false;
+--##  if (lq.num_entries = 0) then
+--##    LQ_while_break := true;
+--##  end;
+--##  LQ_entry_idx := lq.head;
+--##  LQ_difference := lq.num_entries;
+--##  LQ_offset := 0;
+--##  LQ_squash_remove_count := 0;
+--##  -- for i : 0 .. LSQ_NUM_ENTRIES_ENUM_CONST do
+--##  while ((LQ_offset < LQ_difference) & ((LQ_while_break = false) & (LQ_found_entry = false))) do
+--##    LQ_curr_idx := ((LQ_entry_idx + LQ_offset) % LQ_NUM_ENTRIES_CONST);
+--##
+--##    curr_entry := lq_new.entries[ LQ_curr_idx ];
+--##    if (curr_entry.instruction.seq_num = seq_num) then
+--##      -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
+--##      assert (curr_entry.state = await_mem_response
+--##      -- | curr_entry.state = replay_generated_await_mem_response
+--##      ) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
+--##      if (curr_entry.state = await_mem_response) then
+--##        curr_entry.state := write_result;
+--##        curr_entry.read_value := msg.value;
+--##      -- elsif (curr_entry.state = replay_generated_await_mem_response) then
+--##      --   curr_entry.state := replay_compare_and_check_state;
+--##      --   curr_entry.replay_value := msg.value;
+--##      end;
+--##      lq_new.entries[ LQ_curr_idx ] := curr_entry;
+--##      return lq_new;
+--##    end;
+--##
+--##    if (LQ_offset < LQ_difference) then
+--##      LQ_offset := (LQ_offset + 1);
+--##    end;
+--##  -- endfor;
+--##  end;
+--##
+--##  return lq_new;
+--##end
+--##],
+--##[murϕ_proc_decl|
+--##
+--##function associative_ack_st(
+--##--version for the LSQ
+--##            --  sb : SB;
+--##             sb : ROB;
+--##             msg : MEM_REQ; --#seq_num_t;--inst_count_t;
+--##           ) : ROB;
+--##  var sb_new : ROB;
+--##  var sb_iter : ROB_idx_t;
+--##  var sb_count : ROB_count_t;
+--##  var curr_entry : ROB_entry_values;
+--##  var curr_entry_id : ROB_idx_t;
+--##  var seq_num : inst_count_t;
+--##  begin
+--##  --
+--##  sb_new := sb;
+--##  sb_iter := 0;
+--##  sb_count := sb .num_entries;
+--##  seq_num := msg .seq_num;
+--##
+--##  -- for i:0 .. SB_NUM_ENTRIES_ENUM_CONST do
+--##  for i:0 .. ROB_NUM_ENTRIES_ENUM_CONST do
+--##    -- curr_entry_id := ( sb_iter + i ) % ( SB_NUM_ENTRIES_CONST);
+--##    curr_entry_id := ( sb_iter + i ) % ( ROB_NUM_ENTRIES_CONST);
+--##    curr_entry := sb_new .entries[curr_entry_id];
+--##    if (curr_entry .instruction .seq_num = seq_num)
+--##      then
+--##      -- assert ( curr_entry .state = sb_await_mem_response ) "ACK SB: Should be in await mem resp?";
+--##      assert ( curr_entry .state = rob_commit_time_await_st_mem_resp ) "ACK ROB: Should be in await mem resp?";
+--##      --# curr_entry .state := sb_await_creation;
+--##      -- sb_new := sb_clear_entry(sb_new, seq_num);
+--##      curr_entry.state := rob_clear_lsq_store_head;
+--##      sb_new.entries[ curr_entry_id ] := curr_entry;
+--##
+--##      -- error "trace load schedule?";
+--##      return sb_new;
+--##    end;
+--##  end;
+--##  --
+--##  error "didn't find the Load to write the read val into?";
+--##  return sb_new;
+--##end
+--##],
 [murϕ_proc_decl|
 
 function init_state_fn () : STATE;
@@ -725,6 +822,11 @@ begin
       seqnumreg.seq_num_counter := 1;
       seqnumreg.state := seq_num_interface;
     end;
+
+    --£inval_tracker_init;
+
+    --£lat_init;
+
     -- alias sq:init_state .core_[core] .SQ_ do
     --   for i : SQ_idx_t do
     --     --# assume imm insts for now in litmus tests
@@ -846,9 +948,11 @@ end
 ]) ++ func_decls
 
 
+  let core_receive_mem_response_rule :=
+    GenCoreReceiveMemResponseRule lsq? tfsm?
 
-
-  let list_rules : List Murϕ.Rule := List.join (
+  let list_rules : List Murϕ.Rule :=
+    core_receive_mem_response_rule ++ List.join (
     [
   [murϕ_rule|
 

@@ -147,7 +147,7 @@ end
 ]
 
   /- NOTE: Single LSQ In-Order. Await mem response. -/
-  def lsq_await_load_mem_resp_function := List.join [
+  def lsq_await_load_mem_resp_function :=
     [murϕ_proc_decl|
 function associative_assign_ld (
   lq : LSQ;
@@ -205,10 +205,9 @@ begin
   end;
   return lq_new;
 end
-    ]
   ]
 
-  def lsq_store_await_mem_resp_function := List.join [
+  def lsq_store_await_mem_resp_function :=
     [murϕ_proc_decl|
 function associative_ack_st (
   sb : ROB;
@@ -238,14 +237,13 @@ begin
   error "didn't find the Load to write the read val into?";
   return sb_new;
 end
-    ]
   ]
 
 /- ----------- END Single LSQ Await Mem Resp Functions ---------------- -/
 
 /- ----------- BEGIN HP LSQ Await Mem Resp Functions ---------------- -/
 
-  def hp_load_replay_await_load_mem_resp_function := List.join [
+  def hp_load_replay_await_load_mem_resp_function :=
     [murϕ_proc_decl|
 function associative_assign_lq (
   lq : LQ;
@@ -302,12 +300,12 @@ begin
   end;
   return lq_new;
 end
-    ]
+
   ]
 
   /- Functions for awaiting a response from the memory -/
   /- Use for HP In-Order & IO + Inval Tracking -/
-  def hp_in_order_await_load_mem_resp_function := List.join [
+  def hp_in_order_await_load_mem_resp_function :=
     [murϕ_proc_decl|
     function associative_assign_lq (
       lq : LQ;
@@ -359,9 +357,9 @@ end
         end;
       end;
       return lq_new;
-    end]]
+    end]
 
-    def hp_await_store_mem_response_fn := List.join [
+    def hp_await_store_mem_response_fn :=
     [murϕ_proc_decl|
     function associative_ack_sb (
       sb : SB;
@@ -389,7 +387,7 @@ end
       endfor;
       error "didn't find the Load to write the read val into?";
       return sb_new;
-    end]
+    end
     ]
 /- ----------- END HP LSQ Await Mem Resp Functions ---------------- -/
 
