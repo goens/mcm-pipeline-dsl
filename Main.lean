@@ -346,7 +346,7 @@ def runMainCmd : Cli.Parsed → IO UInt32
     | some parent => parent / "lib"
     | none => "build/lib"
   initSearchPath (← Lean.findSysroot) [libPath]
-  let env ← importModules [{ module := `PipelineDsl.Parser }] {}
+  let env ← importModules #[{ module := `PipelineDsl.Parser }] {}
   let input : String := args.positionalArg! "input" |>.as! String
   let (err, ast) ← parseFile env input
   -- Ugly imperative side-effect code

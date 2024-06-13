@@ -26,6 +26,6 @@ lean_exe aqlc {
 -- require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "5a858c32963b6b19be0d477a30a1f4b6c120be7e"
 -- require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "38dbcd8285bc4b1391619c12f158a7409f3dfc12"
 
-require Murphi from git "https://github.com/goens/lean-murphi.git" @ "1a5794d23923fb7fd57cc45cfd44c6da3588f31b"
+require murphi from git "https://github.com/goens/lean-murphi.git"@"e1e6ea7c3a3f46be82273dd143ae7f35e84e2f8e"
 require Cli from git "https://github.com/mhuisi/lean4-cli.git" @ "5a858c32963b6b19be0d477a30a1f4b6c120be7e"
-require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "38dbcd8285bc4b1391619c12f158a7409f3dfc12"
+-- require Mathlib from git "https://github.com/leanprover-community/mathlib4" @ "38dbcd8285bc4b1391619c12f158a7409f3dfc12"
