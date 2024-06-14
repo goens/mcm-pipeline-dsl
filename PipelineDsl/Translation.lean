@@ -5935,6 +5935,42 @@ lst_stmts_decls
           -- NOTE: probably don't need a <ctrler>.remove() api?
           -- Since ctrler entries generally do remove() when they get removed..?
           -- else if (api_func_name == "remove") then
+          else if ((api_func_name == "ack_inval") &&
+          (dest_ctrler_name == "memory_interface")) then
+            -- Sorry
+            let murphi_decls :=
+              [murϕ_var_decls| var found_msg_in_ic : boolean]
+            let murphi_stmts :=
+              [murϕ|
+                found_msg_in_ic := false;
+                for ic_idx : ic_idx_t do
+                  -- if msg entry is valid & seq num matches, use this...
+                  -- ..and ack the IC entry
+                  if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
+                    & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
+
+                    -- (1) send ack
+                    next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
+
+                    -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
+
+                    if found_msg_in_ic = true then
+                      error "we found 2 matching ic entries? shouldn't happen...";
+                    elsif found_msg_in_ic = false then
+                      found_msg_in_ic := true;
+                    endif;
+                  endif;
+                endfor;
+
+                assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
+                assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
+                next_state.core_[j].mem_interface_.in_busy := false;
+              ]
+            let stmts_decls : lst_stmts_decls := {
+              stmts := murphi_stmts
+              decls := murphi_decls
+            }
+            stmts_decls
           else /- Default case: Simply find the matching when-stmt & handle blks & then translate it here... -/
             dbg_trace "Arbitrary message passing translation"
             dbg_trace s!"Term (func_call): ({term})"
