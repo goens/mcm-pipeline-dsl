@@ -461,6 +461,150 @@ type ---- Type declarations ----
   let mem_response_funcs :=
    GenMemResponseFunctions lsq? tfsm?
 
+
+  let init_foreach_core := [
+    Murϕ.Statement.forstmt
+      [murϕ_quantifier| core : cores_t]
+      ([murϕ_statements|
+        alias mem_int:init_state .core_[core] .mem_interface_ do
+          --#init the mem interfaces
+          mem_int .out_msg .addr := 0;
+          mem_int .out_msg .r_w := read;
+          mem_int .out_msg .value := 0;
+          --# Key thing. invalid message
+          mem_int .out_msg .valid := false;
+
+          --# Destination info
+          --# Core or Mem
+          --# Core has seq_num
+          mem_int .out_msg .dest := mem;
+          mem_int .out_msg .dest_id := 0;
+          mem_int .out_msg .seq_num := 0;
+
+          mem_int .in_msg .addr := 0;
+          mem_int .in_msg .r_w := read;
+          mem_int .in_msg .value := 0;
+          mem_int .in_msg .valid := false;
+          mem_int .in_msg .dest := mem;
+          mem_int .in_msg .dest_id := 0;
+          mem_int .in_msg .seq_num := 0;
+
+          mem_int .out_busy := false;
+          mem_int .in_busy := false;
+        end;
+
+        --# LSQ
+        --##alias lsq:init_state .core_[core] .LSQ_ do
+        --##  -- for i : LQ_idx_t do
+        --##  for i : LSQ_idx_t do
+        --##    -- assume imm insts for now in litmus tests
+        --##    lsq .entries[i] .instruction .seq_num := 0;
+        --##    lsq .entries[i] .instruction .op := inval;
+        --##    lsq .entries[i] .instruction .imm := 0;
+        --##    lsq .entries[i] .instruction .dest_reg := 0;
+
+        --##    lsq .entries[i] .read_value := 0;
+        --##    lsq .entries[i] .write_value := 0;
+        --##    lsq .entries[i] .virt_addr := 0;
+        --##    lsq .entries[i] .phys_addr := 0;
+        --##    -- # Technically, this is init'd
+        --##    -- # by setting things to 0
+        --##    -- # so.. move on to next state
+        --##    -- lsq .entries[i] .state := await_creation;
+        --##    lsq .entries[i] .state := lsq_await_creation;
+        --##  end;
+        --##  lsq .head := 0;
+        --##  lsq .tail := 0;
+        --##  lsq .num_entries := 0;
+        --##end;
+        -- #Load Queue
+        -- alias lq:init_state .core_[core] .LQ_ do
+        --   for i : LQ_idx_t do
+        --     -- assume imm insts for now in litmus tests
+        --     lq .entries[i] .instruction .seq_num := 0;
+        --     lq .entries[i] .instruction .op := inval;
+        --     lq .entries[i] .instruction .imm := 0;
+        --     lq .entries[i] .instruction .dest_reg := 0;
+
+        --     lq .entries[i] .read_value := 0;
+        --     lq .entries[i] .virt_addr := 0;
+        --     lq .entries[i] .phys_addr := 0;
+        --     -- lq .entries[i] .commit := false;
+        --     lq .entries[i] .st_seq_num := 0;
+        --     -- # Technically, this is init'd
+        --     -- # by setting things to 0
+        --     -- # so.. move on to next state
+        --     lq .entries[i] .state := await_creation;
+        --   end;
+        --   lq .head := 0;
+        --   lq .tail := 0;
+        --   lq .num_entries := 0;
+
+        --   -- lq .search_busy := false;
+        --   -- lq .st_seq_num := 0;
+        --   -- lq .phys_addr := 0;
+        --   -- lq .ld_seq_num := 0;
+        -- end;
+        alias rename:init_state .core_[core] .RENAME_ do
+          for i : 0 .. CORE_INST_NUM do
+            rename .entries[i] .instruction .op := inval;
+            rename .entries[i] .instruction .seq_num := 0;
+            -- rename .entries[i] .state := rename_await_creation;
+            rename .entries[i] .state := issue_if_head;
+          end;
+          rename .head := 0;
+          rename .tail := 0;
+          rename .num_entries := 0;
+        end;
+        alias skid : init_state.core_[ core ].skid_buffer_ do
+          for i : 0 .. skid_buffer_NUM_ENTRIES_ENUM_CONST do
+            skid.entries[ i ].instruction.op := inval;
+            skid.entries[ i ].instruction.seq_num := 0;
+            skid.entries[ i ].state := skid_buffer_await_creation;
+          endfor;
+          skid.head := 0;
+          skid.tail := 0;
+          skid.num_entries := 0;
+        end;
+        alias iq:init_state .core_[core] .IQ_ do
+          -- AZ TODO NOTE: Generate these controller state init "functions"..
+          for i : 0 .. IQ_NUM_ENTRIES_ENUM_CONST do
+            iq .entries[i] .instruction .op := inval;
+            iq .entries[i] .instruction .seq_num := 0;
+            iq .entries[i] .state := iq_await_creation;
+            iq .entries[i] .valid := false;
+          end;
+          -- # iq .iq_head := 0;
+          -- # iq .iq_tail := 0;
+          iq .num_entries := 0;
+          -- iq .iq_valid[CORE_INST_NUM] := ready;
+          -- iq .iq_valid[CORE_INST_NUM-1] := ready;
+        end;
+        alias rf:init_state .core_[core] .rf_ do
+          for i : reg_idx_t do
+            rf .rf[i] := 0;
+          end;
+        end;
+        alias rob:init_state .core_[core] .ROB_ do
+          for i : 0 .. CORE_INST_NUM do
+            rob .entries[i] .instruction .op := inval;
+            rob .entries[i] .instruction .seq_num := 0;
+            -- rob .state[i] := commit_not_sent;
+            rob .entries[i] .is_executed := false;
+            rob .entries[i] .state := rob_await_creation;
+          end;
+          rob .head := 0;
+          rob .tail := 0;
+          rob .num_entries := 0;
+        end;
+
+        alias seqnumreg : init_state.core_[core].SeqNumReg_ do
+          seqnumreg.seq_num_counter := 1;
+          seqnumreg.state := seq_num_interface;
+        end;
+      ] ++ gen_init )
+    ]
+
 -- # ------------ HELPER FUNCTIONS --------------------
   let list_func_decls :=
     mem_response_funcs ++ List.join (
@@ -643,188 +787,7 @@ begin
     ic .num_entries := 0;
   end;
 
-  for core : cores_t do
-    --# Mem Interface
-    alias mem_int:init_state .core_[core] .mem_interface_ do
-      --#init the mem interfaces
-      mem_int .out_msg .addr := 0;
-      mem_int .out_msg .r_w := read;
-      mem_int .out_msg .value := 0;
-      --# Key thing. invalid message
-      mem_int .out_msg .valid := false;
-
-      --# Destination info
-      --# Core or Mem
-      --# Core has seq_num
-      mem_int .out_msg .dest := mem;
-      mem_int .out_msg .dest_id := 0;
-      mem_int .out_msg .seq_num := 0;
-
-      mem_int .in_msg .addr := 0;
-      mem_int .in_msg .r_w := read;
-      mem_int .in_msg .value := 0;
-      mem_int .in_msg .valid := false;
-      mem_int .in_msg .dest := mem;
-      mem_int .in_msg .dest_id := 0;
-      mem_int .in_msg .seq_num := 0;
-
-      mem_int .out_busy := false;
-      mem_int .in_busy := false;
-    end;
-
-    --# LSQ
-    alias lsq:init_state .core_[core] .LSQ_ do
-      -- for i : LQ_idx_t do
-      for i : LSQ_idx_t do
-        -- assume imm insts for now in litmus tests
-        lsq .entries[i] .instruction .seq_num := 0;
-        lsq .entries[i] .instruction .op := inval;
-        lsq .entries[i] .instruction .imm := 0;
-        lsq .entries[i] .instruction .dest_reg := 0;
-
-        lsq .entries[i] .read_value := 0;
-        lsq .entries[i] .write_value := 0;
-        lsq .entries[i] .virt_addr := 0;
-        lsq .entries[i] .phys_addr := 0;
-        -- # Technically, this is init'd
-        -- # by setting things to 0
-        -- # so.. move on to next state
-        -- lsq .entries[i] .state := await_creation;
-        lsq .entries[i] .state := lsq_await_creation;
-      end;
-      lsq .head := 0;
-      lsq .tail := 0;
-      lsq .num_entries := 0;
-    end;
-    -- #Load Queue
-    -- alias lq:init_state .core_[core] .LQ_ do
-    --   for i : LQ_idx_t do
-    --     -- assume imm insts for now in litmus tests
-    --     lq .entries[i] .instruction .seq_num := 0;
-    --     lq .entries[i] .instruction .op := inval;
-    --     lq .entries[i] .instruction .imm := 0;
-    --     lq .entries[i] .instruction .dest_reg := 0;
-
-    --     lq .entries[i] .read_value := 0;
-    --     lq .entries[i] .virt_addr := 0;
-    --     lq .entries[i] .phys_addr := 0;
-    --     -- lq .entries[i] .commit := false;
-    --     lq .entries[i] .st_seq_num := 0;
-    --     -- # Technically, this is init'd
-    --     -- # by setting things to 0
-    --     -- # so.. move on to next state
-    --     lq .entries[i] .state := await_creation;
-    --   end;
-    --   lq .head := 0;
-    --   lq .tail := 0;
-    --   lq .num_entries := 0;
-
-    --   -- lq .search_busy := false;
-    --   -- lq .st_seq_num := 0;
-    --   -- lq .phys_addr := 0;
-    --   -- lq .ld_seq_num := 0;
-    -- end;
-    alias rename:init_state .core_[core] .RENAME_ do
-      for i : 0 .. CORE_INST_NUM do
-        rename .entries[i] .instruction .op := inval;
-        rename .entries[i] .instruction .seq_num := 0;
-        -- rename .entries[i] .state := rename_await_creation;
-        rename .entries[i] .state := issue_if_head;
-      end;
-      rename .head := 0;
-      rename .tail := 0;
-      rename .num_entries := 0;
-    end;
-    alias skid : init_state.core_[ core ].skid_buffer_ do
-      for i : 0 .. skid_buffer_NUM_ENTRIES_ENUM_CONST do
-        skid.entries[ i ].instruction.op := inval;
-        skid.entries[ i ].instruction.seq_num := 0;
-        skid.entries[ i ].state := skid_buffer_await_creation;
-      endfor;
-      skid.head := 0;
-      skid.tail := 0;
-      skid.num_entries := 0;
-    end;
-    alias iq:init_state .core_[core] .IQ_ do
-      -- AZ TODO NOTE: Generate these controller state init "functions"..
-      for i : 0 .. IQ_NUM_ENTRIES_ENUM_CONST do
-        iq .entries[i] .instruction .op := inval;
-        iq .entries[i] .instruction .seq_num := 0;
-        iq .entries[i] .state := iq_await_creation;
-        iq .entries[i] .valid := false;
-      end;
-      -- # iq .iq_head := 0;
-      -- # iq .iq_tail := 0;
-      iq .num_entries := 0;
-      -- iq .iq_valid[CORE_INST_NUM] := ready;
-      -- iq .iq_valid[CORE_INST_NUM-1] := ready;
-    end;
-    alias rf:init_state .core_[core] .rf_ do
-      for i : reg_idx_t do
-        rf .rf[i] := 0;
-      end;
-    end;
-    alias rob:init_state .core_[core] .ROB_ do
-      for i : 0 .. CORE_INST_NUM do
-        rob .entries[i] .instruction .op := inval;
-        rob .entries[i] .instruction .seq_num := 0;
-        -- rob .state[i] := commit_not_sent;
-        rob .entries[i] .is_executed := false;
-        rob .entries[i] .state := rob_await_creation;
-      end;
-      rob .head := 0;
-      rob .tail := 0;
-      rob .num_entries := 0;
-    end;
-    alias seqnumreg : init_state.core_[core].SeqNumReg_ do
-      seqnumreg.seq_num_counter := 1;
-      seqnumreg.state := seq_num_interface;
-    end;
-
-    £gen_init
-
-    --£lsq_init;
-    --£inval_tracker_init;
-    --£lat_init;
-
-    -- alias sq:init_state .core_[core] .SQ_ do
-    --   for i : SQ_idx_t do
-    --     --# assume imm insts for now in litmus tests
-    --     sq .entries[i] .instruction .seq_num := 0;
-    --     sq .entries[i] .instruction .op := inval;
-    --     sq .entries[i] .instruction .imm := 0;
-    --     sq .entries[i] .instruction .dest_reg := 0;
-
-    --     sq .entries[i] .write_value := 0;
-    --     sq .entries[i] .virt_addr := 0;
-    --     sq .entries[i] .phys_addr := 0;
-    --     sq .entries[i] .state := sq_await_creation;
-    --   end;
-    --   sq .head := 0;
-    --   sq .tail := 0;
-    --   sq .num_entries := 0;
-
-    --   --# stuff for searching for fwding
-    --   -- sq .search_busy := false;
-    -- end;
-    -- alias sb:init_state .core_[core] .SB_ do
-    --   for i : SB_idx_t do
-    --     --# assume imm insts for now in litmus tests
-    --     sb .entries[i] .instruction .seq_num := 0;
-    --     sb .entries[i] .instruction .op := inval;
-    --     sb .entries[i] .instruction .imm := 0;
-    --     sb .entries[i] .instruction .dest_reg := 0;
-
-    --     sb .entries[i] .write_value := 0;
-    --     sb .entries[i] .virt_addr := 0;
-    --     sb .entries[i] .phys_addr := 0;
-    --     sb .entries[i] .state := sb_await_creation;
-    --   end;
-    --   -- sb .head := 0;
-    --   -- sb .tail := 0;
-    --   sb .num_entries := 0;
-    -- end;
-  end;
+  £init_foreach_core;
 
   -- # set up litmus test
   £list_rename_init_insts;
@@ -941,6 +904,20 @@ end
       default
 
   dbg_trace s!"@@01 Murphi Reset Conds: ({murphi_reset_cond_expr})"
+
+  let reset_rule :=
+    Murϕ.Rule.simplerule
+      (some "reset")
+      (some murphi_reset_cond_expr)
+      [murϕ_var_decls| var next_state : STATE;]
+      [murϕ_statements|
+        next_state := Sta;
+        -- put "  === BEGIN Reached End, Reg File: ===\n";
+        -- put Sta.core_[ 0 ].rf_.rf[ 0 ];
+        -- put Sta.core_[ 0 ].rf_.rf[ 1 ];
+        -- put "  === END Reached End, Reg File: ===\n";
+        Sta := init_state_fn();
+      ]
 
   let start_state_rule :=
     [murϕ_rule|
@@ -1269,52 +1246,8 @@ endruleset
 --   )
 -- endruleset
 -- ],
-[murϕ_rule|
 
-rule "reset"
-  (
-    --£murphi_reset_cond_expr
-    ( Sta .core_[0] .RENAME_.num_entries = 0 )
-    &
-    ( Sta .core_[0] .ROB_.num_entries = 0 )
-    &
-    -- ( Sta .core_[0] .SB_.num_entries = 0 )
-    -- &
-    ( Sta .core_[0] .IQ_.num_entries = 0 )
-    &
-    ( Sta .core_[0] .LSQ_.num_entries = 0 )
-    &
-    -- ( Sta .core_[0] .LQ_.num_entries = 0 )
-    -- &
-    -- ( Sta .core_[0] .SQ_.num_entries = 0 )
-    -- &
-    ( Sta .core_[1] .RENAME_.num_entries = 0 )
-    &
-    ( Sta .core_[1] .ROB_.num_entries = 0 )
-    &
-    -- ( Sta .core_[1] .SB_.num_entries = 0 )
-    -- &
-    ( Sta .core_[1] .IQ_.num_entries = 0 )
-    &
-    ( Sta .core_[1] .LSQ_.num_entries = 0 )
-    -- ( Sta .core_[1] .LQ_.num_entries = 0 )
-    -- &
-    -- ( Sta .core_[1] .SQ_.num_entries = 0 )
-  )
-==>
-  -- decls
-  var next_state : STATE;
-begin
-  next_state := Sta;
-
-  -- put "  === BEGIN Reached End, Reg File: ===\n";
-  -- put Sta.core_[ 0 ].rf_.rf[ 0 ];
-  -- put Sta.core_[ 0 ].rf_.rf[ 1 ];
-  -- put "  === END Reached End, Reg File: ===\n";
-
-  Sta := init_state_fn();
-end
-]
+[reset_rule],
 
 ]
 ) ++ rules ++ [ordering_invariant]
