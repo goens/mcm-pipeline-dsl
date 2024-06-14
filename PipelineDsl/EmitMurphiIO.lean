@@ -1,8 +1,12 @@
-import PipelineDsl.EmitMurphiNoRenameNoIQNoROB
+import PipelineDsl.EmitMurphiHP
 import PipelineDsl.AST
+
+import PipelineDsl.LSQTfsm
+
 open Pipeline
 
-def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST) : IO Unit := do
+
+def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST) (lsq_type: String) (tfsm_selected : String) : IO Unit := do
     let mut teststr := ""
     teststr := teststr ++ "---- test murhpi ----"
 
@@ -86,15 +90,36 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
     teststr := teststr ++ s!"All Rules:\n{all_rules}"
 
     -- translate other parts, and get the murphi file..
-    let ctrler_names : List Identifier := ctrlers.map λ ctrler => ctrler.name
-    let buffer_idx_seq_num_search_funcs := gen_buffer_ctrler_seq_num_search_func ctrler_names
+    -- TODO: move this to a helper file..
+    let queue_ctrlers! := ctrlers.filterM (do
+      let ctl := ·;
+      match ← ctl.type with
+      | .FIFO | .Unordered =>
+        if ctl.name != "load_address_table" then
+          pure true
+        else
+          pure false
+      | .BasicCtrler => pure false
+      );
+    let queue_ctrler_names : List Identifier :=
+      match queue_ctrlers! with
+      | .ok queue_ctrlers =>
+        queue_ctrlers.map λ ctrler => ctrler.name
+      | .error e_msg =>
+        dbg_trace s!"Could not filter for Queue Controllers. Error: ({e_msg})"
+        default
+
+    let buffer_idx_seq_num_search_funcs := gen_buffer_ctrler_seq_num_search_func queue_ctrler_names
     let (const_decls, ctrler_decls) := gen_murphi_file_decls ctrlers
     teststr := teststr ++ s!"Ctrlers: ({ctrlers})"
 
 --   def compose_murphi_file_components
 
     let murphi_files : List MurphiFile := --Murϕ.Program :=
-    gen_murphi_litmus_test_programs_no_RENAME_no_IQ_no_ROB const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
+      gen_murphi_litmus_test_programs_with_test_harness
+        const_decls ctrler_decls buffer_idx_seq_num_search_funcs all_rules ctrlers
+        lsq_type.toLSQ tfsm_selected.toTFSM
+        queue_ctrler_names
 
     if emit then do
       if !(← System.FilePath.pathExists directory) then
