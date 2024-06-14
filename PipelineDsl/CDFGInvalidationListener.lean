@@ -105,7 +105,22 @@ def CDFG.Graph.CreateInvalidationListener
   -- (iii)
   let transition_to_await_invalidation : Statement := complete await_state_name
 
-  let squash_speculative_loads_stmts := /- query_squash -/ [search_for_addr, invalidation_ack_msg, transition_to_await_invalidation]
+  -- (iv Secret 4th item, acknowledge Inval with memory)
+  let ack_inval_with_mem :=
+    -- Call to mem interface, acknowledge the invalidation,
+    -- No arguments needed here. Just use the message in the msg_in Murphi buffer..
+    stray_expr $ some_term $
+    function_call ["memory_interface", "ack_inval"].to_qual_name []
+
+  -- (v Secret 5th item: declare violating_seq_num for use in murphi..)
+  let violating_seq_num_decl :=
+     variable_declaration ⟨ seq_num, violating_seq_num ⟩
+
+  let squash_speculative_loads_stmts := /- query_squash -/
+    [violating_seq_num_decl,
+    search_for_addr, invalidation_ack_msg,
+    transition_to_await_invalidation,
+    ack_inval_with_mem]
   let squash_state := state squash_speculative_loads_state_name squash_speculative_loads_stmts.to_block
 
   -- 0. Create the ctrler
