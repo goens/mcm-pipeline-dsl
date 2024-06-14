@@ -193,6 +193,7 @@ def compose_murphi_file_components
 ( rules : List Murϕ.Rule)
 ( ctrler_list : List controller_info )
 ( litmus_test : LitmusTest )
+( queue_ctrler_names : List Identifier )
 : Murϕ.Program
 :=
   let core_count : String := toString ( litmus_test.insts_in_cores.length - 1 ) --1
@@ -548,7 +549,9 @@ type ---- Type declarations ----
     dbg_trace "Not handled Litmust Test case: Permitted"
     panic! "Not handled Litmust Test case: Permitted"
 
-  let empty_core_exprs : Murϕ.Expr := litmus_test_core_empty_murphi_expr litmus_test
+  let empty_core_exprs : Murϕ.Expr :=
+    litmus_test_core_empty_murphi_expr
+      litmus_test queue_ctrler_names
 
   -- litmus_test
   let the_test_name := litmus_test.test_name
@@ -2504,13 +2507,18 @@ def gen_murphi_litmus_test_programs
 ( rules : List Murϕ.Rule)
 ( ctrler_list : List controller_info )
 -- ( litmus_tests : List LitmusTest )
+( queue_ctrler_names : List Identifier)
 : List MurphiFile
 :=
   let murphi_files : List MurphiFile :=
   ActiveLitmusTests.map (
     λ litmus_test =>
       let name' := "generated-".append (litmus_test.test_name)
-      let program' := compose_murphi_file_components const_decls type_decls func_decls rules ctrler_list litmus_test
+      let program' :=
+        compose_murphi_file_components
+          const_decls type_decls func_decls rules
+          ctrler_list litmus_test
+          queue_ctrler_names
       let murphi_file : MurphiFile := {
         filename := name',
         program := program'
