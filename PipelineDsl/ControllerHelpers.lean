@@ -529,7 +529,7 @@ def Ctrlers.AddRemoveFromLATWhenCommit
   let inst_is_type :=
     -- VarCompare [instruction, op] equal [load.toMurphiString]
     IsInstructionAnyLoad
-  let if_inst_is_type := conditional_stmt <| if_statement inst_is_type remove_key_stmt
+  let if_inst_is_type := conditional_stmt <| if_statement inst_is_type remove_key_stmt.to_block
   
   let ctrlers_remove_key_from_lat :=
     ctrlers.inject_ctrler_state
