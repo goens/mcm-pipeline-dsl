@@ -1,4 +1,4 @@
-import PipelineDsl.EmitMurphiHP
+import PipelineDsl.EmitMurphiLSQs
 import PipelineDsl.AST
 
 import PipelineDsl.LSQTfsm
