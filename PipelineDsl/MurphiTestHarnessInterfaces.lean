@@ -15,71 +15,97 @@ set_option maxHeartbeats 500000
 open Pipeline
 open Murϕ
 
+
+/- --------- BEGIN LSQ Initialization ----------- -/
+  def hp_init := [murϕ_statements|
+    alias lq : init_state.core_[ core ].LQ_ do
+      for i : LQ_idx_t do
+        lq.entries[ i ].instruction.seq_num := 0;
+        lq.entries[ i ].instruction.op := inval;
+        lq.entries[ i ].instruction.imm := 0;
+        lq.entries[ i ].instruction.dest_reg := 0;
+        lq.entries[ i ].read_value := 0;
+        lq.entries[ i ].virt_addr := 0;
+        lq.entries[ i ].phys_addr := 0;
+        lq.entries[ i ].st_seq_num := 0;
+        lq.entries[ i ].state := await_creation;
+      endfor;
+      lq.head := 0;
+      lq.tail := 0;
+      lq.num_entries := 0;
+    end;
+    alias sq : init_state.core_[ core ].SQ_ do                                  
+      for i : SQ_idx_t do                                                       
+        sq.entries[ i ].instruction.seq_num := 0;                               
+        sq.entries[ i ].instruction.op := inval;                                
+        sq.entries[ i ].instruction.imm := 0;                                   
+        sq.entries[ i ].instruction.dest_reg := 0;                              
+        sq.entries[ i ].write_value := 0;                                       
+        sq.entries[ i ].virt_addr := 0;                                         
+        sq.entries[ i ].phys_addr := 0;
+        sq.entries[ i ].state := sq_await_creation;
+      endfor;
+      sq.head := 0;
+      sq.tail := 0;
+      sq.num_entries := 0;
+    end;
+    alias sb : init_state.core_[ core ].SB_ do
+      for i : SB_idx_t do
+        sb.entries[ i ].instruction.seq_num := 0;
+        sb.entries[ i ].instruction.op := inval;
+        sb.entries[ i ].instruction.imm := 0;
+        sb.entries[ i ].instruction.dest_reg := 0;
+        sb.entries[ i ].write_value := 0;
+        sb.entries[ i ].virt_addr := 0;
+        sb.entries[ i ].phys_addr := 0;
+        sb.entries[ i ].state := sb_await_creation;
+        sb.entries[ i ].valid := false;
+      endfor;
+      sb.num_entries := 0;
+    end;
+  ]
+
+  def lb_init := [murϕ_statements|
+    alias mem_stage_one : init_state.core_[ core ].memory_unit_sender_ do
+      for i : 0 .. CORE_INST_NUM do
+        mem_stage_one.instruction.op := inval;
+        mem_stage_one.instruction.seq_num := 0;
+        mem_stage_one.phys_addr := 0;
+        mem_stage_one.state := mem_unit_send_get_input;
+      endfor;
+    end;
+    alias mem_stage_two : init_state.core_[ core ].second_memory_stage_ do
+      for i : 0 .. CORE_INST_NUM do
+        mem_stage_two.instruction.op := inval;
+        mem_stage_two.instruction.seq_num := 0;
+        mem_stage_two.phys_addr := 0;
+        mem_stage_two.state := second_mem_unit_get_inputs;
+      endfor;
+    end;
+  ]
+
+  def unified_lsq_init := [murϕ_statements|
+    alias lsq : init_state.core_[ core ].LSQ_ do
+      for i : LSQ_idx_t do
+        lsq.entries[ i ].instruction.seq_num := 0;
+        lsq.entries[ i ].instruction.op := inval;
+        lsq.entries[ i ].instruction.imm := 0;
+        lsq.entries[ i ].instruction.dest_reg := 0;
+        lsq.entries[ i ].read_value := 0;
+        lsq.entries[ i ].write_value := 0;
+        lsq.entries[ i ].virt_addr := 0;
+        lsq.entries[ i ].phys_addr := 0;
+        lsq.entries[ i ].state := lsq_await_creation;
+      endfor;
+      lsq.head := 0;
+      lsq.tail := 0;
+      lsq.num_entries := 0;
+    end;
+  ]
+
+/- --------- END LSQ Initialization ----------- -/
+
 /- ----------- BEGIN Single LSQ Await Mem Resp Functions ---------------- -/
-
-  /- NOTE: Single LSQ In-Order & Invalidaiton Tracking Await mem response. -/
-  /- NOTE: Same as with In-Order only. -/
-  /-
-  def lsq_inval_await_load_mem_resp_function :=
-    [murϕ_proc_decl|
-function associative_assign_ld (
-  lq : LSQ;
-  msg : MEM_REQ
-) : LSQ;
-  var lq_new : LSQ;
-  var lq_iter : LSQ_idx_t;
-  var lq_count : LSQ_count_t;
-  var curr_entry : LSQ_entry_values;
-  var seq_num : inst_count_t;
-
-  var LSQ_while_break : boolean;
-  var LSQ_found_entry : boolean;
-  var LSQ_entry_idx : LSQ_idx_t;
-  var LSQ_difference : LSQ_count_t;
-  var LSQ_offset : LSQ_count_t;
-  var LSQ_curr_idx : LSQ_idx_t;
-  var LSQ_squash_remove_count : LSQ_count_t;
-begin
-  lq_new := lq;
-  lq_iter := lq.head;
-  lq_count := lq.num_entries;
-  seq_num := msg.seq_num;
-
-  LSQ_while_break := false;
-  LSQ_found_entry := false;
-  if (lq.num_entries = 0) then
-    LSQ_while_break := true;
-  end;
-  LSQ_entry_idx := lq.head;
-  LSQ_difference := lq.num_entries;
-  LSQ_offset := 0;
-  LSQ_squash_remove_count := 0;
-  -- for i : 0 .. LSQ_NUM_ENTRIES_ENUM_CONST do
-  while ((LSQ_offset < LSQ_difference) & ((LSQ_while_break = false) & (LSQ_found_entry = false))) do
-    LSQ_curr_idx := ((LSQ_entry_idx + LSQ_offset) % LSQ_NUM_ENTRIES_CONST);
-
-    curr_entry := lq_new.entries[ LSQ_curr_idx ];
-    if (curr_entry.instruction.seq_num = seq_num) then
-      -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      assert (curr_entry.state = lsq_await_load_mem_response) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
-      if (curr_entry.state = lsq_await_load_mem_response) then
-        curr_entry.state := lsq_ld_write_result;
-      -- elsif (curr_entry.state = lsq_squashed_await_ld_mem_resp) then
-      --   curr_entry.state := lsq_ld_st_fwd_branch;
-      end;
-      curr_entry.read_value := msg.value;
-      lq_new.entries[ LSQ_curr_idx ] := curr_entry;
-      return lq_new;
-    end;
-
-    if (LSQ_offset < LSQ_difference) then
-      LSQ_offset := (LSQ_offset + 1);
-    end;
-  end;
-  return lq_new;
-end
-]
--/
 
   /- NOTE: Single LSQ In-Order & Load-Replay. Await mem response. -/
   def lsq_replay_await_load_mem_resp_function :=
@@ -360,35 +386,67 @@ end
     end]
 
     def hp_await_store_mem_response_fn :=
-    [murϕ_proc_decl|
-    function associative_ack_sb (
-      sb : SB;
-      msg : MEM_REQ
-    ) : SB;
-      var sb_new : SB;
-      var sb_iter : SB_idx_t;
-      var sb_count : SB_count_t;
-      var curr_entry : SB_entry_values;
-      var curr_entry_id : SB_idx_t;
-      var seq_num : inst_count_t;
-    begin
-      sb_new := sb;
-      sb_iter := 0;
-      sb_count := sb.num_entries;
-      seq_num := msg.seq_num;
-      for i : 0 .. SB_NUM_ENTRIES_ENUM_CONST do
-        curr_entry_id := ((sb_iter + i) % SB_NUM_ENTRIES_CONST);
-        curr_entry := sb_new.entries[ curr_entry_id ];
-        if (curr_entry.instruction.seq_num = seq_num) then
-          assert (curr_entry.state = sb_await_mem_response) "ACK SB: Should be in await mem resp?";
-          sb_new := sb_clear_entry(sb_new, seq_num);
-          return sb_new;
-        end;
-      endfor;
-      error "didn't find the Load to write the read val into?";
-      return sb_new;
-    end
-    ]
+      [murϕ_proc_decl|
+      function sb_clear_entry (
+        sb : SB;
+        seq_num : inst_count_t
+      ) : SB;
+        var sb_new : SB;
+        var curr_head : SB_idx_t;
+      begin
+        sb_new := sb;
+        -- curr_head := sb.head;
+        for i : SB_idx_t do
+          if (sb_new.entries[ i ].instruction.seq_num = seq_num) then
+            sb_new.entries[ i ].instruction.seq_num := 0;
+            sb_new.entries[ i ].instruction.op := inval;
+            sb_new.entries[ i ].instruction.dest_reg := 0;
+            sb_new.entries[ i ].instruction.imm := 0;
+            sb_new.entries[ i ].state := sb_await_creation;
+            sb_new.entries[ i ].write_value := 0;
+            sb_new.entries[ i ].virt_addr := 0;
+            sb_new.entries[ i ].phys_addr := 0;
+            -- NOTE: Make sure to check if there's space before inserting
+            sb_new.entries[ i ].valid := false;
+            sb_new.num_entries := (sb_new.num_entries - 1);
+            return sb_new;
+          end;
+        endfor;
+        error "Couldn't find the SB entry to clear!!!";
+      end
+      ]
+      ++
+      [murϕ_proc_decl|
+      function associative_ack_sb (
+        sb : SB;
+        msg : MEM_REQ
+      ) : SB;
+        var sb_new : SB;
+        var sb_iter : SB_idx_t;
+        var sb_count : SB_count_t;
+        var curr_entry : SB_entry_values;
+        var curr_entry_id : SB_idx_t;
+        var seq_num : inst_count_t;
+      begin
+        sb_new := sb;
+        sb_iter := 0;
+        sb_count := sb.num_entries;
+        seq_num := msg.seq_num;
+        for i : 0 .. SB_NUM_ENTRIES_ENUM_CONST do
+          curr_entry_id := ((sb_iter + i) % SB_NUM_ENTRIES_CONST);
+          curr_entry := sb_new.entries[ curr_entry_id ];
+          if (curr_entry.instruction.seq_num = seq_num) then
+            assert (curr_entry.state = sb_await_mem_response) "ACK SB: Should be in await mem resp?";
+            sb_new := sb_clear_entry(sb_new, seq_num);
+            return sb_new;
+          end;
+        endfor;
+        error "didn't find the Load to write the read val into?";
+        return sb_new;
+      end
+      ]
+
+    --def hp_SB_clear
 /- ----------- END HP LSQ Await Mem Resp Functions ---------------- -/
 
   /- NOTE: Structure Initialization... -/
