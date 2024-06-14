@@ -56,29 +56,36 @@ def GenMemResponseFunctions
     | .HP =>
       match tfsm with
       | .IO =>
-        hp_in_order_await_load_mem_resp_function ++
+        hp_in_order_await_load_mem_resp_function
+        ++
         hp_await_store_mem_response_fn
       | .LR =>
-        hp_load_replay_await_load_mem_resp_function ++
+        hp_load_replay_await_load_mem_resp_function
+        ++
         hp_await_store_mem_response_fn
       | .IT =>
-        hp_in_order_await_load_mem_resp_function ++
+        hp_in_order_await_load_mem_resp_function
+        ++
         hp_await_store_mem_response_fn
     | .LB =>
       [] -- For the test, the actions are in the Rule
     | .Unified =>
       match tfsm with
       | .IO =>
-        lsq_store_await_mem_resp_function ++
+        lsq_store_await_mem_resp_function
+        ++
         lsq_await_load_mem_resp_function
       | .LR =>
-        lsq_replay_await_load_mem_resp_function ++
+        lsq_replay_await_load_mem_resp_function
+        ++
         lsq_await_load_mem_resp_function
       | .IT =>
-        lsq_store_await_mem_resp_function ++
+        lsq_store_await_mem_resp_function
+        ++
         lsq_await_load_mem_resp_function
   | _, _ =>
-    hp_in_order_await_load_mem_resp_function ++
+    hp_in_order_await_load_mem_resp_function
+    ++
     hp_await_store_mem_response_fn
 
 def GenCoreReceiveMemResponseRule
@@ -102,7 +109,9 @@ def GenCoreReceiveMemResponseRule
       match tfsm with
       | .IO => lsq_core_gets_msg_rule
       | .LR => lsq_core_gets_msg_rule
-      | .IT => lsq_core_gets_inv_msg_rule
+      | .IT =>
+        dbg_trace s!"@@00 Should return the inval core rule?"
+        lsq_core_gets_inv_msg_rule
   | _, _ => core_gets_msg_not_inval_rule
 
 def GenInvalTrackerInit
@@ -127,6 +136,17 @@ def GenLATInit
   | none =>
     []
 
+def GenLSQInit
+(lsq? : Option LSQ)
+:=
+  match lsq? with
+  | some lsq =>
+    match lsq with
+    | .HP => hp_init
+    | .LB => lb_init
+    | .Unified => unified_lsq_init
+  | none => []
+
 -- comment this out for now, to make the
 -- lean4 interpretation faster...
 def compose_murphi_file_components_with_lsq_tfsm
@@ -140,6 +160,7 @@ def compose_murphi_file_components_with_lsq_tfsm
 ( litmus_test : LitmusTest )
 ( lsq? : Option LSQ )
 ( tfsm? : Option TFSM )
+( queue_ctrler_names : List Identifier )
 : Murϕ.Program
 :=
 
@@ -228,7 +249,7 @@ type ---- Type declarations ----
 
   --# GEN NOTE: have index & count types
   inst_idx_t : 0 .. CORE_INST_NUM;
-  inst_count_t : 0 .. (CORE_INST_NUM + 1);
+  inst_count_t : 0 .. (CORE_INST_NUM + 6);
   --# NOTE: could define seq_num_t type later
   --# for more arbitrary seq_num lengths
 
@@ -403,7 +424,9 @@ type ---- Type declarations ----
     dbg_trace "Not handled Litmust Test case: Permitted"
     panic! "Not handled Litmust Test case: Permitted"
 
-  let empty_core_exprs : Murϕ.Expr := litmus_test_core_empty_murphi_expr litmus_test
+  let empty_core_exprs : Murϕ.Expr :=
+    litmus_test_core_empty_murphi_expr
+      litmus_test queue_ctrler_names
 
   -- litmus_test
   let the_test_name := litmus_test.test_name
@@ -428,6 +451,13 @@ type ---- Type declarations ----
   let lat_init :=
     GenLATInit tfsm?
 
+  let lsq_init :=
+    GenLSQInit lsq?
+
+  let gen_init :=
+    inval_tracker_init ++
+    lat_init ++ lsq_init
+
   let mem_response_funcs :=
    GenMemResponseFunctions lsq? tfsm?
 
@@ -435,78 +465,6 @@ type ---- Type declarations ----
   let list_func_decls :=
     mem_response_funcs ++ List.join (
   [
--- [murϕ_proc_decl|
--- function sb_clear_entry (
---   sb : SB;
---   seq_num : inst_count_t
--- ) : SB;
---   var sb_new : SB;
---   var curr_head : SB_idx_t;
--- begin
---   sb_new := sb;
---   -- curr_head := sb.head;
---   for i : SB_idx_t do
---     if (sb_new.entries[ i ].instruction.seq_num = seq_num) then
---       sb_new.entries[ i ].instruction.seq_num := 0;
---       sb_new.entries[ i ].instruction.op := inval;
---       sb_new.entries[ i ].instruction.dest_reg := 0;
---       sb_new.entries[ i ].instruction.imm := 0;
---       sb_new.entries[ i ].state := sb_await_creation;
---       sb_new.entries[ i ].write_value := 0;
---       sb_new.entries[ i ].virt_addr := 0;
---       sb_new.entries[ i ].phys_addr := 0;
---       -- NOTE: Make sure to check if there's space before inserting
---       sb_new.num_entries := (sb_new.num_entries - 1);
---       return sb_new;
---     end;
---   endfor;
---   error "Couldn't find the SB entry to clear!!!";
--- end
--- ],
-[murϕ_proc_decl|
-
-function insert_ld_in_mem_interface(
-            -- NOTE: Swap when desired
-            --  ld_entry : LQ_entry_values;
-             ld_entry : LSQ_entry_values;
-             core : cores_t;
-           ) : MEM_REQ;
-  var msg : MEM_REQ;
-begin
-
-  msg .addr := ld_entry .phys_addr;
-  msg .r_w := read;
-  msg .valid := true;
-
-  msg .dest := mem;
-  msg .dest_id := core;
-  msg .seq_num := ld_entry .instruction .seq_num;
-
-  return msg;
-end
-],
-[murϕ_proc_decl|
-
-function insert_st_in_mem_interface(
-            --  sb_entry : SB_entry_values;
-             sb_entry : ROB_entry_values;
-             core : cores_t;
-           ) : MEM_REQ;
-  var msg : MEM_REQ;
-begin
-
-  msg .addr := sb_entry .phys_addr;
-  msg .r_w := write;
-  msg .value := sb_entry .write_value;
-  msg .valid := true;
-
-  msg .dest := mem;
-  msg .dest_id := core;
-  msg .seq_num := sb_entry .instruction .seq_num;
-
-  return msg;
-end
-],
 [murϕ_proc_decl|
 
 function insert_msg_into_ic(
@@ -823,8 +781,10 @@ begin
       seqnumreg.state := seq_num_interface;
     end;
 
-    --£inval_tracker_init;
+    £gen_init
 
+    --£lsq_init;
+    --£inval_tracker_init;
     --£lat_init;
 
     -- alias sq:init_state .core_[core] .SQ_ do
@@ -951,17 +911,51 @@ end
   let core_receive_mem_response_rule :=
     GenCoreReceiveMemResponseRule lsq? tfsm?
 
+  let core_idxs := List.range litmus_test.insts_in_cores.length
+
+  let murphi_reset_cond_exprs := List.join <|
+    core_idxs.map ( λ c_idx =>
+      let c_idx_str := toString c_idx
+      queue_ctrler_names.map ( λ q_cname =>
+        let murphi_q_cname :=
+          q_cname.append "_";
+        [murϕ_expr|
+          Sta .core_[ £c_idx_str ] . £murphi_q_cname .num_entries = 0
+        ]
+      )
+    )
+  let murphi_reset_cond_expr :=
+    match murphi_reset_cond_exprs with
+    | [lone_expr] => lone_expr
+    | h :: t =>
+      List.foldl (λ acc_m_expr m_expr =>
+        Murϕ.Expr.binop
+          "&" acc_m_expr m_expr
+        )
+        (h) (t)
+    | [] =>
+      -- Expecting at least one queue of instructions
+      -- to be empty for this version of PipeGen/AQL.
+      --throw s!"Error while generating Murphi reset condition, no queue structures?"
+      dbg_trace s!"Error while generating Murphi reset condition, no queue structures?"
+      default
+
+  dbg_trace s!"@@01 Murphi Reset Conds: ({murphi_reset_cond_expr})"
+
+  let start_state_rule :=
+    [murϕ_rule|
+
+    startstate "init"
+      undefine Sta;
+
+      Sta := init_state_fn();
+    end
+    ]
+
   let list_rules : List Murϕ.Rule :=
-    core_receive_mem_response_rule ++ List.join (
+    core_receive_mem_response_rule ++ start_state_rule ++
+    List.join (
     [
-  [murϕ_rule|
-
-startstate "init"
-  undefine Sta;
-
-  Sta := init_state_fn();
-end
-],
 [murϕ_rule|
 ------------- MEMORY TRANSITIONS -----------------
 --# Write the memory interface stuff
@@ -1181,88 +1175,88 @@ begin
 end; end;
 endruleset
 ],
-[murϕ_rule|
-
---# Core checks input msgs to notify dest structure
-ruleset j : cores_t do
-  rule "core_sends_in_msg_ack_to_structures"
-  ( Sta .core_[j] .mem_interface_.in_busy = true )
-==>
-  --# Decls
-  var next_state : STATE;
-  -- var lq : LQ;
-  var lq : LSQ;
-  -- var sb : SB;
-  var sb : ROB;
-  var mem_interface : MEM_INTERFACE;
-  var found_msg_in_ic : boolean;
-begin
-  next_state := Sta;
-  lq := Sta .core_[j] .LSQ_;
-  sb := Sta .core_[j] .ROB_;
-  mem_interface := Sta .core_[j] .mem_interface_;
-
-  if ( mem_interface .in_msg .r_w = read )
-    then
-    -- lq := associative_assign_lq(lq, mem_interface .in_msg);
-    lq := associative_assign_ld(lq, mem_interface .in_msg);
-    mem_interface.in_busy := false;
-  elsif ( mem_interface .in_msg .r_w = write )
-    then
-    if (mem_interface.in_msg.store_state = await_handling) then
-      -- Overview: Send back an ack for the invalidation sent..
-      -- match this message with it's copy in the IC, set it's ack bool to true.
-
-      -- next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
-      -- next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
-      -- next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
-
-      found_msg_in_ic := false;
-      for ic_idx : ic_idx_t do
-        -- if msg entry is valid & seq num matches, use this...
-        -- ..and ack the IC entry
-        if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
-          & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
-
-          -- (1) send ack
-          next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
-
-          -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
-
-          if found_msg_in_ic = true then
-            error "we found 2 matching ic entries? shouldn't happen...";
-          elsif found_msg_in_ic = false then
-            found_msg_in_ic := true;
-          endif;
-        endif;
-      endfor;
-
-      assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
-      assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
-      next_state.core_[j].mem_interface_.in_busy := false;
-
-      mem_interface.in_busy := false;
-
-    elsif (mem_interface.in_msg.store_state = store_send_completion) then
-      --# advance SB state to ack'd
-      --# basically clear'd
-      -- sb := associative_ack_sb(sb, mem_interface .in_msg);
-      sb := associative_ack_st(sb, mem_interface.in_msg);
-      mem_interface.in_busy := false;
-    end;
-  endif;
-
-
-  -- next_state .core_[j] .LQ_ := lq;
-  -- next_state .core_[j] .SB_ := sb;
-  next_state .core_[j] .LSQ_ := lq;
-  next_state .core_[j] .ROB_ := sb;
-  next_state .core_[j] .mem_interface_ := mem_interface;
-
-  Sta := next_state;
-end;
-endruleset
-],
+--##[murϕ_rule|
+--##
+--##--# Core checks input msgs to notify dest structure
+--##ruleset j : cores_t do
+--##  rule "core_sends_in_msg_ack_to_structures"
+--##  ( Sta .core_[j] .mem_interface_.in_busy = true )
+--##==>
+--##  --# Decls
+--##  var next_state : STATE;
+--##  -- var lq : LQ;
+--##  var lq : LSQ;
+--##  -- var sb : SB;
+--##  var sb : ROB;
+--##  var mem_interface : MEM_INTERFACE;
+--##  var found_msg_in_ic : boolean;
+--##begin
+--##  next_state := Sta;
+--##  lq := Sta .core_[j] .LSQ_;
+--##  sb := Sta .core_[j] .ROB_;
+--##  mem_interface := Sta .core_[j] .mem_interface_;
+--##
+--##  if ( mem_interface .in_msg .r_w = read )
+--##    then
+--##    -- lq := associative_assign_lq(lq, mem_interface .in_msg);
+--##    lq := associative_assign_ld(lq, mem_interface .in_msg);
+--##    mem_interface.in_busy := false;
+--##  elsif ( mem_interface .in_msg .r_w = write )
+--##    then
+--##    if (mem_interface.in_msg.store_state = await_handling) then
+--##      -- Overview: Send back an ack for the invalidation sent..
+--##      -- match this message with it's copy in the IC, set it's ack bool to true.
+--##
+--##      -- next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
+--##      -- next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
+--##      -- next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
+--##
+--##      found_msg_in_ic := false;
+--##      for ic_idx : ic_idx_t do
+--##        -- if msg entry is valid & seq num matches, use this...
+--##        -- ..and ack the IC entry
+--##        if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
+--##          & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
+--##
+--##          -- (1) send ack
+--##          next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
+--##
+--##          -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
+--##
+--##          if found_msg_in_ic = true then
+--##            error "we found 2 matching ic entries? shouldn't happen...";
+--##          elsif found_msg_in_ic = false then
+--##            found_msg_in_ic := true;
+--##          endif;
+--##        endif;
+--##      endfor;
+--##
+--##      assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
+--##      assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
+--##      next_state.core_[j].mem_interface_.in_busy := false;
+--##
+--##      mem_interface.in_busy := false;
+--##
+--##    elsif (mem_interface.in_msg.store_state = store_send_completion) then
+--##      --# advance SB state to ack'd
+--##      --# basically clear'd
+--##      -- sb := associative_ack_sb(sb, mem_interface .in_msg);
+--##      sb := associative_ack_st(sb, mem_interface.in_msg);
+--##      mem_interface.in_busy := false;
+--##    end;
+--##  endif;
+--##
+--##
+--##  -- next_state .core_[j] .LQ_ := lq;
+--##  -- next_state .core_[j] .SB_ := sb;
+--##  next_state .core_[j] .LSQ_ := lq;
+--##  next_state .core_[j] .ROB_ := sb;
+--##  next_state .core_[j] .mem_interface_ := mem_interface;
+--##
+--##  Sta := next_state;
+--##end;
+--##endruleset
+--##],
 
 -- [murϕ_rule|
 -- ruleset j : cores_t do
@@ -1279,6 +1273,7 @@ endruleset
 
 rule "reset"
   (
+    --£murphi_reset_cond_expr
     ( Sta .core_[0] .RENAME_.num_entries = 0 )
     &
     ( Sta .core_[0] .ROB_.num_entries = 0 )
@@ -1334,7 +1329,7 @@ end
 
   murphi_file
 
-def gen_murphi_litmus_test_programs_no_RENAME_no_IQ_no_ROB
+def gen_murphi_litmus_test_programs_with_test_harness
 -- Consts, like num entries per buffer-type ctrler
 ( const_decls : List Murϕ.Decl)
 -- Types, like ctrler defns
@@ -1343,13 +1338,21 @@ def gen_murphi_litmus_test_programs_no_RENAME_no_IQ_no_ROB
 ( rules : List Murϕ.Rule)
 ( ctrler_list : List controller_info )
 -- ( litmus_tests : List LitmusTest )
+( lsq? : Option LSQ )
+( tfsm? : Option TFSM )
+( queue_ctrler_names : List Identifier )
 : List MurphiFile
 :=
   let murphi_files : List MurphiFile :=
   ActiveLitmusTests.map (
     λ litmus_test =>
       let name' := "generated-".append (litmus_test.test_name)
-      let program' := compose_murphi_file_components_but_no_RENAME_no_IQ_no_ROB const_decls type_decls func_decls rules ctrler_list litmus_test
+      let program' :=
+        compose_murphi_file_components_with_lsq_tfsm
+          const_decls type_decls func_decls rules
+          ctrler_list litmus_test
+          lsq? tfsm?
+          queue_ctrler_names
       let murphi_file : MurphiFile := {
         filename := name',
         program := program'
