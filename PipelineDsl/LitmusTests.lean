@@ -129,28 +129,39 @@ def core_insts_to_emit_murphi_alias
 open Murϕ in
 def litmus_test_core_empty_murphi_expr
 (litmus_test : LitmusTest)
+(queue_ctrler_names : List Identifier)
 : Murϕ.Expr
 :=
-  let core_ids : List Nat := List.range litmus_test.insts_in_cores.length
-  let empty_core_buffer_exprs : List Murϕ.Expr := core_ids.map (λ core_id =>
-    let core_idx : String := toString core_id
-    [murϕ_expr| 
-      ( Sta .core_[£core_idx] .RENAME_.num_entries = 0 )
-      &
-      ( Sta .core_[£core_idx] .ROB_.num_entries = 0 )
-      -- &
-      -- ( Sta .core_[£core_idx] .SB_.num_entries = 0 )
-    ]
-  )
+  let core_idxs := List.range litmus_test.insts_in_cores.length
 
-  let empty_core_exprs : Murϕ.Expr := match empty_core_buffer_exprs with
-  | [] => dbg_trace "This test sholdn't have no cores...? Throw" 
-    panic! "ERROR: was the passed number of cores 0?"
-  | [one] => one
-  -- | h::t => List.foldl (λ expr1 expr2 => [murϕ_expr| £expr1 & £expr2]) h t
-  | h::t => List.foldl (λ expr1 expr2 => Murϕ.Expr.binop "&" expr1 expr2) h t
-
-  empty_core_exprs
+  let murphi_reset_cond_exprs := List.join <|
+    core_idxs.map ( λ c_idx =>
+      let c_idx_str := toString c_idx
+      queue_ctrler_names.map ( λ q_cname =>
+        let murphi_q_cname :=
+          q_cname.append "_";
+        [murϕ_expr|
+          Sta .core_[ £c_idx_str ] . £murphi_q_cname .num_entries = 0
+        ]
+      )
+    )
+  let murphi_reset_cond_expr :=
+    match murphi_reset_cond_exprs with
+    | [lone_expr] => lone_expr
+    | h :: t =>
+      List.foldl (λ acc_m_expr m_expr =>
+        Murϕ.Expr.binop
+          "&" acc_m_expr m_expr
+        )
+        (h) (t)
+    | [] =>
+      -- Expecting at least one queue of instructions
+      -- to be empty for this version of PipeGen/AQL.
+      --throw s!"Error while generating Murphi reset condition, no queue structures?"
+      dbg_trace s!"Error while generating Murphi reset condition, no queue structures?"
+      default
+  dbg_trace s!"@@01 murphi reset cond: ({murphi_reset_cond_expr})"
+  murphi_reset_cond_expr
 
 open Murϕ in
 def CoreRegState_to_emit_murphi_expr
@@ -348,8 +359,8 @@ def amd2 : LitmusTest := {
       {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
       ]},
     {core_idx := 1, insts := [
-      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
-      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
       ]}
   ],
   expected := {
@@ -692,6 +703,10 @@ def dekker_dmb_sy : LitmusTest := {
       (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
     ]
 }
+
+-- TODO: Add in the extra ones for fully testing
+-- load/store ordering with memory instructions, for
+-- artifact evaluation
 
 def ActiveLitmusTests : List LitmusTest := [
 iwp23b1, -- should pass, is for single core correctness
