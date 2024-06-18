@@ -2569,6 +2569,27 @@ def UnorderedSearch
   let search_api := await (some search_api_term) [when_search_success, when_search_fail]
   search_api
 
+def FIFOTailSearch
+(dest_c_name : CtrlerName)
+(cond_e : Pipeline.Expr)
+(success_case_stmts : Pipeline.Statement)
+(fail_case_stmts : Pipeline.Statement)
+-- (search_api : MsgName)
+-- (current_ctrler_seq_num : List Identifier)
+: Pipeline.Statement :=
+  -- await SB.search((entry.phys_addr == phys_addr) & (entry.instruction.seq_num < instruction.seq_num), min(instruction.seq_num - entry.instruction.seq_num) )
+  -- when search_fail() from SB
+  -- when search_success(write_value) from SB
+  let when_search_fail := when_stmt [dest_c_name, search_fail].to_qual_name [] fail_case_stmts.to_block
+  let when_search_success := when_stmt [dest_c_name, search_success].to_qual_name [] success_case_stmts.to_block
+  -- let min_of_diff : Pipeline.Expr := some_term $ function_call [(min : Identifier)].to_qual_name [inst_and_entry_inst_seq_num_diff]
+
+  -- AZ NOTE: min_of_diff may not be necessary...
+  let search_api_term : Pipeline.Term :=
+    function_call [dest_c_name, tail_search /- search_api -/].to_qual_name ([cond_e])
+  let search_api := await (some search_api_term) [when_search_success, when_search_fail]
+  search_api
+
 open Pipeline in
 def QueryCtrlerWithConstraints
 (cond_e : Pipeline.Expr)
@@ -2591,7 +2612,7 @@ def QueryCtrlerWithConstraints
         else_nfound_stmt
   | .FIFO => -- use the search API here... probably exists in the old generate stall state function...
     -- FIFOSearch cond_e if_found_stmt else_nfound_stmt
-    pure $ UnorderedSearch dest_c_name cond_e unordered_constraint_e? if_found_stmt else_nfound_stmt
+    pure $ FIFOTailSearch dest_c_name cond_e if_found_stmt else_nfound_stmt
   | .Unordered =>
     pure $ UnorderedSearch dest_c_name cond_e unordered_constraint_e? if_found_stmt else_nfound_stmt
 
