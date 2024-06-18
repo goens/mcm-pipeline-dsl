@@ -76,9 +76,10 @@ def GenMemResponseFunctions
         ++
         lsq_await_load_mem_resp_function
       | .LR =>
-        lsq_replay_await_load_mem_resp_function
+        lsq_store_await_mem_resp_function
         ++
-        lsq_await_load_mem_resp_function
+        lsq_replay_await_load_mem_resp_function
+        --lsq_await_load_mem_resp_function
       | .IT =>
         lsq_store_await_mem_resp_function
         ++
