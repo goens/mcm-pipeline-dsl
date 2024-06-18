@@ -4,8 +4,10 @@ import Lean
 
 import PipelineDsl.ControllerHelpers
 
+-- to help with artifact eval
 import PipelineDsl.LSQTfsm
 import PipelineDsl.ApplyTransformations
+import PipelineDsl.TransformsToApply
 
 open Lean Pipeline
 
@@ -444,15 +446,7 @@ def runMainCmd : Cli.Parsed → IO UInt32
         transformTesting ast (tests.as! $ Array Nat) lsq.toLSQ tfsm.toTFSM
 
   if args.hasFlag "emit-murphi" || args.hasFlag "murphi-testing" then
-    let tfsms := [
-      (Transformation.IO,
-       MCMOrdering.binary_ordering
-         (BinaryOrdering.mk [ store ] [ store, mfence ] Addresses.any) ),
-      (Transformation.LR,
-       MCMOrdering.ternary_ordering
-         (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
-    ]
-    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphi-testing") directory ast lsq tfsm tfsms
+    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphi-testing") directory ast lsq tfsm transforms
 
   return 0
 
