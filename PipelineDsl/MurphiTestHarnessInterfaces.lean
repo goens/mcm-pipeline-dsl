@@ -149,8 +149,8 @@ begin
     curr_entry := lq_new.entries[ LSQ_curr_idx ];
     if (curr_entry.instruction.seq_num = seq_num) then
       -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      assert (curr_entry.state = lsq_await_load_mem_response
-        | curr_entry.state = replay_generated_lsq_await_load_mem_response
+      assert ( (curr_entry.state = lsq_await_load_mem_response)
+        | (curr_entry.state = replay_generated_lsq_await_load_mem_response)
         )
         "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
       if (curr_entry.state = lsq_await_load_mem_response) then
@@ -307,8 +307,8 @@ begin
     curr_entry := lq_new.entries[ LQ_curr_idx ];
     if (curr_entry.instruction.seq_num = seq_num) then
       -- assert ((curr_entry.state = lsq_squashed_await_ld_mem_resp) | (curr_entry.state = lsq_await_load_mem_response)) "ASSN LQ: Should be in await mem resp? or squashed and await collect the mem resp?";
-      assert (curr_entry.state = await_mem_response
-      | curr_entry.state = replay_generated_await_mem_response
+      assert ((curr_entry.state = await_mem_response)
+      | (curr_entry.state = replay_generated_await_mem_response)
       ) "ASSN LQ: Should be in await mem resp? and await collect the mem resp?";
       if (curr_entry.state = await_mem_response) then
         curr_entry.state := write_result;
@@ -663,7 +663,7 @@ begin
       (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
       (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
         -- elsif (mem_interface.in_msg.store_state = store_send_completion) then
-          rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+          rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
           assert(rob.entries[rob_id].state = rob_wait_store_completed);
           rob.entries[rob_id].state := rob_complete_store;
           -- sb := associative_ack_st(sb, mem_interface.in_msg);
@@ -704,7 +704,7 @@ begin
       -- mem_interface.in_busy := false;
     endif;
   else
-    error "CORE-ACK: Got a message but don't know what to do with it!\n";
+    error "CORE-ACK: Got a message but don't know what to do with it!\\n";
   endif;
   --put "CORE-ACK: Reached end of if stmt..\n";
   -- next_state.core_[ j ].LSQ_ := lq;
@@ -745,8 +745,8 @@ begin
     --put "CORE-ACK: 1st Mem unit is the recipient, check if load or store..\n";
     -- if (mem_interface.in_msg.r_w = read) then
     if
-    (Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver
-    | Sta.core_[j].memory_unit_sender_.state = replay_generated_memory_unit_receiver
+    ((Sta.core_[j].memory_unit_sender_.state = memory_unit_receiver)
+    | (Sta.core_[j].memory_unit_sender_.state = replay_generated_memory_unit_receiver)
     ) &
     (Sta.core_[j].memory_unit_sender_.instruction.seq_num = mem_interface.in_msg.seq_num)
       then
@@ -793,7 +793,7 @@ begin
       (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
       (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
         -- elsif (mem_interface.in_msg.store_state = store_send_completion) then
-          rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+          rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
           assert(rob.entries[rob_id].state = rob_wait_store_completed);
           rob.entries[rob_id].state := rob_complete_store;
           -- sb := associative_ack_st(sb, mem_interface.in_msg);
@@ -834,7 +834,7 @@ begin
       mem_interface.in_busy := false;
     endif;
   else
-    error "CORE-ACK: Got a message but don't know what to do with it!\n";
+    error "CORE-ACK: Got a message but don't know what to do with it!\\n";
   endif;
   --put "CORE-ACK: Reached end of if stmt..\n";
   -- next_state.core_[ j ].LSQ_ := lq;
@@ -923,7 +923,7 @@ begin
       (Sta.core_[j].second_memory_stage_.state = second_mem_unit_receive) &
       (Sta.core_[j].second_memory_stage_.instruction.seq_num = mem_interface.in_msg.seq_num) then
         -- elsif (mem_interface.in_msg.store_state = store_send_completion) then
-          rob_id := search_rob_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
+          rob_id := search_ROB_seq_num_idx(rob, Sta.core_[j].second_memory_stage_.instruction.seq_num);
           assert(rob.entries[rob_id].state = rob_wait_store_completed);
           rob.entries[rob_id].state := rob_complete_store;
           -- sb := associative_ack_st(sb, mem_interface.in_msg);
@@ -964,7 +964,7 @@ begin
       mem_interface.in_busy := false;
     endif;
   else
-    error "CORE-ACK: Got a message but don't know what to do with it!\n";
+    error "CORE-ACK: Got a message but don't know what to do with it!\\n";
   endif;
   -- put "CORE-ACK: Reached end of if stmt..\n";
   -- next_state.core_[ j ].LSQ_ := lq;
@@ -1043,86 +1043,55 @@ end
   /- In-Order, and Load Replay. Not Inval Tracking -/
   def core_gets_msg_not_inval_rule :=
     [murϕ_rule|
+ruleset j : cores_t do
+  rule "core_sends_in_msg_ack_to_structures"
+(Sta.core_[ j ].mem_interface_.in_busy = true)
+==>
 
-    --# Core checks input msgs to notify dest structure
-    ruleset j : cores_t do
-      rule "core_sends_in_msg_ack_to_structures"
-      ( Sta .core_[j] .mem_interface_.in_busy = true )
-    ==>
-      --# Decls
-      var next_state : STATE;
-      -- var lq : LQ;
-      var lq : LSQ;
-      -- var sb : SB;
-      var sb : ROB;
-      var mem_interface : MEM_INTERFACE;
-      var found_msg_in_ic : boolean;
-    begin
-      next_state := Sta;
-      lq := Sta .core_[j] .LSQ_;
-      sb := Sta .core_[j] .ROB_;
-      mem_interface := Sta .core_[j] .mem_interface_;
+  var next_state : STATE;
+  var lq : LQ;
+  var sb : SB;
+  var mem_interface : MEM_INTERFACE;
+  var found_msg_in_ic : boolean;
 
-      if ( mem_interface .in_msg .r_w = read )
-        then
-        -- lq := associative_assign_lq(lq, mem_interface .in_msg);
-        lq := associative_assign_ld(lq, mem_interface .in_msg);
-        mem_interface.in_busy := false;
-      elsif ( mem_interface .in_msg .r_w = write )
-        then
-        if (mem_interface.in_msg.store_state = await_handling) then
-          -- Overview: Send back an ack for the invalidation sent..
-          -- match this message with it's copy in the IC, set it's ack bool to true.
-
-          -- next_state.core_[ j ].invalidation_listener_.state := squash_speculative_loads;
-          -- next_state.core_[ j ].invalidation_listener_.invalidation_seq_num := mem_interface.in_msg.seq_num;
-          -- next_state.core_[ j ].invalidation_listener_.invalidation_address := mem_interface.in_msg.addr;
-
-          found_msg_in_ic := false;
-          for ic_idx : ic_idx_t do
-            -- if msg entry is valid & seq num matches, use this...
-            -- ..and ack the IC entry
-            if (Sta.ic_.valid[ic_idx] = true) & (Sta.ic_.buffer[ic_idx].seq_num = Sta.core_[j].mem_interface_.in_msg.seq_num)
-              & (Sta.ic_.buffer[ic_idx].dest_id = Sta.core_[j].mem_interface_.in_msg.dest_id) then
-
-              -- (1) send ack
-              next_state.ic_.buffer[ic_idx].store_inval_ackd[j] := true;
-
-              -- put next_state.ic_.buffer[ic_idx].store_inval_ackd[j];
-
-              if found_msg_in_ic = true then
-                error "we found 2 matching ic entries? shouldn't happen...";
-              elsif found_msg_in_ic = false then
-                found_msg_in_ic := true;
-              endif;
-            endif;
-          endfor;
-
-          assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
-          assert (Sta.core_[j].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
-          next_state.core_[j].mem_interface_.in_busy := false;
-
-          mem_interface.in_busy := false;
-
-        elsif (mem_interface.in_msg.store_state = store_send_completion) then
-          --# advance SB state to ack'd
-          --# basically clear'd
-          -- sb := associative_ack_sb(sb, mem_interface .in_msg);
-          sb := associative_ack_st(sb, mem_interface.in_msg);
-          mem_interface.in_busy := false;
+begin
+  next_state := Sta;
+  lq := Sta.core_[ j ].LQ_;
+  sb := Sta.core_[ j ].SB_;
+  mem_interface := Sta.core_[ j ].mem_interface_;
+  if (mem_interface.in_msg.r_w = read) then
+    lq := associative_assign_lq(lq, mem_interface.in_msg);
+    mem_interface.in_busy := false;
+  elsif (mem_interface.in_msg.r_w = write) then
+    if (mem_interface.in_msg.store_state = await_handling) then
+      found_msg_in_ic := false;
+      for ic_idx : ic_idx_t do
+        if ((Sta.ic_.valid[ ic_idx ] = true) & ((Sta.ic_.buffer[ ic_idx ].seq_num = Sta.core_[ j ].mem_interface_.in_msg.seq_num) & (Sta.ic_.buffer[ ic_idx ].dest_id = Sta.core_[ j ].mem_interface_.in_msg.dest_id))) then
+          next_state.ic_.buffer[ ic_idx ].store_inval_ackd[ j ] := true;
+          if (found_msg_in_ic = true) then
+            error "we found 2 matching ic entries? shouldn't happen...";
+          elsif (found_msg_in_ic = false) then
+            found_msg_in_ic := true;
+          end;
         end;
-      endif;
-
-
-      -- next_state .core_[j] .LQ_ := lq;
-      -- next_state .core_[j] .SB_ := sb;
-      next_state .core_[j] .LSQ_ := lq;
-      next_state .core_[j] .ROB_ := sb;
-      next_state .core_[j] .mem_interface_ := mem_interface;
-
-      Sta := next_state;
+      endfor;
+      assert (found_msg_in_ic = true) "Should have found a msg in the IC? Otherwise we wouldn't be performing this invalidation's squash.";
+      assert (Sta.core_[ j ].mem_interface_.in_busy = true) "The memory interface of this core should be busy, this is the msg we're processing.";
+      next_state.core_[ j ].mem_interface_.in_busy := false;
+      mem_interface.in_busy := false;
+    elsif (mem_interface.in_msg.store_state = store_send_completion) then
+      sb := associative_ack_sb(sb, mem_interface.in_msg);
+      mem_interface.in_busy := false;
     end;
-    endruleset
+  end;
+  -- mem_interface.in_busy := false;
+  next_state.core_[ j ].LQ_ := lq;
+  next_state.core_[ j ].SB_ := sb;
+  next_state.core_[ j ].mem_interface_ := mem_interface;
+  Sta := next_state;
+
+end;
+end
     ]
 
 /- ================= =============================== ===================== -/
