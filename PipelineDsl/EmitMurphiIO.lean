@@ -3,10 +3,12 @@ import PipelineDsl.AST
 
 import PipelineDsl.LSQTfsm
 
+import PipelineDsl.ApplyTransformations
+
 open Pipeline
 
 
-def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST) (lsq_type: String) (tfsm_selected : String) : IO Unit := do
+def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST) (lsq_type: String) (tfsm_selected : String) (tfsms : List (Transformation × MCMOrdering)) : IO Unit := do
     let mut teststr := ""
     teststr := teststr ++ "---- test murhpi ----"
 
@@ -21,6 +23,12 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
         dbg_trace s!"Error getting the ctrler info from the parsed AST! ({msg})"
         dbg_trace s!"Returning default for now, empty list."
         default
+    let ctrlers := match Ctrlers.ApplyTransformations ctrlers tfsms with
+      | .ok ctrlers => ctrlers
+      | .error msg =>
+        dbg_trace s!"Error applying Transformations to Ctrlers: ({msg})"
+        default
+
     teststr := teststr ++ s!"controller entries: \n{ctrlers}"
 
     -- Get basic Murphi Records
@@ -28,7 +36,6 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
     let murphi_records : List ctrler_decl_entry_decl_const_decl :=
       ctrlers.map ast0048_generate_controller_murphi_record
     teststr := teststr ++ s!"ctrler records: \n{murphi_records}"
-
 
     let cdfg_nodes : Except String (List CDFG.Node) := DSLtoCDFG ctrlers
     -- AZ NOTE: Testing in-order-transform

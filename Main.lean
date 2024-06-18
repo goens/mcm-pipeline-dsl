@@ -5,6 +5,7 @@ import Lean
 import PipelineDsl.ControllerHelpers
 
 import PipelineDsl.LSQTfsm
+import PipelineDsl.ApplyTransformations
 
 open Lean Pipeline
 
@@ -131,6 +132,7 @@ def transformTesting : AST → Array Nat → Option LSQ → Option TFSM → IO U
       --   | .error msg =>
       --     dbg_trace s!"Error applying st->ld in CDFG InOrderTfsm: ({msg})"
       --     []
+      -- ---------------- New In Order Tfsm Code --------------------
 
       -- let ld_ld := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ load ] [ load ] Addresses.any) )
       -- let ctrlers := match CDFG.InOrderTransform ctrlers ld_ld none with
@@ -139,21 +141,21 @@ def transformTesting : AST → Array Nat → Option LSQ → Option TFSM → IO U
       --     dbg_trace s!"Error applying ld->ld in CDFG InOrderTfsm: ({msg})"
       --     []
 
-      dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
-      let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
-        | .ok ctrler_list => ctrler_list
-        | .error msg =>
-          dbg_trace s!"Error adding invalidation listener: ({msg})"
-          []
+      -- dbg_trace s!"++ Adding ld -> ld ordering with Invalidation snooping."
+      -- let ctrlers := match ctrlers.AddInvalidationBasedLoadOrdering with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg =>
+      --     dbg_trace s!"Error adding invalidation listener: ({msg})"
+      --     []
 
-      dbg_trace s!"++ Adding ld,st -> mfence -> ld,st ordering."
-      let ld_st_fence_ld_st := ( MCMOrdering.ternary_ordering
-        (TernaryOrdering.mk [ load', store' ] mfence' [ store' ] Addresses.any) )
-      let ctrlers := match CDFG.InOrderTransform ctrlers ld_st_fence_ld_st none with
-        | .ok ctrler_list => ctrler_list
-        | .error msg =>
-          dbg_trace s!"Error applying ld,st->mfence->ld,st in CDFG InOrderTfsm: ({msg})"
-          []
+      -- dbg_trace s!"++ Adding ld,st -> mfence -> ld,st ordering."
+      -- let ld_st_fence_ld_st := ( MCMOrdering.binary_ordering
+      --   (BinaryOrdering.mk [ mfence ] [ load ] Addresses.any) )
+      -- let ctrlers := match CDFG.InOrderTransform ctrlers ld_st_fence_ld_st none with
+      --   | .ok ctrler_list => ctrler_list
+      --   | .error msg =>
+      --     dbg_trace s!"Error applying ld,st->mfence->ld,st in CDFG InOrderTfsm: ({msg})"
+      --     []
 
       -- dbg_trace s!"++ (Test in-order with Design 3) Adding load -> load ordering."
       -- let ldar_ordering := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ load ] [ load ] Addresses.any) )
@@ -163,15 +165,17 @@ def transformTesting : AST → Array Nat → Option LSQ → Option TFSM → IO U
       --     dbg_trace s!"Error applying load -> load (to Design 3) in CDFG InOrderTfsm: ({msg})"
       --     []
 
-      -- dbg_trace s!"++ Adding st -> st ordering."
-      -- let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store ] Addresses.any) )
-      -- let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg =>
-      --     dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
-      --     []
-      -- println! s!"!begin st,st Ctrlers: ({ctrlers}) end st,st Ctrlers"
---
+      -- ====== BEGIN HP TSO IO+LR ========
+
+      dbg_trace s!"++ Adding st -> st ordering."
+      let st_st := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ store ] [ store, mfence ] Addresses.any) )
+      let ctrlers := match CDFG.InOrderTransform ctrlers st_st none with
+        | .ok ctrler_list => ctrler_list
+        | .error msg =>
+          dbg_trace s!"Error applying st->st in CDFG InOrderTfsm: ({msg})"
+          []
+      println! s!"!begin st,st Ctrlers: ({ctrlers}) end st,st Ctrlers"
+
       ----- -- === Load Acquire / Store Release Testing ===
       ----- dbg_trace s!"++ Adding ldar -> load, store, ldar ordering."
       ----- let ldar_ordering := ( MCMOrdering.binary_ordering (BinaryOrdering.mk [ ldar ] [ ldar, load ] Addresses.any) )
@@ -258,20 +262,25 @@ def transformTesting : AST → Array Nat → Option LSQ → Option TFSM → IO U
       --let st_ld'_fence_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ store', load' ] mfence' [ load' ] Addresses.any) )
       --let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers st_ld'_fence_ld with
       --  | .ok ctrler_list => ctrler_list
-      --  | .error msg =>
+
+
+--  | .error msg =>
       --    dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
       --    []
 
       -- println! s!"!ld,st mfence Ctrlers: ({ctrlers}) ld,st mfence"
 
-      -- let load_replay_ld_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
+      let load_replay_ld_ld := ( MCMOrdering.ternary_ordering (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
       -- let mfence_to_replay := MCMOrdering.binary_ordering (BinaryOrdering.mk [mfence] [mfence] Addresses.any)
-      -- dbg_trace s!"++ Adding LoadReplay ld -> ld"
-      -- let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( mfence_to_replay) with
-      --   | .ok ctrler_list => ctrler_list
-      --   | .error msg =>
-      --     dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
-      --     []
+      dbg_trace s!"++ Adding LoadReplay ld -> ld"
+      --let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( mfence_to_replay) with
+      let ctrlers := match Ctrlers.CDFGLoadReplayTfsm ctrlers ( load_replay_ld_ld ) with
+        | .ok ctrler_list => ctrler_list
+        | .error msg =>
+          dbg_trace s!"Error applying Load-Replay ld->ld in CDFG LoadReplayTfsm: ({msg})"
+          []
+
+      -- ====== END HP TSO IO+LR ========
 
       -- println! s!"!Load Replay Ctrlers: ({ctrlers}) Load Replay"
 
@@ -435,7 +444,15 @@ def runMainCmd : Cli.Parsed → IO UInt32
         transformTesting ast (tests.as! $ Array Nat) lsq.toLSQ tfsm.toTFSM
 
   if args.hasFlag "emit-murphi" || args.hasFlag "murphi-testing" then
-    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphi-testing") directory ast lsq tfsm
+    let tfsms := [
+      (Transformation.IO,
+       MCMOrdering.binary_ordering
+         (BinaryOrdering.mk [ store ] [ store, mfence ] Addresses.any) ),
+      (Transformation.LR,
+       MCMOrdering.ternary_ordering
+         (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
+    ]
+    let _ ← emitMurphiIO (args.hasFlag "emit-murphi") (args.hasFlag "murphi-testing") directory ast lsq tfsm tfsms
 
   return 0
 
