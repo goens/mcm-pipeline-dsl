@@ -90,7 +90,7 @@ def core_insts_to_emit_murphi_alias
   let rename_alias_id := "rename_c" ++ (toString core_idx)
 
   let num_entries := toString core_insts.insts.length
-  let tail_idx := (toString (core_insts.insts.length)).append " % (CORE_INST_NUM + 1)"
+  let tail_idx := (toString (core_insts.insts.length)).append " % (RENAME_NUM_ENTRIES_ENUM_CONST + 1)"
 
   let list_inst_assignments : List Murϕ.Statement :=
   (List.join (core_insts.insts.map (
@@ -108,6 +108,7 @@ def core_insts_to_emit_murphi_alias
         £rename_alias_id .entries[ £queue_idx ] .instruction .dest_reg := £dest_reg;
         £rename_alias_id .entries[ £queue_idx ] .instruction .imm := £addr; --# Addr
         £rename_alias_id .entries[ £queue_idx ] .instruction .write_value := £write_val;
+        £rename_alias_id .entries[ £queue_idx ] .state := issue_if_head;
       ]
   ))) ++ (
   [murϕ_statements|
@@ -272,6 +273,32 @@ def amd1_dmb_ld_st : LitmusTest := {
     {core_idx := 1, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
       {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    -- {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 1}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [
+    (ternary_ordering [ load' ] dmb_ld' [ load' ] Addresses.any),
+    (ternary_ordering [ store' ] dmb_st' [ store' ] Addresses.any)
+  ]
+}
+
+def amd1_dmb_st_ld_mismatch : LitmusTest := {
+  test_name := "amd1-dmb-ld-st-mismatch",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_ld, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
       {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
       ]}
   ],
@@ -713,6 +740,7 @@ iwp23b1, -- should pass, is for single core correctness
 amd1,
 amd1_dmb_sy,
 amd1_dmb_ld_st,
+amd1_dmb_st_ld_mismatch,
 amd1_one_ldar_stlr,
 amd1_all_ldar_stlr,
 amd1_relaxed_ldar_stlr,
