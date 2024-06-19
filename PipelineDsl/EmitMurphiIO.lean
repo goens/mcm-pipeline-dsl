@@ -59,9 +59,26 @@ def emitMurphiIO (emit : Bool) (testing : Bool) (directory : String) (ast : AST)
         --dbg_trace s!"preparing to emit murphi for ctrler: ({ctrler})"
         let states : List Description :=
           if ctrler.init_trans.isSome then
-            ctrler.transition_list.get!
+            let init_trans_name : Identifier := ctrler.init_trans.get!
+            let all_states := ctrler.transition_list.get!
+            all_states.filter (
+              match ·.state_name with
+              | .ok state_name => state_name != init_trans_name
+              | .error msg =>
+                dbg_trace s!"Error while getting state name in Murphi Gen: ({msg})"
+                default
+            )
           else if ctrler.ctrler_init_trans.isSome then
-            ctrler.ctrler_trans_list.get!
+            --ctrler.ctrler_trans_list.get!
+            let init_trans_name : Identifier := ctrler.ctrler_init_trans.get!
+            let all_states := ctrler.ctrler_trans_list.get!
+            all_states.filter (
+              match ·.state_name with
+              | .ok state_name => state_name != init_trans_name
+              | .error msg =>
+                dbg_trace s!"Error while getting state name in Murphi Gen: ({msg})"
+                default
+            )
           else
             dbg_trace "ERROR, ctrler doesn't have entry or ctrler transition info? ({ctrler})"
             default
