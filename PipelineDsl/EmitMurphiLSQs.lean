@@ -79,7 +79,6 @@ def GenMemResponseFunctions
         lsq_store_await_mem_resp_function
         ++
         lsq_replay_await_load_mem_resp_function
-        --lsq_await_load_mem_resp_function
       | .IT =>
         lsq_store_await_mem_resp_function
         ++
@@ -405,7 +404,7 @@ type ---- Type declarations ----
   ]
 
   let list_rename_init_insts : List Murϕ.Statement :=
-  litmus_test.insts_in_cores.map core_insts_to_emit_murphi_alias
+    litmus_test.insts_in_cores.map core_insts_to_emit_murphi_alias
 
   let expected_core_reg_file_states : List Murϕ.Expr :=
   litmus_test.expected.per_core_reg_file.map CoreRegState_to_emit_murphi_expr
@@ -547,11 +546,11 @@ type ---- Type declarations ----
         --   -- lq .ld_seq_num := 0;
         -- end;
         alias rename:init_state .core_[core] .RENAME_ do
-          for i : 0 .. CORE_INST_NUM do
+          for i : 0 .. RENAME_NUM_ENTRIES_ENUM_CONST do
             rename .entries[i] .instruction .op := inval;
             rename .entries[i] .instruction .seq_num := 0;
             -- rename .entries[i] .state := rename_await_creation;
-            rename .entries[i] .state := issue_if_head;
+            rename .entries[i] .state := rename_await_creation; -- choosing a Rename init state is a bit finicky
           end;
           rename .head := 0;
           rename .tail := 0;
@@ -587,7 +586,7 @@ type ---- Type declarations ----
           end;
         end;
         alias rob:init_state .core_[core] .ROB_ do
-          for i : 0 .. CORE_INST_NUM do
+          for i : 0 .. ROB_NUM_ENTRIES_ENUM_CONST do
             rob .entries[i] .instruction .op := inval;
             rob .entries[i] .instruction .seq_num := 0;
             -- rob .state[i] := commit_not_sent;
