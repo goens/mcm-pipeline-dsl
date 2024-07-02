@@ -121,16 +121,29 @@ def execute_command_with_file_check(experiement: Experiment, command1: str, comm
     grep -q "\tNo error found." test-HP-arm-io-it/armv8-HP-IT-amd1-dmb-sy.out.run
     '''
     # TODO NOTE: make this command check the output, like the grep above.
-    check_result_cmd = "if grep -q \"\tNo error found.\" armv8-HP-IT-amd1.out.run; then exit 0; elifgrep -q \"\tInvariant .* failed.\" armv8-HP-IT-amd1.out.run;  then exit 1 else exit 2; fi"
+    check_result_cmd = f"if grep -q \"\tNo error found.\" {litmus_test_log_name}; then exit 0; elifgrep -q \"\tInvariant .* failed.\" {litmus_test_log_name};  then exit 1 else exit 2; fi"
+    # Exit 0 is ordering not observed,
+    # Exit 1 is ordering observed,
+    # Exit 2 is an unexpected error.
 
     # Execute the second shell command and capture the return code
     result = subprocess.run(check_result_cmd, shell=True)
 
     # Check the return code
     if result.returncode == 0:
-        return True  # Command executed successfully
+        # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
+        # as Ordering "Disallowed"
+        pass
+    elif result.returncode == 1:
+        # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
+        # as Ordering "Allowed"
+        pass
+    elif result.returncode == 2:
+        # TODO: This is unexpected, add a ? or something
+        pass
     else:
-        return False  # Command returned an error
+        # TODO: Very unexpected.
+        pass
 
 # Example usage
 # directory = "/path/to/subdirectory"
