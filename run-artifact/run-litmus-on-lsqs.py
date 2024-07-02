@@ -91,6 +91,8 @@ def execute_command_with_file_check(experiement: Experiment, command1: str, comm
     trace_dir_name = "trace"
     os.mkdir(trace_dir_name)
 
+    # ----------- NOTE: Separate the changing directories and creating the trace dir from the running.
+
     generated_litmus = f"generated-{a_litmus_test}"
     murphi_to_cpp_cmd = f"{murphi_src}/mu -c {generated_litmus}.m"
 
@@ -116,12 +118,13 @@ def execute_command_with_file_check(experiement: Experiment, command1: str, comm
     subprocess.run(run_test, shell=True)
 
     '''
-    grep -q $'Status:\n\n\tNo error found.' test-HP-arm-io-it/armv8-HP-IT-amd1-dmb-sy.out.run
+    grep -q "\tNo error found." test-HP-arm-io-it/armv8-HP-IT-amd1-dmb-sy.out.run
     '''
     # TODO NOTE: make this command check the output, like the grep above.
+    check_result_cmd = "if grep -q \"\tNo error found.\" armv8-HP-IT-amd1.out.run; then exit 0; elifgrep -q \"\tInvariant .* failed.\" armv8-HP-IT-amd1.out.run;  then exit 1 else exit 2; fi"
 
     # Execute the second shell command and capture the return code
-    result = subprocess.run(command2, shell=True)
+    result = subprocess.run(check_result_cmd, shell=True)
 
     # Check the return code
     if result.returncode == 0:
