@@ -10,7 +10,10 @@ import multiprocessing as mp
 from multiprocessing import Pool
 import sys
 
-murphi_mem_num = 6500
+from subprocess import TimeoutExpired
+
+MURPHI_MEM_NUM = 6500 # about 6.5 GB of mem
+TIMEOUT = 5 * 60 # 5 min
 
 class LSQ(Enum):
     HP = "HP"
@@ -56,7 +59,9 @@ def execute_aqlc(experiment: Experiment):
 
     transform_name = None
     match (experiment.transformation):
-        case Transformation.IO, Transformation.LR:
+        case Transformation.IO:
+            transform_name = "LR"
+        case Transformation.LR:
             transform_name = "LR"
         case Transformation.IT:
             transform_name = "IT"
@@ -68,7 +73,7 @@ def execute_aqlc(experiment: Experiment):
             lsq_dir_name = "lsq-nosq"
         case LSQ.Unified:
             lsq_dir_name = "lsq-load-replay"
-    lsq_file_name = f"{experiment.lsq}-for-{transform_name}.aql"
+    lsq_file_name = f"{experiment.lsq.value}-for-{transform_name}.aql"
 
     aql_file_arg = f"Examples/graph-prototype/operational-axiomatic/{lsq_dir_name}/{lsq_file_name}"
 
@@ -103,11 +108,11 @@ def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
     if result.returncode == 0:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Disallowed"
-        return LitmusResult.Allowed
+        return LitmusResult.Disallowed
     elif result.returncode == 1:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Allowed"
-        return LitmusResult.Disallowed
+        return LitmusResult.Allowed
     elif result.returncode == 2:
         # TODO: This is unexpected, add a ? or something
         return LitmusResult.UnexpectedResult
@@ -118,20 +123,20 @@ def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
 def run_litmus_test(
         a_litmus_test : str,
         murphi_src : str,
-        experiement : Experiment,
+        experiment : Experiment,
         trace_dir_name : str) -> tuple[str, LitmusResult]:
     generated_litmus = f"generated-{a_litmus_test}"
     murphi_to_cpp_cmd = f"{murphi_src}/src/mu -c {generated_litmus}.m"
 
-    mm_name = str(experiement.memory_model.value)
-    lsq_name = str(experiement.lsq.value)
-    tfsm_name = str(experiement.transformation.value)
+    mm_name = str(experiment.memory_model.value)
+    lsq_name = str(experiment.lsq.value)
+    tfsm_name = str(experiment.transformation.value)
     litmus_test_exe_name = f"{mm_name}-{lsq_name}-{tfsm_name}.out"
     include_murphi_path = f"CPLUS_INCLUDE_PATH={murphi_src}/include"
     compile_cpp_cmd = f"{include_murphi_path} g++ {generated_litmus}.cpp -o {litmus_test_exe_name}"
 
     litmus_test_log_name = f"{litmus_test_exe_name}.run"
-    execute_litmus_cmd = f"./{litmus_test_exe_name} -b32 -d {trace_dir_name} -vdfs -td -m {murphi_mem_num} >& {litmus_test_log_name}"
+    execute_litmus_cmd = f"./{litmus_test_exe_name} -b32 -d {trace_dir_name} -vdfs -td -m {MURPHI_MEM_NUM} >& {litmus_test_log_name}"
 
     run_test = f"{murphi_to_cpp_cmd} && {compile_cpp_cmd} && {execute_litmus_cmd}"
     '''
@@ -141,8 +146,13 @@ def run_litmus_test(
     armv8-nosq-replay-n7.out.run
     '''
 
-    # Execute the first shell command
-    subprocess.run(run_test, shell=True)
+    try:
+        # Execute the first shell command
+        subprocess.run(run_test, shell=True, timeout=TIMEOUT)
+    except TimeoutExpired:
+        # Handle the TimeoutExpired exception here
+        # You can log the timeout or perform any necessary actions
+        return (a_litmus_test, LitmusResult.Timeout)
 
     return (a_litmus_test, check_litmus_output(litmus_test_log_name))
 
@@ -152,19 +162,21 @@ ARM_TESTS = []
 
 # NOTE: Change this to actually execute a murphi file.
 def execute_command_with_file_check(
-        experiement: Experiment,
+        experiment: Experiment,
         murphi_src: str,
         parallel_batch : int,
         test_names: list[str]) -> tuple[
-            # 'identifier' for this experiement.
+            # 'identifier' for this experiment.
             tuple[MemoryModel,LSQ,Transformation],
-            # Litmus test results for this experiement
+            # Litmus test results for this experiment
             dict[str,LitmusResult]
             ]:
 
     current_directory = os.getcwd()
+    print(os.getcwd())
+    execute_aqlc(experiment)
 
-    litmus_test_dir = CreateOutputDirName(experiement)
+    litmus_test_dir = CreateOutputDirName(experiment)
     if not os.path.exists(litmus_test_dir):
         os.mkdir(litmus_test_dir)
     # Change to the specified directory
@@ -176,8 +188,8 @@ def execute_command_with_file_check(
 
     # ----------- NOTE: Separate the changing directories and creating the trace dir from the running.
 
-    # Use map function to create a list of tuples with test name, murphi_src, and experiement
-    tests_to_run = list(map(lambda test_name: [test_name, murphi_src, experiement, trace_dir_name], test_names))
+    # Use map function to create a list of tuples with test name, murphi_src, and experiment
+    tests_to_run = list(map(lambda test_name: [test_name, murphi_src, experiment, trace_dir_name], test_names))
 
     pool = Pool(parallel_batch)
     litmus_result_dict = dict()
@@ -187,7 +199,7 @@ def execute_command_with_file_check(
 
     os.chdir(current_directory)
 
-    mm_lsq_tfsm = (experiement.memory_model, experiement.lsq, experiement.transformation)
+    mm_lsq_tfsm = (experiment.memory_model, experiment.lsq, experiment.transformation)
     # Return a tuple of MM and LSQ, with the litmus test results.
     return (mm_lsq_tfsm, litmus_result_dict)
 
@@ -202,7 +214,6 @@ def CreateTransformConfigPath(mm: MemoryModel, tfsm: Transformation, lsq: LSQ):
     mm_name = MemoryModelToLower(mm)
     tfsm_name = str(tfsm.value)
     lsq_name = None
-    print(f"LSQ?: ({lsq})")
     match lsq:
         case LSQ.HP:
             lsq_name = str(lsq.value)
@@ -212,12 +223,6 @@ def CreateTransformConfigPath(mm: MemoryModel, tfsm: Transformation, lsq: LSQ):
             lsq_name = "LB_and_Unified"
 
     config_path = f"artifact-{mm_name}-lsq-tfsm-configs/{tfsm_name}/TransformsToApply_{lsq_name}_{tfsm_name}.lean"
-    # print(f"mm_name: ({mm_name})")
-    # print(f"mm: ({mm})")
-    # print(f"str(mm): ({str(mm)})")
-    # print(f"mm.value: ({mm.value})")
-    # print(f"str(mm.value): ({str(mm.value)})")
-    # print(f"Config Path: ({config_path})")
     return config_path
 
 def CreateTransformDestPath():
@@ -267,6 +272,13 @@ def main():
     for exp in experiments:
         results_list.append(Execute(exp, murphi_src, parallel_batch))
 
+    # TODO: Should be able to finish this on Thursday.
+    # (1) Group results into "tables" (dict entries in python)
+    #   by MM and LSQ. Columns are a specific transformation
+        # i.e. IO, IO+IR, and IO+LR.
+    # (2) Finish the list of litmus tests in the Lean litmustests file,
+        # and here by adding the names to the list of litmus tests to run
+        # per MM (TSO or ARM.)
     for (mm, lsq, tfsm), litmus_result in results_list:
         print(f"MM: ({mm}), LSQ: ({lsq}), TFSM: ({tfsm})")
         print("Litmus Results:")
