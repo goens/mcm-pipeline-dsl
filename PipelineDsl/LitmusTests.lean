@@ -214,8 +214,9 @@ def iwp23b1 : LitmusTest := {
   orderings := [binary_ordering [ store ] [ load ] Addresses.same]
 }
 
-def amd1 : LitmusTest := {
-  test_name := "amd1",
+-- a.k.a. amd1
+def MP : LitmusTest := {
+  test_name := "MP",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -235,8 +236,8 @@ def amd1 : LitmusTest := {
   orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
 }
 
-def amd1_dmb_sy : LitmusTest := {
-  test_name := "amd1-dmb-sy",
+def MP_dmb_sy : LitmusTest := {
+  test_name := "MP-dmb-sy",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -262,8 +263,8 @@ def amd1_dmb_sy : LitmusTest := {
 }
 
 
-def amd1_dmb_ld_st : LitmusTest := {
-  test_name := "amd1-dmb-ld-st",
+def MP_dmb_ld_st : LitmusTest := {
+  test_name := "MP-dmb-ld-st",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -288,8 +289,8 @@ def amd1_dmb_ld_st : LitmusTest := {
   ]
 }
 
-def amd1_dmb_st_ld_mismatch : LitmusTest := {
-  test_name := "amd1-dmb-ld-st-mismatch",
+def MP_dmb_st_ld_mismatch : LitmusTest := {
+  test_name := "MP-dmb-ld-st-mismatch",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -314,8 +315,8 @@ def amd1_dmb_st_ld_mismatch : LitmusTest := {
   ]
 }
 
-def amd1_one_ldar_stlr : LitmusTest := {
-  test_name := "amd1-one-ldar-stlr",
+def MP_one_ldar_stlr : LitmusTest := {
+  test_name := "MP-one-ldar-stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -335,8 +336,8 @@ def amd1_one_ldar_stlr : LitmusTest := {
   orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
 }
 
-def amd1_all_ldar_stlr : LitmusTest := {
-  test_name := "amd1-all-ldar-stlr",
+def MP_all_ldar_stlr : LitmusTest := {
+  test_name := "MP-all-ldar-stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -356,8 +357,8 @@ def amd1_all_ldar_stlr : LitmusTest := {
   orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
 }
 
-def amd1_relaxed_ldar_stlr : LitmusTest := {
-  test_name := "amd1-relaxed-ldar-stlr",
+def MP_relaxed_ldar_stlr : LitmusTest := {
+  test_name := "MP-relaxed-ldar-stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -377,9 +378,10 @@ def amd1_relaxed_ldar_stlr : LitmusTest := {
   orderings := [(binary_ordering [ load ] [ load ] Addresses.any), (binary_ordering [ store ] [ store ] Addresses.any)]
 }
 
--- ====== 
-def amd2 : LitmusTest := {
-  test_name := "amd2",
+-- ======
+-- LB, a.k.a. amd2
+def LB : LitmusTest := {
+  test_name := "LB",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -388,6 +390,161 @@ def amd2 : LitmusTest := {
     {core_idx := 1, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_mfence : LitmusTest := {
+  test_name := "LB_mfence",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := mfence, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_ldar : LitmusTest := {
+  test_name := "LB_ldar",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_stlr : LitmusTest := {
+  test_name := "LB_stlr",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_ldar_stlr : LitmusTest := {
+  test_name := "LB_ldar_stlr",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_dmb_sy : LitmusTest := {
+  test_name := "LB_dmb_sy",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_sy, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_sy, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_dmb_ld : LitmusTest := {
+  test_name := "LB_dmb_ld",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_ld, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_ld, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ],
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 1}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden},
+  orderings := [binary_ordering [ load ] [ store ] Addresses.any]
+}
+
+def LB_dmb_st : LitmusTest := {
+  test_name := "LB_dmb_st",
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 2},
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 2},
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
       ]}
   ],
   expected := {
@@ -657,8 +814,8 @@ def load_fence : LitmusTest := {
     (binary_ordering [ store ] [ store ] Addresses.any)]
 }
 
-def load_fence_store_fence : LitmusTest := {
-  test_name := "load-fence-store-fence"
+def MP_mfence : LitmusTest := {
+  test_name := "MP_mfence"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -681,8 +838,8 @@ def load_fence_store_fence : LitmusTest := {
     (ternary_ordering [ store' ] mfence' [ store' ] Addresses.any)]
 }
 
-def dekker_fence : LitmusTest := {
-  test_name := "dekker-fence"
+def Dekker_mfence : LitmusTest := {
+  test_name := "Dekker_mfence"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -706,8 +863,8 @@ def dekker_fence : LitmusTest := {
     ]
 }
 
-def dekker_dmb_sy : LitmusTest := {
-  test_name := "dekker-dmb-sy"
+def Dekker_dmb_sy : LitmusTest := {
+  test_name := "Dekker-dmb-sy"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -731,27 +888,161 @@ def dekker_dmb_sy : LitmusTest := {
     ]
 }
 
+def Dekker_ldar : LitmusTest := {
+  test_name := "Dekker-dmb-sy"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
+    ]
+}
+
+def Dekker_stlr: LitmusTest := {
+  test_name := "Dekker-dmb-sy"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
+    ]
+}
+
+def Dekker_stlr_ldar: LitmusTest := {
+  test_name := "Dekker-dmb-sy"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := stlr, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := ldar, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 2, queue_idx := 1}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
+    ]
+}
+
+def Dekker_dmb_st: LitmusTest := {
+  test_name := "Dekker-dmb-sy"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
+    ]
+}
+
+def Dekker_dmb_ld: LitmusTest := {
+  test_name := "Dekker-dmb-sy"
+  insts_in_cores := [
+    {core_idx := 0, insts := [
+      {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_ld, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]},
+    {core_idx := 1, insts := [
+      {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
+      {inst := {inst_type := dmb_ld, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
+      {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 1}, seq_num := 3, queue_idx := 2}
+      ]}
+  ]
+  expected := {
+    per_core_reg_file := [
+    {core_idx := 0, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]},
+    {core_idx := 1, reg_entries := [{reg_idx := 0, reg_val := 0}, {reg_idx := 1, reg_val := 0}]}
+    ],
+    negate_or_not := TestResult.forbidden}
+  orderings := [/- (ternary_ordering load mfence load Addresses.any),-/
+      (ternary_ordering [ store' ] dmb_sy' [ load' ] Addresses.any)
+    ]
+}
+
 -- TODO: Add in the extra ones for fully testing
 -- load/store ordering with memory instructions, for
 -- artifact evaluation
 
 def ActiveLitmusTests : List LitmusTest := [
-iwp23b1, -- should pass, is for single core correctness
-amd1,
-amd1_dmb_sy,
-amd1_dmb_ld_st,
-amd1_dmb_st_ld_mismatch,
-amd1_one_ldar_stlr,
-amd1_all_ldar_stlr,
-amd1_relaxed_ldar_stlr,
-amd2,
--- n2, -- permitted test, not yet implemented "permitted"
-n4,
-n5,
-n7,
+--iwp23b1, -- should pass, is for single core correctness
+MP,
+MP_dmb_sy,
+MP_dmb_ld_st,
+MP_dmb_st_ld_mismatch,
+MP_one_ldar_stlr,
+MP_all_ldar_stlr,
+MP_relaxed_ldar_stlr,
+LB,
+LB_ldar,
+LB_stlr,
+LB_ldar_stlr,
+LB_dmb_sy,
+LB_dmb_ld,
+LB_dmb_st,
 Dekker,
-load_fence,
-dekker_fence,
-dekker_dmb_sy,
-load_fence_store_fence
+Dekker_ldar,
+Dekker_stlr,
+Dekker_stlr_ldar,
+Dekker_dmb_sy,
+Dekker_dmb_st,
+Dekker_dmb_ld,
+-- n2, -- permitted test, not yet implemented "permitted"
+--n4,
+--n5,
+n7,
+--MP,
+MP_mfence,
+--Dekker,
+Dekker_mfence,
+--LB,
+LB_mfence
+--load_fence,
 ]
