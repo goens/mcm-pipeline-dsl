@@ -275,6 +275,8 @@ def execute_command_with_file_check(
     # Use map function to create a list of tuples with test name, murphi_src, and experiment
     tests_to_run = list(map(lambda test_name: [test_name, murphi_src, experiment, trace_dir_name], test_names))
 
+    print(f"---------- Starting Experiement: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
+
     pool = Pool(parallel_batch)
     litmus_result_dict = dict()
     result = pool.starmap(run_litmus_test, tests_to_run)
@@ -285,6 +287,7 @@ def execute_command_with_file_check(
 
     mm_lsq_tfsm = (experiment.memory_model, experiment.lsq, experiment.transformation)
     # Return a tuple of MM and LSQ, with the litmus test results.
+    print(f"---------- Finished Experiement: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
     return (mm_lsq_tfsm, litmus_result_dict)
 
 def copy_file(source_path: str, destination_path: str):
