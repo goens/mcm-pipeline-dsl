@@ -4,10 +4,10 @@ import PipelineDsl.ApplyTransformations
 def transforms := [
   (Transformation.IO,
    MCMOrdering.binary_ordering
-     (BinaryOrdering.mk [ ldar ] [ load ] Addresses.any) ),
+     (BinaryOrdering.mk [ load ] [ load ] Addresses.any) ),
   (Transformation.IO,
-   MCMOrdering.binary_ordering
-     (BinaryOrdering.mk [ ldar ] [ ldar ] Addresses.any) ),
+   MCMOrdering.ternary_ordering
+     (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
 
   --  (Transformation.IO,
   --   MCMOrdering.binary_ordering
