@@ -18,7 +18,7 @@ import tabulate
 # ===== Constants =====
 
 # Memory to use with murphi
-MURPHI_MEM_NUM = 6500 # about 6.5 GB of mem
+MURPHI_MEM_NUM = 3000 # about 6.5 GB of mem
 # timeout for each murphi litmus test run
 TIMEOUT = 1 # 5 * 60 # 5 min
 
@@ -144,16 +144,25 @@ def execute_aqlc(experiment: Experiment):
 
     aql_file_arg = f"Examples/graph-prototype/operational-axiomatic/{lsq_dir_name}/{lsq_file_name}"
 
-    command = "lake exe aqlc"
+    exe_cmd = "lake exe aqlc"
+
     # Construct the full command
-    full_command = f"{command} {lsq_arg} {transform_arg} {out_dir_arg} {model_check_arg} {aql_file_arg}"
+    build_cmd = f"lake build aqlc"
+    print(f">>> Artifact Eval: Building AQL compiler for Experiment: LSQ: {experiment.lsq.value} & MM: {experiment.memory_model.value} with main Transformation: {experiment.transformation.value}")
+    subprocess.run(["zsh", "-c", build_cmd], shell=False)
+
+    # catch all build output..
+    tfsm_output_file = f"{experiment.lsq.value}-{experiment.memory_model.value}-{experiment.transformation.value}-build.run"
+    tfsm_lsq_cmd = f"{exe_cmd} {lsq_arg} {transform_arg} {out_dir_arg} {model_check_arg} {aql_file_arg} >& {tfsm_output_file}"
 
     # Execute the shell command
-    subprocess.run(full_command, shell=True)
+    #subprocess.run(full_command, shell=False)
+    print(f">>> Artifact Eval: Generating Murphi files from AQL compiler for Experiment: LSQ: {experiment.lsq.value} & MM: {experiment.memory_model.value} with main Transformation: {experiment.transformation.value}")
+    subprocess.run(["zsh", "-c", tfsm_lsq_cmd], shell=False)
 
 class LitmusResult(Enum):
     Allowed = "Allowed"
-    Disallowed = "allowed"
+    Disallowed = "Disallowed"
     Timeout = "Timeout"
     UnexpectedResult = "UnexpectedResult"
     UnexpectedReturnCode = "UnexpectedReturnCode"
@@ -175,17 +184,21 @@ def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
     if result.returncode == 0:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Disallowed"
+        print(f">>> Artifact Eval: Result of test {litmus_test_log_name} is {LitmusResult.Disallowed.value}")
         return LitmusResult.Disallowed.value
     elif result.returncode == 1:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Allowed"
+        print(f">>> Artifact Eval: Result of test {litmus_test_log_name} is {LitmusResult.Allowed.value}")
         return LitmusResult.Allowed.value
     elif result.returncode == 2:
         # TODO: This is unexpected, add a ? or something
+        print(f">>> Artifact Eval: Result of test {litmus_test_log_name} is {LitmusResult.UnexpectedResult.value}")
         return LitmusResult.UnexpectedResult.value
     else:
         # TODO: Very unexpected shouldn't be able to get another value?
         # Should throw an exception here
+        print(f">>> Artifact Eval: Result of test {litmus_test_log_name} is {LitmusResult.UnexpectedReturnCode.value}")
         return LitmusResult.UnexpectedReturnCode.value
 
 def run_litmus_test(
@@ -194,14 +207,16 @@ def run_litmus_test(
         experiment : Experiment,
         trace_dir_name : str) -> tuple[str, LitmusResult]:
     generated_litmus = f"generated-{a_litmus_test}"
-    murphi_to_cpp_cmd = f"{murphi_src}/src/mu -c {generated_litmus}.m"
+    murphi_compile_output_file = f"murphi_{a_litmus_test}.run"
+    murphi_to_cpp_cmd = f"{murphi_src}/src/mu -c {generated_litmus}.m >& {murphi_compile_output_file}"
 
     mm_name = str(experiment.memory_model.value)
     lsq_name = str(experiment.lsq.value)
     tfsm_name = str(experiment.transformation.value)
     litmus_test_exe_name = f"{mm_name}-{lsq_name}-{tfsm_name}-{a_litmus_test}.out"
     include_murphi_path = f"CPLUS_INCLUDE_PATH={murphi_src}/include"
-    compile_cpp_cmd = f"{include_murphi_path} g++ {generated_litmus}.cpp -o {litmus_test_exe_name}"
+    compile_output_file = f"cpp_compile_{a_litmus_test}.run"
+    compile_cpp_cmd = f"{include_murphi_path} g++ {generated_litmus}.cpp -o {litmus_test_exe_name} >& {compile_output_file}"
 
     litmus_test_log_name = f"{litmus_test_exe_name}.run"
     execute_litmus_cmd = f"./{litmus_test_exe_name} -b32 -d {trace_dir_name} -vdfs -td -m {MURPHI_MEM_NUM} >& {litmus_test_log_name}"
@@ -214,6 +229,7 @@ def run_litmus_test(
     armv8-nosq-replay-n7.out.run
     '''
 
+    print(f">>> Artifact Eval: Running Litmus Test: {a_litmus_test} for LSQ: {lsq_name} with main Transformation: {tfsm_name} for MM: {mm_name}")
     try:
         # Execute the first shell command
         # subprocess.run(run_test, shell=True, timeout=TIMEOUT)
@@ -221,8 +237,10 @@ def run_litmus_test(
     except TimeoutExpired:
         # Handle the TimeoutExpired exception here
         # You can log the timeout or perform any necessary actions
+        print(f">>> Artifact Eval: Timed out: Litmus Test: {a_litmus_test} for LSQ: {lsq_name} & MM: {mm_name} with main Transformation: {tfsm_name}")
         return (a_litmus_test, LitmusResult.Timeout.value)
 
+    print(f">>> Artifact Eval: Finished Running: Litmus Test: {a_litmus_test} for LSQ: {lsq_name} & MM: {mm_name} with main Transformation: {tfsm_name}")
     return (a_litmus_test, check_litmus_output(litmus_test_log_name))
 
 # NOTE: Change this to actually execute a murphi file.
@@ -238,7 +256,7 @@ def execute_command_with_file_check(
             ]:
 
     current_directory = os.getcwd()
-    print(os.getcwd())
+    #print(os.getcwd())
     execute_aqlc(experiment)
 
     litmus_test_dir = CreateOutputDirName(experiment)
@@ -366,7 +384,7 @@ def main():
 
     # Print the table
     for (mm, lsq), tfsm_dict in paper_tables_dict.items():
-        print(f"=== MM: {mm}, LSQ: {lsq} ===")
+        print(f">>> Artifact Eval: === MM: {mm}, LSQ: {lsq} ===")
         test_names = GetApplicableTestNames(mm)
         #for tfsm_val, test_result_dict in tfsm_dict.items():
             #print(f"TFSM: {tfsm_val}")
@@ -377,7 +395,7 @@ def main():
         df = pd.DataFrame(tfsm_dict, index=test_names)
         #df.style.pipe(make_pretty)
         table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
-        print(table)
+        print(f">>> Artifact Eval: Litmus Test Table\n{table}")
 
         file_path = f"{lsq}-{mm}-results.md"
 
