@@ -163,7 +163,7 @@ def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
     grep -q "\tNo error found." test-HP-arm-io-it/armv8-HP-IT-amd1-dmb-sy.out.run
     '''
     # TODO NOTE: make this command check the output, like the grep above.
-    check_result_cmd = f"if grep -q \"\tNo error found.\" {litmus_test_log_name}; then exit 0; elif grep -q \"\tInvariant .* failed.\" {litmus_test_log_name};  then exit 1 else exit 2; fi"
+    check_result_cmd = f"if grep -q \"\tNo error found.\" {litmus_test_log_name}; then exit 0; elif grep -q \"\tInvariant .* failed.\" {litmus_test_log_name};  then exit 1; else exit 2; fi"
     # Exit 0 is ordering not observed,
     # Exit 1 is ordering observed,
     # Exit 2 is an unexpected error.
@@ -199,7 +199,7 @@ def run_litmus_test(
     mm_name = str(experiment.memory_model.value)
     lsq_name = str(experiment.lsq.value)
     tfsm_name = str(experiment.transformation.value)
-    litmus_test_exe_name = f"{mm_name}-{lsq_name}-{tfsm_name}.out"
+    litmus_test_exe_name = f"{mm_name}-{lsq_name}-{tfsm_name}-{a_litmus_test}.out"
     include_murphi_path = f"CPLUS_INCLUDE_PATH={murphi_src}/include"
     compile_cpp_cmd = f"{include_murphi_path} g++ {generated_litmus}.cpp -o {litmus_test_exe_name}"
 
@@ -363,7 +363,7 @@ def main():
         # # Transpose the DataFrame to have tfsm entries as columns
         # df = df.transpose()
     # pprint.pprint(paper_tables_dict)
-    
+
     # Print the table
     for (mm, lsq), tfsm_dict in paper_tables_dict.items():
         print(f"=== MM: {mm}, LSQ: {lsq} ===")
@@ -378,6 +378,19 @@ def main():
         #df.style.pipe(make_pretty)
         table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
         print(table)
+
+        file_path = f"{lsq}-{mm}-results.md"
+
+        mm_lsq_result_file = None
+        if os.path.exists(file_path):
+            mm_lsq_result_file = open(file_path, "w")
+            mm_lsq_result_file.truncate(0)
+        else:
+            mm_lsq_result_file = open(file_path, "w")
+        
+        mm_lsq_result_file.write(str(table))
+        mm_lsq_result_file.close()
+    
         # print(df.to_csv())
         # print(df.to_markdown())
 
