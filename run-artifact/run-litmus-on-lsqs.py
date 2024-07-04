@@ -216,7 +216,8 @@ def run_litmus_test(
 
     try:
         # Execute the first shell command
-        subprocess.run(run_test, shell=True, timeout=TIMEOUT)
+        # subprocess.run(run_test, shell=True, timeout=TIMEOUT)
+        subprocess.run(["zsh", "-c", run_test], shell=False, timeout=TIMEOUT)
     except TimeoutExpired:
         # Handle the TimeoutExpired exception here
         # You can log the timeout or perform any necessary actions
@@ -286,7 +287,7 @@ def CreateTransformConfigPath(mm: MemoryModel, tfsm: Transformation, lsq: LSQ):
         case LSQ.Unified:
             lsq_name = "LB_and_Unified"
 
-    config_path = f"artifact-{mm_name}-lsq-tfsm-configs/{tfsm_name}/TransformsToApply_{lsq_name}_{tfsm_name}.lean"
+    config_path = f"artifact-{mm_name}-lsq-tfsm-configs/{tfsm_name}/TransformsToApply_{lsq_name}_{mm.value}_{tfsm_name}.lean"
     return config_path
 
 def CreateTransformDestPath():
