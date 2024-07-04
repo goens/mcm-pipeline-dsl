@@ -237,7 +237,7 @@ def MP : LitmusTest := {
 }
 
 def MP_dmb_sy : LitmusTest := {
-  test_name := "MP-dmb-sy",
+  test_name := "MP_dmb_sy",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -264,7 +264,7 @@ def MP_dmb_sy : LitmusTest := {
 
 
 def MP_dmb_ld_st : LitmusTest := {
-  test_name := "MP-dmb-ld-st",
+  test_name := "MP_dmb_ld_st",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -290,7 +290,7 @@ def MP_dmb_ld_st : LitmusTest := {
 }
 
 def MP_dmb_st_ld_mismatch : LitmusTest := {
-  test_name := "MP-dmb-ld-st-mismatch",
+  test_name := "MP_dmb_ld_st_mismatch",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -316,7 +316,7 @@ def MP_dmb_st_ld_mismatch : LitmusTest := {
 }
 
 def MP_one_ldar_stlr : LitmusTest := {
-  test_name := "MP-one-ldar-stlr",
+  test_name := "MP_one_ldar_stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -337,7 +337,7 @@ def MP_one_ldar_stlr : LitmusTest := {
 }
 
 def MP_all_ldar_stlr : LitmusTest := {
-  test_name := "MP-all-ldar-stlr",
+  test_name := "MP_all_ldar_stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := ldar, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -358,7 +358,7 @@ def MP_all_ldar_stlr : LitmusTest := {
 }
 
 def MP_relaxed_ldar_stlr : LitmusTest := {
-  test_name := "MP-relaxed-ldar-stlr",
+  test_name := "MP_relaxed_ldar_stlr",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -864,7 +864,7 @@ def Dekker_mfence : LitmusTest := {
 }
 
 def Dekker_dmb_sy : LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_dmb_sy"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -889,7 +889,7 @@ def Dekker_dmb_sy : LitmusTest := {
 }
 
 def Dekker_ldar : LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_ldar"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -912,7 +912,7 @@ def Dekker_ldar : LitmusTest := {
 }
 
 def Dekker_stlr: LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_stlr"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -935,7 +935,7 @@ def Dekker_stlr: LitmusTest := {
 }
 
 def Dekker_stlr_ldar: LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_stlr_ldar"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := stlr, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -958,7 +958,7 @@ def Dekker_stlr_ldar: LitmusTest := {
 }
 
 def Dekker_dmb_st: LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_dmb_st"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -983,7 +983,7 @@ def Dekker_dmb_st: LitmusTest := {
 }
 
 def Dekker_dmb_ld: LitmusTest := {
-  test_name := "Dekker-dmb-sy"
+  test_name := "Dekker_dmb_ld"
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 0}, seq_num := 1, queue_idx := 0},
