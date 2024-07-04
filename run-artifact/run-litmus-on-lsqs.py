@@ -147,12 +147,13 @@ def execute_aqlc(experiment: Experiment):
     exe_cmd = "lake exe aqlc"
 
     # Construct the full command
-    build_cmd = f"lake build aqlc"
+    build_output_file = f"{experiment.lsq.value}-{experiment.memory_model.value}-{experiment.transformation.value}-build.run"
+    build_cmd = f"lake build aqlc >& {build_output_file}"
     print(f">>> Artifact Eval: Building AQL compiler for Experiment: LSQ: {experiment.lsq.value} & MM: {experiment.memory_model.value} with main Transformation: {experiment.transformation.value}")
     subprocess.run(["zsh", "-c", build_cmd], shell=False)
 
     # catch all build output..
-    tfsm_output_file = f"{experiment.lsq.value}-{experiment.memory_model.value}-{experiment.transformation.value}-build.run"
+    tfsm_output_file = f"{experiment.lsq.value}-{experiment.memory_model.value}-{experiment.transformation.value}-aql-tfsm-compile.run"
     tfsm_lsq_cmd = f"{exe_cmd} {lsq_arg} {transform_arg} {out_dir_arg} {model_check_arg} {aql_file_arg} >& {tfsm_output_file}"
 
     # Execute the shell command
@@ -397,7 +398,7 @@ def main():
         table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
         print(f">>> Artifact Eval: Litmus Test Table\n{table}")
 
-        file_path = f"{lsq}-{mm}-results.md"
+        file_path = f"{lsq}-{mm}-results.table"
 
         mm_lsq_result_file = None
         if os.path.exists(file_path):
