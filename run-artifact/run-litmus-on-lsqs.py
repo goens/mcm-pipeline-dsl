@@ -11,9 +11,12 @@ from multiprocessing import Pool
 import sys
 
 from subprocess import TimeoutExpired
+import pandas as pd
+import tabulate
+import pprint
 
 MURPHI_MEM_NUM = 6500 # about 6.5 GB of mem
-TIMEOUT = 5 * 60 # 5 min
+TIMEOUT = 1 # 5 * 60 # 5 min
 
 class LSQ(Enum):
     HP = "HP"
@@ -89,7 +92,7 @@ class LitmusResult(Enum):
     Disallowed = "allowed"
     Timeout = "Timeout"
     UnexpectedResult = "UnexpectedResult"
-    VeryUnexpected = "VeryUnexpected"
+    UnexpectedReturnCode = "UnexpectedReturnCode"
 
 def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
     '''
@@ -108,17 +111,18 @@ def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
     if result.returncode == 0:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Disallowed"
-        return LitmusResult.Disallowed
+        return LitmusResult.Disallowed.value
     elif result.returncode == 1:
         # TODO: Mark this entry for this litmus test for a LSQ + Transform Combo
         # as Ordering "Allowed"
-        return LitmusResult.Allowed
+        return LitmusResult.Allowed.value
     elif result.returncode == 2:
         # TODO: This is unexpected, add a ? or something
-        return LitmusResult.UnexpectedResult
+        return LitmusResult.UnexpectedResult.value
     else:
         # TODO: Very unexpected shouldn't be able to get another value?
-        return LitmusResult.VeryUnexpected
+        # Should throw an exception here
+        return LitmusResult.UnexpectedReturnCode.value
 
 def run_litmus_test(
         a_litmus_test : str,
@@ -152,7 +156,7 @@ def run_litmus_test(
     except TimeoutExpired:
         # Handle the TimeoutExpired exception here
         # You can log the timeout or perform any necessary actions
-        return (a_litmus_test, LitmusResult.Timeout)
+        return (a_litmus_test, LitmusResult.Timeout.value)
 
     return (a_litmus_test, check_litmus_output(litmus_test_log_name))
 
@@ -228,6 +232,13 @@ def CreateTransformConfigPath(mm: MemoryModel, tfsm: Transformation, lsq: LSQ):
 def CreateTransformDestPath():
     return "PipelineDsl/TransformsToApply.lean"
 
+def GetApplicableTestNames(memory_model : MemoryModel) -> list[str]:
+    match memory_model:
+        case MemoryModel.TSO:
+            return TSO_TESTS
+        case MemoryModel.ARM:
+            return ARM_TESTS
+
 def Execute(experiment : Experiment,
             murphi_src : str,
             parallel_batch : int):
@@ -239,19 +250,12 @@ def Execute(experiment : Experiment,
     transforms_dest = CreateTransformDestPath()
     copy_file(transforms_src, transforms_dest)
 
-    match experiment.memory_model:
-        case MemoryModel.TSO:
-            return execute_command_with_file_check(
-                experiment,
-                murphi_src,
-                parallel_batch,
-                TSO_TESTS)
-        case MemoryModel.ARM:
-            return execute_command_with_file_check(
-                experiment,
-                murphi_src,
-                parallel_batch,
-                ARM_TESTS)
+    test_names = GetApplicableTestNames(experiment.memory_model)
+    return execute_command_with_file_check(
+        experiment,
+        murphi_src,
+        parallel_batch,
+        test_names)
 
 # Example usage
 # experiment = Experiment(MemoryModel.TSO, LSQ.HP, Transformation.IO)
@@ -279,11 +283,42 @@ def main():
     # (2) Finish the list of litmus tests in the Lean litmustests file,
         # and here by adding the names to the list of litmus tests to run
         # per MM (TSO or ARM.)
+    paper_tables_dict = dict()
     for (mm, lsq, tfsm), litmus_result in results_list:
-        print(f"MM: ({mm}), LSQ: ({lsq}), TFSM: ({tfsm})")
-        print("Litmus Results:")
+        # print(f"MM: ({mm}), LSQ: ({lsq}), TFSM: ({tfsm})")
+        if (mm.value, lsq.value) not in paper_tables_dict:
+            paper_tables_dict[(mm.value, lsq.value)] = {}
+        if tfsm.value not in paper_tables_dict[(mm.value, lsq.value)]:
+            paper_tables_dict[(mm.value, lsq.value)][tfsm.value] = {}
+
+        # print("Litmus Results:")
         for test_name, result in litmus_result.items():
-            print(f"Test: {test_name}, Result: {result}")
+            # print(f"Test: {test_name}, Result: {result}")
+            paper_tables_dict[(mm.value, lsq.value)][tfsm.value][test_name] = result
+
+        # # Convert paper_tables_dict into a DataFrame
+        # df = pd.DataFrame.from_dict(paper_tables_dict, index=test_names)
+        
+        # # Transpose the DataFrame to have tfsm entries as columns
+        # df = df.transpose()
+    # pprint.pprint(paper_tables_dict)
+    
+    # Print the table
+    for (mm, lsq), tfsm_dict in paper_tables_dict.items():
+        print(f"=== MM: {mm}, LSQ: {lsq} ===")
+        test_names = GetApplicableTestNames(mm)
+        #for tfsm_val, test_result_dict in tfsm_dict.items():
+            #print(f"TFSM: {tfsm_val}")
+            #def make_pretty(styler):
+            #    styler.set_caption(f"MM: {mm}, LSQ: {lsq}")
+            #    return styler
+
+        df = pd.DataFrame(tfsm_dict, index=test_names)
+        #df.style.pipe(make_pretty)
+        table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
+        print(table)
+        # print(df.to_csv())
+        # print(df.to_markdown())
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
