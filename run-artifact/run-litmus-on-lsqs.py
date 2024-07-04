@@ -13,10 +13,74 @@ import sys
 from subprocess import TimeoutExpired
 import pandas as pd
 import tabulate
-import pprint
+# import pprint
 
+# ===== Constants =====
+
+# Memory to use with murphi
 MURPHI_MEM_NUM = 6500 # about 6.5 GB of mem
+# timeout for each murphi litmus test run
 TIMEOUT = 1 # 5 * 60 # 5 min
+
+# Litmus test names
+MP = "MP"
+MP_DMB_SY = "MP_dmb_sy"
+MP_DMB_LD_ST = "MP_dmb_ld_st"
+MP_DMB_ST_LD_MISMATCH = "MP_dmb_st_ld_mismatch"
+MP_ONE_LDAR_STLR = "MP_one_ldar_stlr"
+MP_ALL_LDAR_STLR = "MP_all_ldar_stlr"
+MP_RELAXED_LDAR_STLR = "MP_relaxed_ldar_stlr"
+LB = "LB"
+LB_LDAR = "LB_ldar"
+LB_STLR = "LB_stlr"
+LB_LDAR_STLR = "LB_ldar_stlr"
+LB_DMB_SY = "LB_dmb_sy"
+LB_DMB_LD = "LB_dmb_ld"
+LB_DMB_ST = "LB_dmb_st"
+DEKKER = "Dekker"
+DEKKER_LDAR = "Dekker_ldar"
+DEKKER_STLR = "Dekker_stlr"
+DEKKER_STLR_LDAR = "Dekker_stlr_ldar"
+DEKKER_DMB_SY = "Dekker_dmb_sy"
+DEKKER_DMB_ST = "Dekker_dmb_st"
+DEKKER_DMB_LD = "Dekker_dmb_ld"
+N7 = "n7"
+MP_MFENCE = "MP_mfence"
+DEKKER_MFENCE = "Dekker_mfence"
+LB_MFENCE = "LB_mfence"
+
+# sets of litmus tests per MM.
+TSO_TESTS = [
+  MP,     MP_MFENCE,
+  LB,     LB_MFENCE,
+  DEKKER, DEKKER_MFENCE,
+  N7]
+ARM_TESTS = [
+  MP,
+    MP_DMB_SY,
+    MP_DMB_LD_ST,
+    MP_DMB_ST_LD_MISMATCH,
+    MP_ONE_LDAR_STLR,
+    MP_ALL_LDAR_STLR,
+    MP_RELAXED_LDAR_STLR,
+  LB,
+    LB_LDAR,
+    LB_STLR,
+    LB_LDAR_STLR,
+    LB_DMB_SY,
+    LB_DMB_LD,
+    LB_DMB_ST,
+  DEKKER,
+    DEKKER_LDAR,
+    DEKKER_STLR,
+    DEKKER_STLR_LDAR,
+    DEKKER_DMB_SY,
+    DEKKER_DMB_ST,
+    DEKKER_DMB_LD,
+  N7
+]
+
+# ===== End Constants =====
 
 class LSQ(Enum):
     HP = "HP"
@@ -159,10 +223,6 @@ def run_litmus_test(
         return (a_litmus_test, LitmusResult.Timeout.value)
 
     return (a_litmus_test, check_litmus_output(litmus_test_log_name))
-
-# assume for now i have all specific tests enumerated here...
-TSO_TESTS = ["amd2"]
-ARM_TESTS = []
 
 # NOTE: Change this to actually execute a murphi file.
 def execute_command_with_file_check(
