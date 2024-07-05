@@ -290,7 +290,7 @@ def MP_dmb_ld_st : LitmusTest := {
 }
 
 def MP_dmb_st_ld_mismatch : LitmusTest := {
-  test_name := "MP_dmb_ld_st_mismatch",
+  test_name := "MP_dmb_st_ld_mismatch",
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
@@ -538,12 +538,12 @@ def LB_dmb_st : LitmusTest := {
   insts_in_cores := [
     {core_idx := 0, insts := [
       {inst := {inst_type := load, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
-      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 2},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
       {inst := {inst_type := store, addr := 1, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
       ]},
     {core_idx := 1, insts := [
       {inst := {inst_type := load, addr := 1, write_val := 0, dest_reg := 0}, seq_num := 1, queue_idx := 0},
-      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 2},
+      {inst := {inst_type := dmb_st, addr := 0, write_val := 0, dest_reg := 0}, seq_num := 2, queue_idx := 1},
       {inst := {inst_type := store, addr := 0, write_val := 1, dest_reg := 1}, seq_num := 3, queue_idx := 2}
       ]}
   ],
