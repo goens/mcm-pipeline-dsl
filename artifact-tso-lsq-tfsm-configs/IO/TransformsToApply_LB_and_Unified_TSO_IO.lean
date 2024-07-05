@@ -6,8 +6,8 @@ def transforms := [
    MCMOrdering.binary_ordering
      (BinaryOrdering.mk [ load ] [ load ] Addresses.any) ),
   (Transformation.IO,
-   MCMOrdering.ternary_ordering
-     (TernaryOrdering.mk [ load' ] mfence' [ load' ] Addresses.any) )
+   MCMOrdering.binary_ordering
+     (BinaryOrdering.mk [ mfence ] [ load ] Addresses.any) )
 
   --  (Transformation.IO,
   --   MCMOrdering.binary_ordering
