@@ -278,7 +278,7 @@ def execute_command_with_file_check(
     lsq_name = experiment.lsq.value
     mm_name = experiment.memory_model.value
     tfsm_name = experiment.transformation.value
-    print(f"---------- Starting Experiement: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
+    print(f"---------- Starting experiment: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
 
     pool = Pool(parallel_batch)
     litmus_result_dict = dict()
@@ -290,7 +290,7 @@ def execute_command_with_file_check(
 
     mm_lsq_tfsm = (experiment.memory_model, experiment.lsq, experiment.transformation)
     # Return a tuple of MM and LSQ, with the litmus test results.
-    print(f"---------- Finished Experiement: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
+    print(f"---------- Finished experiment: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
     return (mm_lsq_tfsm, litmus_result_dict)
 
 def copy_file(source_path: str, destination_path: str):
@@ -348,14 +348,17 @@ def Execute(experiment : Experiment,
 # experiment.Execute()
         
 
-def CreateExperiments():
+def CreateAllPaperExperiments():
     return [Experiment(mm, lsq, transform) for mm in MemoryModel for transform in Transformation for lsq in LSQ]
 
 def main():
-    # experiments = CreateExperiments()
+    # Use this to run all experiments from the paper
+    # experiments = CreateAllPaperExperiments()
+    # Just for testing a few experiments.
     experiments = [ Experiment(MemoryModel.TSO, LSQ.HP, Transformation.IO),
-                   Experiment(MemoryModel.TSO, LSQ.LB, Transformation.IO) ]
+                    Experiment(MemoryModel.TSO, LSQ.LB, Transformation.IO) ]
 
+    run_dir = os.getcwd()
     os.chdir("../")
     
     results_list = list()
@@ -389,6 +392,7 @@ def main():
         # df = df.transpose()
     # pprint.pprint(paper_tables_dict)
 
+    os.chdir(run_dir)
     # Print the table
     for (mm, lsq), tfsm_dict in paper_tables_dict.items():
         print(f">>> Artifact Eval: === MM: {mm}, LSQ: {lsq} ===")
@@ -404,6 +408,7 @@ def main():
         table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
         print(f">>> Artifact Eval: Litmus Test Table\n{table}")
 
+        print(f">>> Artifact Eval: Print table file in Dir: ({os.getcwd})")
         file_path = f"{lsq}-{mm}-results.table"
 
         mm_lsq_result_file = None
