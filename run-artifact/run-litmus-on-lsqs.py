@@ -275,6 +275,9 @@ def execute_command_with_file_check(
     # Use map function to create a list of tuples with test name, murphi_src, and experiment
     tests_to_run = list(map(lambda test_name: [test_name, murphi_src, experiment, trace_dir_name], test_names))
 
+    lsq_name = experiment.lsq.value
+    mm_name = experiment.memory_model.value
+    tfsm_name = experiment.transformation.value
     print(f"---------- Starting Experiement: LSQ: {lsq_name}, MM: {mm_name}, main Transform: {tfsm_name} -----------")
 
     pool = Pool(parallel_batch)
