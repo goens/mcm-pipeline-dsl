@@ -18,9 +18,9 @@ import tabulate
 # ===== Constants =====
 
 # Memory to use with murphi
-MURPHI_MEM_NUM = 3000 # about 6.5 GB of mem
+# MURPHI_MEM_NUM = 3000 # about 6.5 GB of mem
 # timeout for each murphi litmus test run
-TIMEOUT = 1 # 5 * 60 # 5 min
+# TIMEOUT = 1 # 5 * 60 # 5 min
 
 # Litmus test names
 MP = "MP"
@@ -220,7 +220,7 @@ def run_litmus_test(
     compile_cpp_cmd = f"{include_murphi_path} g++ {generated_litmus}.cpp -o {litmus_test_exe_name} >& {compile_output_file}"
 
     litmus_test_log_name = f"{litmus_test_exe_name}.run"
-    execute_litmus_cmd = f"./{litmus_test_exe_name} -b32 -d {trace_dir_name} -vdfs -td -m {MURPHI_MEM_NUM} >& {litmus_test_log_name}"
+    execute_litmus_cmd = f"./{litmus_test_exe_name} -b32 -d {trace_dir_name} -vdfs -td -m {murphi_mem_num} >& {litmus_test_log_name}"
 
     run_test = f"{murphi_to_cpp_cmd} && {compile_cpp_cmd} && {execute_litmus_cmd}"
     '''
@@ -234,7 +234,7 @@ def run_litmus_test(
     try:
         # Execute the first shell command
         # subprocess.run(run_test, shell=True, timeout=TIMEOUT)
-        subprocess.run(["zsh", "-c", run_test], shell=False, timeout=TIMEOUT)
+        subprocess.run(["zsh", "-c", run_test], shell=False, timeout=timeout)
     except TimeoutExpired:
         # Handle the TimeoutExpired exception here
         # You can log the timeout or perform any necessary actions
@@ -408,7 +408,7 @@ def main():
         table = tabulate.tabulate(df, headers='keys', tablefmt='fancy_grid')
         print(f">>> Artifact Eval: Litmus Test Table\n{table}")
 
-        print(f">>> Artifact Eval: Print table file in Dir: ({os.getcwd})")
+        print(f">>> Artifact Eval: Print table file in Dir: ({os.getcwd()})")
         file_path = f"{lsq}-{mm}-results.table"
 
         mm_lsq_result_file = None
@@ -425,11 +425,14 @@ def main():
         # print(df.to_markdown())
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python run-litmus-on-lsqs.py <murphi_src> <parallel_batch>")
+    if len(sys.argv) != 5:
+        print("Usage: python run-litmus-on-lsqs.py <murphi_src> <num_parallel_litmus_test_processes> <memory_in_MB_per_litmus_test> <timeout_in_seconds>")
         sys.exit(1)
 
     murphi_src = sys.argv[1]
     parallel_batch = int(sys.argv[2])
+
+    murphi_mem_num = int(sys.argv[3])
+    timeout = int(sys.argv[4])
 
     main()
