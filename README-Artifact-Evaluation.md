@@ -13,7 +13,7 @@ Then run the python script run-litmus-on-lsqs.py with the following arguments.
 python run-litmus-on-lsqs.py <murphi_src> <num_parallel_litmus_test_processes> <memory_in_MB_per_litmus_test> <timeout_in_seconds>
 ```
 
-The murphi\_src argument is the directory where cmurphi5.5.0 has been downloaded and extracted.
+The murphi\_src argument is the directory where cmurphi5.5.0 has been downloaded and extracted. The docker image has this directory: ~/cmurphi5.5.0
 
 The num\_parallel\_litmus\_test\_processes argument is the number of processes to use for running multiple litmus tests in parallel. Use 1 for just running 1 litmus test at a time.
 
