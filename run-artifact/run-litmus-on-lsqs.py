@@ -164,8 +164,8 @@ def execute_aqlc(experiment: Experiment):
 class LitmusResult(Enum):
     Allowed = "Allowed"
     Disallowed = "Disallowed"
-    Timeout = "Timeout"
-    UnexpectedResult = "UnexpectedResult"
+    Timeout = "Timeout: Manually Run"
+    UnexpectedResult = "Re-run or Manually Run"
     UnexpectedReturnCode = "UnexpectedReturnCode"
 
 def check_litmus_output(litmus_test_log_name : str) -> LitmusResult:
