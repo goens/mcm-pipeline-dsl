@@ -7,7 +7,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt update -y
 RUN apt upgrade -y
-RUN apt install -y sudo vim wget curl
+RUN apt install -y sudo vim wget curl git #bash
 # software-properties-common
 
 #RUN add-apt-repository ppa:deadsnakes/ppa
@@ -35,11 +35,11 @@ WORKDIR /home/user/mcm-pipeline-dsl/
 RUN . /home/user/.elan/env
 RUN /home/user/.elan/bin/elan self update
 
-#RUN /home/user/.elan/bin/lake update
+RUN /home/user/.elan/bin/lake update
 RUN /home/user/.elan/bin/lake build
 
-WORKDIR /home/user/mcm-pipeline-dsl/run-artifact
-
-RUN mv zshrc ~/.zshrc
 CMD ["/usr/bin/zsh"]
+RUN mv zshrc ~/.zshrc
+
+WORKDIR /home/user/mcm-pipeline-dsl/run-artifact
 
