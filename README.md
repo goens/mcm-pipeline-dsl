@@ -46,4 +46,4 @@ The output can be configured with the following flags:
 
 # License
 
-TODO: We should agree on a license.
+See the LICENSE file
